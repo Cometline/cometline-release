@@ -1,0 +1,126 @@
+import { describe, expect, it } from 'vitest';
+import { initChatState, reduceChatState } from './chat';
+import type { StreamEvent } from '$lib/types';
+
+describe('reduceChatState', () => {
+	it('returns a new state without mutating the input', () => {
+		const before = initChatState();
+		const after = reduceChatState(before, { type: 'text_delta', delta: 'hi' });
+		expect(after).not.toBe(before);
+		expect(before.items).toHaveLength(0);
+		expect(after.items).toHaveLength(1);
+	});
+
+	it('accumulates text deltas into one assistant item', () => {
+		let state = initChatState();
+		state = reduceChatState(state, { type: 'text_delta', delta: 'Hello' });
+		state = reduceChatState(state, { type: 'text_delta', delta: ' world' });
+		expect(state.items).toHaveLength(1);
+		const assistant = state.items[0];
+		expect(assistant.type).toBe('assistant');
+		if (assistant.type !== 'assistant') return;
+		expect(assistant.text).toBe('Hello world');
+		expect(state.assistant?.text).toBe('Hello world');
+	});
+
+	it('attaches reasoning to the assistant bubble', () => {
+		let state = initChatState();
+		state = reduceChatState(state, { type: 'reasoning_start' });
+		state = reduceChatState(state, { type: 'reasoning_delta', text: 'think' });
+		expect(state.items).toHaveLength(1);
+		const assistant = state.items[0];
+		expect(assistant.type).toBe('assistant');
+		if (assistant.type !== 'assistant') return;
+		expect(assistant.reasoning?.text).toBe('think');
+		expect(assistant.reasoning?.pending).toBe(true);
+	});
+
+	it('flushes reasoning when text begins', () => {
+		let state = initChatState();
+		state = reduceChatState(state, { type: 'reasoning_delta', text: 'plan: ' });
+		state = reduceChatState(state, { type: 'text_delta', delta: 'answer' });
+		const assistant = state.items[0];
+		expect(assistant.type).toBe('assistant');
+		if (assistant.type !== 'assistant') return;
+		expect(assistant.text).toBe('answer');
+		expect(assistant.reasoning?.text).toBe('plan: ');
+		expect(assistant.reasoning?.pending).toBe(false);
+	});
+
+	it('creates tool items and updates them on result', () => {
+		let state = initChatState();
+		state = reduceChatState(state, {
+			type: 'tool_call',
+			id: 'tc-1',
+			tool: 'read_file',
+			input: { path: 'README.md' }
+		});
+		expect(state.items).toHaveLength(1);
+		const tool = state.items[0];
+		expect(tool.type).toBe('tool');
+		if (tool.type !== 'tool') return;
+		expect(tool.toolId).toBe('tc-1');
+		expect(tool.pending).toBe(true);
+
+		state = reduceChatState(state, { type: 'tool_result', id: 'tc-1', tool: 'read_file', output: 'ok' });
+		const updated = state.items[0];
+		expect(updated.type).toBe('tool');
+		if (updated.type !== 'tool') return;
+		expect(updated.output).toBe('ok');
+		expect(updated.pending).toBe(false);
+	});
+
+	it('settles reasoning on step_finish', () => {
+		let state = initChatState();
+		state = reduceChatState(state, { type: 'reasoning_delta', text: 'done' });
+		state = reduceChatState(state, { type: 'step_finish' });
+		const assistant = state.items[0];
+		expect(assistant.type).toBe('assistant');
+		if (assistant.type !== 'assistant') return;
+		expect(assistant.reasoning?.pending).toBe(false);
+		expect(assistant.pending).toBe(false);
+	});
+
+	it('removes empty assistants on done', () => {
+		let state = initChatState();
+		state = reduceChatState(state, { type: 'reasoning_start' });
+		state = reduceChatState(state, { type: 'done' });
+		expect(state.items).toHaveLength(0);
+		expect(state.assistant).toBeNull();
+	});
+
+	it('appends an error item on error events', () => {
+		let state = initChatState();
+		state = reduceChatState(state, { type: 'text_delta', delta: 'partial' });
+		state = reduceChatState(state, { type: 'error', message: 'something broke' });
+		expect(state.items).toHaveLength(2);
+		expect(state.items[0].type).toBe('assistant');
+		expect(state.items[1].type).toBe('error');
+		if (state.items[1].type !== 'error') return;
+		expect(state.items[1].text).toBe('something broke');
+		expect(state.error).toBe('something broke');
+		expect(state.assistant).toBeNull();
+	});
+
+	it('handles a full assistant + tool turn', () => {
+		const events: StreamEvent[] = [
+			{ type: 'text_delta', delta: 'Let me check.' },
+			{ type: 'tool_call', id: 'tc-1', tool: 'list_dir', input: { path: '.' } },
+			{ type: 'tool_result', id: 'tc-1', tool: 'list_dir', output: 'src\nREADME.md' },
+			{ type: 'text_delta', delta: 'Found it.' },
+			{ type: 'done' }
+		];
+		let state = initChatState();
+		for (const event of events) {
+			state = reduceChatState(state, event);
+		}
+		expect(state.items).toHaveLength(3);
+		expect(state.items[0].type).toBe('assistant');
+		if (state.items[0].type !== 'assistant') return;
+		expect(state.items[0].text).toBe('Let me check.');
+		expect(state.items[1].type).toBe('tool');
+		expect(state.items[2].type).toBe('assistant');
+		if (state.items[2].type !== 'assistant') return;
+		expect(state.items[2].text).toBe('Found it.');
+	});
+});
