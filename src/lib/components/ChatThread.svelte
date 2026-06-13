@@ -13,7 +13,6 @@
 	let scrollFrame = 0;
 	let expandedReasoning = $state(new Set<string>());
 	let expandedToolOutput = $state(new Set<string>());
-	let collapsedToolOutput = $state(new Set<string>());
 	let firstAssistantId = $derived(
 		chatStore.items.find((item) => item.type === 'assistant')?.id ?? null
 	);
@@ -69,36 +68,16 @@
 		expandedReasoning = toggleExpanded(expandedReasoning, id);
 	}
 
-	function toggleToolOutput(item: Extract<ChatItem, { type: 'tool' }>) {
-		const id = item.id;
-		if (toolOutputExpanded(item)) {
-			const nextCollapsed = new Set(collapsedToolOutput);
-			nextCollapsed.add(id);
-			collapsedToolOutput = nextCollapsed;
-			const nextExpanded = new Set(expandedToolOutput);
-			nextExpanded.delete(id);
-			expandedToolOutput = nextExpanded;
-			return;
-		}
-
-		const nextCollapsed = new Set(collapsedToolOutput);
-		nextCollapsed.delete(id);
-		collapsedToolOutput = nextCollapsed;
-		const nextExpanded = new Set(expandedToolOutput);
-		nextExpanded.add(id);
-		expandedToolOutput = nextExpanded;
+	function toggleToolOutput(id: string) {
+		expandedToolOutput = toggleExpanded(expandedToolOutput, id);
 	}
 
 	function reasoningExpanded(item: Extract<ChatItem, { type: 'assistant' }>) {
-		return Boolean(
-			item.reasoning &&
-				(expandedReasoning.has(item.id) || (item.reasoning.pending && chatStore.isStreaming))
-		);
+		return Boolean(item.reasoning && expandedReasoning.has(item.id));
 	}
 
 	function toolOutputExpanded(item: Extract<ChatItem, { type: 'tool' }>) {
-		if (collapsedToolOutput.has(item.id)) return false;
-		return expandedToolOutput.has(item.id) || item.pending || Boolean(item.output || item.error);
+		return expandedToolOutput.has(item.id);
 	}
 
 	function showToolOutputPanel(item: Extract<ChatItem, { type: 'tool' }>) {
@@ -267,7 +246,7 @@
 										type="button"
 										class="fold-toggle"
 										aria-expanded={toolOutputExpanded(item)}
-									onclick={() => toggleToolOutput(item)}
+									onclick={() => toggleToolOutput(item.id)}
 									>
 										<span>Output</span>
 										{#if item.pending}
