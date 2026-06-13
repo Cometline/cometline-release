@@ -67,3 +67,25 @@ export type StreamEvent =
 	| { type: 'step_finish'; usage?: TokenUsage }
 	| { type: 'error'; message: string; code?: string }
 	| { type: 'done' };
+
+export type ChatItem =
+	| { id: string; type: 'user'; text: string; reveal?: boolean }
+	| {
+			id: string;
+			type: 'assistant';
+			text: string;
+			pending?: boolean;
+			reasoning?: { text: string; pending?: boolean };
+	  }
+	| {
+			id: string;
+			type: 'tool';
+			toolId?: string;
+			toolName: string;
+			input: unknown;
+			output?: string;
+			error?: string;
+			pending?: boolean;
+	  }
+	| { id: string; type: 'status'; text: string; usage?: TokenUsage }
+	| { id: string; type: 'error'; text: string };
