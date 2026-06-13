@@ -1,120 +1,72 @@
 # Cometline Architecture
 
-Purpose: build a personal desktop AI app from the three local repos: `comet-sdk`, `cometmind`, and `cometline`.
+Cometline is a local-first desktop AI app assembled from three repos in this workspace: `comet-sdk`, `cometmind`, and `cometline`.
+
+Docs policy: keep Cometline docs to this file plus `PHASE.md`. This file records current architecture, runtime behavior, operational notes, and root-cause history. `PHASE.md` records the living task board and roadmap.
 
 ## One-Sentence Purpose
 
-Cometline exists so one person can run a local-first personal AI assistant with provider switching, persistent sessions, tool use, memory, and a desktop UI, while keeping the actual agent runtime outside the renderer and under a small, auditable local API.
+Cometline lets a user run a local desktop AI assistant with persistent sessions, tool visibility, provider switching, and a polished native-feeling UI while keeping the trusted agent runtime outside the renderer.
 
 ## Repo Roles
 
 ```text
 comet-sdk
   Provider-normalized LLM I/O.
-  Owns streaming, provider conversion, tool-call delta assembly, retries, and token usage.
+  Owns provider request/response conversion, streaming, reasoning, tool-call events,
+  retry helpers, and fixtures.
 
 cometmind
   Local agent runtime.
-  Owns the agent loop, session persistence, tool registry, SQLite database,
-  local HTTP/SSE API, CLI, and TUI.
+  Owns agent loop, SQLite persistence, workspace/session APIs, tool registry,
+  provider factory, local HTTP/SSE server, CLI, and TUI.
 
 cometline
-  Desktop shell.
-  Owns Electron lifecycle, spawning the CometMind binary, native OS affordances,
-  and Svelte UI that talks to CometMind over REST/SSE.
+  Desktop shell and UI.
+  Owns Electron lifecycle, CometMind process startup, SvelteKit routes,
+  chat rendering, settings UI, transitions, and desktop assets.
 ```
 
 Dependency direction:
 
 ```text
-cometline UI
-  -> CometMind local API (REST + SSE)
-    -> cometmind agent/runtime/storage/tools
+cometline renderer
+  -> CometMind local API on 127.0.0.1:7700
+    -> cometmind runtime/storage/tools
       -> comet-sdk provider interface
         -> Anthropic / OpenAI / OpenAI-compatible APIs
 ```
 
-The key rule: Cometline desktop is not the brain. CometMind is the brain. Comet SDK is not the brain either; it is only the model I/O boundary.
+The rule: Cometline is not the brain. CometMind is the brain. Comet SDK is only the model I/O boundary.
 
 ## Current Implementation Map
 
-| architecture concept | Current Cometline owner | Current status |
+| Concept | Owner | Current status |
 | --- | --- | --- |
-| Provider runtime | `comet-sdk` | Strong foundation: normalized provider interface, stream events, tool calls, reasoning events, token usage. |
-| Agent runtime | `cometmind/internal/agent` | Present: multi-step tool loop, persistence, SSE events. |
-| Local store | `cometmind/internal/db`, `internal/session` | Present: SQLite schema for workspaces, sessions, messages, tool calls. |
-| Tool runtime | `cometmind/internal/tools` | Present but early: read/write/list/run command. Missing permission gates. |
-| Workspace sandbox | `cometmind/internal/tools/sandbox` | Present but v1: path traversal protection, symlink evaluation intentionally skipped. |
-| Local API | `cometmind/server`, `openapi.yaml` | Present for health, sessions, messages, streaming, abort. |
-| Desktop runtime | `cometline/docs/HLD.md` | Designed: Electron spawns CometMind, uses REST/SSE for app data, IPC only for OS operations. |
-| Renderer app | `cometline/docs/HLD.md` | Designed: Svelte 5 UI, sessions/chat/settings. |
-| Memory system | none yet | Major gap. |
-| Encrypted secrets | partial | Config/env exists; OS keychain or encrypted secret store missing. |
-| Artifacts preview | none yet | Future layer. |
-| MCP | none yet | Future layer. |
-| Skills / prompt apps / plugins | none yet | Future layer. |
-| Chrome Relay | none yet | Future layer. |
+| Provider runtime | `comet-sdk` | Implemented for Anthropic and OpenAI-compatible providers, including DeepSeek `reasoning_content` stream compatibility. |
+| Agent runtime | `cometmind/internal/agent` | Implemented multi-step loop with streaming and tool calls. |
+| Persistence | `cometmind/internal/db`, `internal/session` | Implemented SQLite workspaces, sessions, messages, tool calls, and sqlc queries. |
+| Local API | `cometmind/server`, `openapi.yaml` | Implemented health, sessions, transcripts, stream message, abort, and delete. |
+| Desktop runtime | `cometline/electron` | Implemented Electron main/preload, CometMind spawn, health polling, provider settings IPC, and app icons. |
+| Renderer UI | `cometline/src` | Implemented SvelteKit home/session routes, sidebar, chat thread, composer, settings modal, transitions, and delete confirmation. |
+| Secrets | Electron JSON settings | MVP-only. API keys are currently stored in `~/.cometmind/cometline-settings.json`; must move before distribution. |
+| Permissions | Not implemented | Next major safety feature. CometMind executes requested tools directly today. |
+| Memory | Not implemented | Future phase. |
 
-## Architecture Principles
+## Runtime Contracts
 
-- The core product is a local, permissioned orchestration runtime, not a chat UI.
-- Provider normalization is load-bearing. Comet SDK owns the provider boundary with `Provider.Stream(ctx, *Request) (<-chan Event, error)`.
-- CometMind is the trusted runtime boundary. It owns agent policy, persistence, tool execution, memory, provider calls, and the local API.
-- Cometline desktop is a desktop shell and renderer. It owns native app lifecycle, process management, and UI only.
-- Tool execution must be auditable. CometMind already stores `tool_calls`, duration, result, and exit code; it still needs explicit permission state.
-- Workspace-scoped file access is essential. CometMind routes file tools through a workspace root and path sandbox.
-- The UI should consume a stable stream contract. CometMind emits `text_delta`, `reasoning_start`, `reasoning_delta`, `tool_call`, `tool_result`, `step_finish`, `error`, and `done`.
-- REST/SSE is the app behavior boundary between Cometline desktop and CometMind. Electron IPC is reserved for OS-native operations only.
-
-## Cometline Design Decisions
-
-| Decision | Project stance |
-| --- | --- |
-| Runtime language | Go for CometMind and Comet SDK. The runtime is packaged as a static binary. |
-| Desktop shell | Electron for process management, packaging, tray/hotkeys, native dialogs, and self-contained distribution. |
-| Renderer framework | Svelte 5 in Cometline desktop. |
-| Runtime/UI boundary | Cometline desktop calls CometMind through REST/SSE for app behavior. |
-| Native OS boundary | Cometline desktop uses Electron IPC only for app version, process status, restart, folder picker, and notifications. |
-| Persistence owner | CometMind owns SQLite and schema migrations. |
-| Provider owner | Comet SDK normalizes provider APIs; CometMind chooses providers and builds requests. |
-| Extension order | Add permissions, secrets, provider/config APIs, and memory before larger extension systems. |
-
-## Current Contracts
-
-### Comet SDK Contract
-
-`comet-sdk` exposes the right low-level abstraction:
-
-```go
-type Provider interface {
-    ID() string
-    Stream(ctx context.Context, req *Request) (<-chan Event, error)
-}
-```
-
-Important normalized types:
-
-- `Request`: model, messages, tools, system prompt, max tokens, temperature, provider-specific options.
-- `Message`: role, content blocks, reasoning content.
-- `Tool`: name, description, JSON Schema parameters.
-- `Event`: text deltas, reasoning events, tool-call lifecycle, step finish, error, done.
-- `TokenUsage`: input, output, cache read, cache write.
-
-This should remain a pure LLM I/O package. Do not add memory, tools, storage, or agent policy to `comet-sdk`.
-
-### CometMind API Contract
-
-Current local API shape:
+### CometMind API Used By Cometline
 
 - `GET /api/v1/health`
 - `POST /api/v1/sessions`
-- `GET /api/v1/sessions`
+- `GET /api/v1/sessions?workspace_path=...`
 - `GET /api/v1/sessions/{id}`
+- `DELETE /api/v1/sessions/{id}`
 - `GET /api/v1/sessions/{id}/messages`
-- `POST /api/v1/sessions/{id}/message` with SSE response
+- `POST /api/v1/sessions/{id}/message` returning SSE
 - `POST /api/v1/sessions/{id}/abort`
 
-Current SSE event names:
+SSE event names currently rendered:
 
 - `text_delta`
 - `reasoning_start`
@@ -125,250 +77,191 @@ Current SSE event names:
 - `error`
 - `done`
 
-This API is the primary boundary between Cometline desktop and CometMind. Keep it stable and versioned.
+### Electron IPC Used By Cometline
 
-### Cometline Desktop Boundary Contract
+- `cometline:get-workspace-path`
+- `cometline:get-provider-settings`
+- `cometline:fetch-provider-models`
+- `cometline:save-provider-settings`
+- `cometmind:restart`
 
-Cometline desktop should:
+IPC is for OS/native capabilities only. Chat/session data stays on REST/SSE.
 
-- Spawn the CometMind binary on app launch.
-- Poll `GET /api/v1/health` until CometMind is ready.
-- Load/render the Svelte UI.
-- Use `fetch` and `ReadableStream` for CometMind REST/SSE calls.
-- Use Electron IPC only for app version, process status, restart, native folder picker, notifications, and other OS-native operations.
-- Keep `contextIsolation: true` and `nodeIntegration: false`.
+## Product Boundaries
 
-Cometline desktop should not:
+Cometline desktop may:
+
+- Start, stop, and restart the CometMind child process.
+- Persist desktop-level provider settings for MVP development.
+- Render session/chat/tool/error state from CometMind.
+- Fetch provider model lists through Electron IPC for the current MVP.
+
+Cometline desktop must not:
 
 - Execute tools.
-- Call LLM providers directly.
-- Open or mutate the SQLite database directly in the normal app flow.
-- Store provider API keys in renderer state or browser storage.
+- Build provider requests itself.
+- Mutate the CometMind database directly.
+- Treat renderer state as source of truth.
+- Store long-lived secrets in browser localStorage.
 
-## Main Project Gaps
+## Current UX Shape
 
-### 1. Permission Gates
+- `/` is the new-session landing view with centered project icon and hero composer.
+- Sending from `/` creates a session, queues the first user message, and navigates to `/session/[id]`.
+- `/session/[id]` renders the active thread and consumes pending first messages.
+- `Command+B` / `Ctrl+B` collapses the sidebar.
+- `Command+,` / `Ctrl+,` opens provider settings.
+- The composer model selector uses the model store populated by static defaults or fetched provider models.
+- `project_icon.png` is used for the empty state and assistant avatar.
+- `app_icon.png` / `buildResources/icon.*` are used for the desktop app icon.
 
-Current state: CometMind executes tool calls directly once the model requests them.
+## Developer Commands
 
-Risk: `write_file` and `run_command` are impactful tools. Auto-executing them makes the local runtime unsafe once the app is used for real work.
+From the repository root:
 
-Needed in `cometmind`:
+```bash
+make install
+make dev
+make check
+make build
+make port
+make clean-log
+```
 
-- Tool metadata: read-only vs impactful.
-- Tool-call state: pending, approved, denied, running, completed, failed.
-- API/SSE event for permission request.
-- API endpoint to approve or deny a pending tool call.
-- Run loop pause/resume around pending permissions.
+Provider overrides can be passed at runtime:
 
-Needed in `cometline`:
+```bash
+COMETMIND_PROVIDER=openai \
+COMETMIND_MODEL=deepseek-v4-flash \
+COMETMIND_BASE_URL=https://opencode.ai/zen/go/v1 \
+COMETMIND_API_KEY='...' \
+make dev
+```
 
-- Permission prompt UI for pending tool calls.
-- Approve, approve for session, deny controls.
+Never commit real provider API keys to docs, Makefiles, source files, or tests.
+
+## Runtime Files
+
+- CometMind database: `~/.cometmind/cometmind.db`
+- Cometline provider settings: `~/.cometmind/cometline-settings.json`
+- Electron-spawned CometMind logs: `~/.cometmind/cometline.log`
+
+## Manual Test Checklist
+
+1. Run `make dev` from the repository root.
+2. Confirm the Dock/window icon is the rounded Cometline app icon. If macOS shows the old icon, fully quit Electron and relaunch.
+3. Press `Command+B`; sidebar should collapse/expand smoothly.
+4. Press `Command+,`; settings modal should open.
+5. Enter provider base URL and API key, fetch models, select a model, then save.
+6. Send a first message in a new chat; `/` should create a session, navigate to `/session/[id]`, animate the request upward, then reveal the real user bubble.
+7. If the API key is missing, the chat should show one clean error card, not a raw JSON blob or dangling typing bubble.
+8. Hover a session row and click trash. The first deletion should show the in-app confirmation sheet.
+9. Check `Don't ask again`, delete, then delete another session; native browser confirm should not appear.
+
+## Root-Cause Notes
+
+### Renderer Could Not Reach CometMind From Vite
+
+Symptom: runtime overlay showed `Failed to fetch` even when `curl /health` returned OK.
+
+Cause: browser renderer origin `http://127.0.0.1:5173` needed local CORS headers from CometMind.
+
+Fix: CometMind server allows local/file origins and `GET, POST, DELETE, OPTIONS`.
+
+### DeepSeek Tool Calls Failed After First Tool Result
+
+Symptom: tool call succeeded, then the second model step failed with DeepSeek requiring `reasoning_content` to be passed back.
+
+Cause: OpenAI-compatible parser handled `delta.reasoning` but not DeepSeek's `delta.reasoning_content`.
+
+Fix: `comet-sdk/provider/openai` treats `reasoning_content` as a reasoning alias and does not duplicate reasoning at `[DONE]`.
+
+### First Send Looked Frozen And Message Disappeared
+
+Symptom: first send created a session but the chat window did not show the current message; UI felt frozen.
+
+Cause: selecting the new session triggered transcript loading while `chatStore.send()` was starting, clearing items and cancelling the stream.
+
+Fix: the app now queues the first message before routing to `/session/[id]`; session route owns consumption and streaming.
+
+### First Bubble Appeared Before The Flight Animation Finished
+
+Symptom: the real user bubble appeared at the top-right while the animated text was still mid-flight.
+
+Cause: chat user message mounted before the visual transition completed.
+
+Fix: session route waits for the 560ms first-message flight before revealing the real user bubble. This intentionally delays the first network send for visual continuity.
+
+### Failed Send Left A Weird Empty Assistant Bubble
+
+Symptom: missing API key error left a typing bubble plus raw JSON error text.
+
+Cause: assistant placeholder was not removed when the stream failed before text arrived, and raw server error bodies were rendered directly.
+
+Fix: empty assistant placeholders are removed on error, and API-key errors are normalized to a concise settings hint.
+
+### Streaming Text Only Appeared After The Turn Ended
+
+Symptom: assistant and reasoning text appeared all at once after SSE finished instead of token-by-token.
+
+Cause: stream-event handlers changed nested chat item fields without always publishing a new list/item reference for Svelte to observe reliably.
+
+Fix: every streaming event that changes chat content must publish updated chat items. Prefer immutable item replacement or explicit array reassignment for assistant text, reasoning text, and tool results.
+
+Prevention: when changing `chat.svelte.ts` or `ChatThread.svelte`, verify text/reasoning/tool output updates during an active stream, not only after `done`.
+
+### User Bubble Vanished When Reasoning Mounted
+
+Symptom: the user message disappeared briefly when the assistant began reasoning.
+
+Cause: Svelte `transition:` can run both intro and outro when a keyed row shares a conditional multi-root fragment with siblings that mount mid-stream. Visibility flags also become fragile if chat items are mutated in place while stream events clone/replace list entries.
+
+Fix: use one-shot `in:` transitions for rows that should only enter once, avoid transition churn in multi-root `{#each}` branches, and update visibility flags through immutable item replacement.
+
+Prevention: do not add `transition:` to a row whose sibling assistant/reasoning/tool nodes can appear during streaming unless the outro behavior is intentional.
+
+## Main Gaps
+
+### 1. Tool Permission Gates
+
+CometMind currently executes tool calls directly. Before real daily use, add:
+
+- Tool risk metadata.
+- Pending permission events in SSE.
+- Approve/deny API.
+- Run-loop pause/resume for pending permissions.
+- Cometline approval UI.
 
 ### 2. Secret Storage
 
-Current state: config file and environment variables are enough for development.
+Move API keys out of Electron JSON settings. Preferred direction:
 
-Risk: a personal desktop app will store long-lived API keys and OAuth tokens.
+- CometMind-owned provider config API.
+- OS keychain integration.
+- Renderer receives redacted secret state only.
 
-Needed:
+### 3. Provider/Model API Ownership
 
-- Move provider secrets out of plain config.
-- Use OS keychain where possible.
-- Store only secret references in SQLite/config.
-- Ensure exports never include raw secrets.
-
-Likely owner: CometMind, because CometMind makes provider calls.
-
-### 3. Memory System
-
-Current state: CometMind README says the runtime owns memory, but schema and implementation do not yet include memory tables or retrieval.
-
-Needed in `cometmind`:
-
-- `memories` table.
-- Embedding model config.
-- Embedding generation service.
-- Vector search backend.
-- Memory retrieval before model call.
-- Memory extraction after conversation or explicit user request.
-- Memory management API.
-
-Needed in `cometline`:
-
-- Memory settings screen.
-- Memory list/search/edit/delete UI.
-- UI indicator showing which memories were injected.
-
-### 4. Provider And Config API Mismatch
-
-Cometline desktop HLD references provider/config APIs such as `GET /api/v1/providers` and `POST /api/v1/config`.
-
-CometMind OpenAPI currently only exposes the first session/message slice.
-
-Needed:
-
-- Reconcile Cometline desktop docs with CometMind OpenAPI before implementing UI.
-- Add config/provider endpoints to CometMind or remove them from the Cometline desktop HLD until later.
-
-Recommended CometMind endpoints:
+Cometline currently fetches `<baseURL>/models` via Electron IPC. Longer term, CometMind should own provider discovery through endpoints such as:
 
 - `GET /api/v1/config`
 - `PATCH /api/v1/config`
 - `GET /api/v1/providers`
-- `POST /api/v1/providers/test`
 - `GET /api/v1/models`
+- `POST /api/v1/providers/test`
 
-### 5. Workspace Semantics
+### 4. Stop/Abort UI
 
-Current state: `workspaces.path` is a real filesystem path.
+The backend has abort support. The renderer still needs a visible stop button during streaming.
 
-For coding-agent use, this is correct.
+### 5. Memory
 
-For the personal assistant use case, you may also want logical spaces:
+No memory tables, retrieval, or UI exist yet. Add only after permissions and secrets are safer.
 
-- `career`
-- `health`
-- `family`
-- `finance`
-- `learning`
+## Build Priorities
 
-Do not destroy filesystem workspaces. Instead, extend the model:
-
-- Add `kind`: `filesystem` or `domain`.
-- Add `metadata` JSON.
-- Keep `path` nullable or introduce a separate table if needed.
-
-### 6. Artifacts
-
-Current state: not implemented.
-
-The project does not need artifacts before memory and permissions. Add later for HTML, Mermaid, SVG, code previews, and generated mini apps.
-
-### 7. MCP, Skills, Prompt Apps, Plugins, Chrome Relay
-
-Current state: not implemented.
-
-These are expansion layers, not the next priority. Build in this order:
-
-1. MCP stdio tools.
-2. Skills as filesystem prompt packs.
-3. Prompt apps as saved prompt templates.
-4. Plugin API if the app needs third-party extension.
-5. Chrome Relay only after permissions and tool audit are mature.
-
-## Roadmap Documents
-
-Each repo now owns its own day-to-day phase plan:
-
-- `comet-sdk/docs/PHASES.md` — provider-normalized model I/O milestones.
-- `cometmind/docs/PHASES.md` — Go runtime, permissions, memory, skills, MCP, scheduler, browser, gateway.
-- `cometline/docs/PHASES.md` — SvelteKit/Electron frontend milestones and UI responsibilities.
-
-Use this architecture document for boundaries and sequencing; use the per-repo phase documents for daily execution.
-
-## Recommended Build Order
-
-### Phase 0: Stabilize Existing Contracts
-
-Repo: `cometmind`, `cometline`
-
-- Make OpenAPI match the Cometline desktop HLD or update the HLD to match OpenAPI.
-- Decide the canonical API set for config, providers, models, sessions, messages, and abort.
-- Generate or hand-maintain matching TypeScript API types for Cometline desktop.
-
-### Phase 1: Permissioned Tool Loop
-
-Repo: `cometmind`, `cometline`
-
-- Add tool safety metadata.
-- Add pending permission state to the run loop.
-- Add approval/denial endpoints.
-- Add Cometline desktop permission UI.
-- Keep read-only tools auto-approved; gate `write_file` and `run_command`.
-
-This is the highest-priority safety fix.
-
-### Phase 2: Secrets And Provider Management
-
-Repo: `cometmind`, `cometline`
-
-- Add provider/config API.
-- Add secret storage abstraction.
-- Add provider test endpoint.
-- Add model list endpoint.
-- Add Cometline desktop settings UI for providers without storing secrets in renderer persistence.
-
-### Phase 3: Memory MVP
-
-Repo: `cometmind`, `cometline`
-
-- Add memory tables.
-- Add manual memory create/list/search/delete.
-- Add retrieval before model requests.
-- Add memory injection event or trace for UI visibility.
-- Add auto-extraction only after manual memory works.
-
-### Phase 4: Personal Domains
-
-Repo: `cometmind`, `cometline`
-
-- Extend workspace model into spaces/domains.
-- Add per-space system prompt and memory scope.
-- Keep filesystem workspaces for coding tasks.
-
-### Phase 5: MCP And Skills
-
-Repo: `cometmind`, `cometline`
-
-- Add MCP stdio server management.
-- Expose MCP tools through the same tool registry and permission system.
-- Add skill directory scanning and skill selection.
-
-### Phase 6: Artifacts And Browser
-
-Repo: `cometmind`, `cometline`
-
-- Add artifact detection and storage.
-- Add sandboxed preview in Cometline desktop.
-- Add built-in browser tools later.
-- Add Chrome Relay only after browser automation permission UX is clear.
-
-## Concrete Next Files To Touch
-
-If building now, start here:
-
-1. `cometmind/openapi.yaml`
-   Define the real near-term API contract for config/providers/tool permissions.
-
-2. `cometmind/internal/tools/tool.go`
-   Add tool metadata such as safety class and permission requirement.
-
-3. `cometmind/internal/agent/runner.go`
-   Change automatic tool execution into a permission-aware loop.
-
-4. `cometmind/internal/db/schema.sql`
-   Add fields/tables for tool-call status and permission decisions.
-
-5. `cometmind/server/server.go`
-   Add permission approval/denial endpoints and SSE events.
-
-6. `cometline/docs/HLD.md`
-   Reconcile documented endpoints with CometMind OpenAPI.
-
-7. `cometline` implementation files once they exist
-   Add permission prompt UI and API client types.
-
-## Load-Bearing Walls
-
-For Cometline, the essential complexity is:
-
-- `comet-sdk` normalizes provider streaming and tool calls.
-- `cometmind` owns the trusted local agent runtime, persistence, tool execution, memory, and local API.
-- `cometline` is a native shell and renderer, not an agent runtime.
-- REST/SSE is the stable boundary between UI and brain.
-- Tool execution must become permissioned before powerful tools expand.
-- Secrets and memory must be local-first and auditable.
-
-Everything else is swappable: Svelte vs another renderer, Electron vs another desktop shell, exact database extensions, exact provider SDKs, visual design, and future plugin systems.
+1. Permission events and approval UX.
+2. Safer provider settings and secret storage.
+3. Stop/abort streaming control.
+4. Session title generation and sidebar polish.
+5. Memory model and memory UI.
