@@ -30,10 +30,21 @@
 	let value = $state('');
 	let modelOpen = $state(false);
 	let queuePreviewOpen = $state(false);
+	let queuePicker = $state<HTMLDivElement | null>(null);
 	let rows = $derived(Math.min(8, Math.max(3, value.split('\n').length)));
 
 	$effect(() => {
 		if (queuedCount === 0) queuePreviewOpen = false;
+	});
+
+	$effect(() => {
+		if (!queuePreviewOpen) return;
+		function onPointerDown(e: PointerEvent) {
+			if (queuePicker?.contains(e.target as Node)) return;
+			queuePreviewOpen = false;
+		}
+		document.addEventListener('pointerdown', onPointerDown);
+		return () => document.removeEventListener('pointerdown', onPointerDown);
 	});
 
 	function submit() {
@@ -71,15 +82,12 @@
 		modelOpen = false;
 	}
 
-	function closeQueuePreview(e: FocusEvent) {
-		const next = e.relatedTarget as Node | null;
-		const current = e.currentTarget as Node;
-		if (next && current.contains(next)) return;
-		queuePreviewOpen = false;
-	}
-
 	function toggleQueuePreview() {
 		queuePreviewOpen = !queuePreviewOpen;
+	}
+
+	function removeQueued(id: string) {
+		onRemoveQueued?.(id);
 	}
 </script>
 
@@ -87,7 +95,7 @@
 	{#if queuedCount > 0}
 		<div
 			class="queue-picker"
-			onfocusout={closeQueuePreview}
+			bind:this={queuePicker}
 			in:fly={{ y: 4, duration: 140 }}
 			out:fly={{ y: 4, duration: 120 }}
 		>
@@ -121,7 +129,11 @@
 									type="button"
 									class="queue-remove"
 									aria-label={`Remove queued message ${index + 1}`}
-									onclick={() => onRemoveQueued?.(message.id)}
+									onpointerdown={(e) => {
+										e.preventDefault();
+										e.stopPropagation();
+										removeQueued(message.id);
+									}}
 								>
 									<X size={12} stroke-width={2} />
 								</button>
@@ -197,7 +209,7 @@
 
 <style>
 	.composer {
-		background: var(--panel-bg);
+		background: rgba(255, 255, 255, 0.74);
 		border: 1px solid var(--border-soft);
 		border-radius: var(--radius-card);
 		box-shadow: var(--shadow-card);
@@ -205,11 +217,15 @@
 		display: flex;
 		flex-direction: column;
 		gap: 10px;
+		backdrop-filter: blur(18px) saturate(170%);
+		-webkit-backdrop-filter: blur(18px) saturate(170%);
 		transition:
-			padding var(--duration-medium) var(--ease-smooth),
-			border-radius var(--duration-medium) var(--ease-smooth),
-			box-shadow var(--duration-medium) var(--ease-smooth),
-			transform var(--duration-medium) var(--ease-smooth);
+			width var(--duration-flight) var(--ease-smooth),
+			padding var(--duration-flight) var(--ease-smooth),
+			border-radius var(--duration-flight) var(--ease-smooth),
+			box-shadow var(--duration-flight) var(--ease-smooth),
+			transform var(--duration-flight) var(--ease-smooth),
+			background var(--duration-flight) var(--ease-smooth);
 	}
 
 	.composer.hero {

@@ -17,27 +17,39 @@ export interface ChatTurnQueue {
 	readonly processing: boolean;
 }
 
-export function createChatTurnQueue(runTurn: (text: string) => Promise<void>): ChatTurnQueue {
+export function createChatTurnQueue(
+	runTurn: (text: string) => Promise<void>,
+	onChange?: () => void
+): ChatTurnQueue {
 	let queue: QueuedMessage[] = [];
 	let processing = false;
 	let nextID = 0;
+
+	function notifyChange() {
+		onChange?.();
+	}
 
 	function createQueuedMessage(text: string): QueuedMessage {
 		nextID += 1;
 		return { id: `queued-${Date.now()}-${nextID}`, text };
 	}
 
-	async function drain() {
-		if (processing) return;
+	async function runLoop(initialText?: string) {
+		if (processing && initialText === undefined) return;
 		processing = true;
+		notifyChange();
 		try {
+			if (initialText !== undefined) {
+				await runTurn(initialText);
+			}
 			while (queue.length > 0) {
 				const { text } = queue.shift()!;
+				notifyChange();
 				await runTurn(text);
 			}
 		} finally {
 			processing = false;
-			if (queue.length > 0) void drain();
+			notifyChange();
 		}
 	}
 
@@ -52,17 +64,23 @@ export function createChatTurnQueue(runTurn: (text: string) => Promise<void>): C
 			return processing;
 		},
 		enqueue(text: string) {
-			queue.push(createQueuedMessage(text));
-			return drain();
+			if (processing) {
+				queue.push(createQueuedMessage(text));
+				notifyChange();
+				return Promise.resolve();
+			}
+			return runLoop(text);
 		},
 		remove(id: string) {
 			const index = queue.findIndex((item) => item.id === id);
 			if (index < 0) return false;
 			queue.splice(index, 1);
+			notifyChange();
 			return true;
 		},
 		clear() {
 			queue = [];
+			notifyChange();
 		}
 	};
 }

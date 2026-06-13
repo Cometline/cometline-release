@@ -32,8 +32,15 @@
 	let hasVisibleConversation = $derived(chatStore.items.length > 0 || chatStore.isLoading);
 	let composerVariant = $derived<'hero' | 'dock'>(shellStore.composerPhase === 'centered' ? 'hero' : 'dock');
 	let heroLayout = $derived(
-		!hasVisibleConversation && shellStore.composerPhase === 'centered' && !firstTurnActive
+		shellStore.composerPhase === 'centered' &&
+			((!hasVisibleConversation && !firstTurnActive) ||
+				(firstTurnActive && !firstTurnFlightDone))
 	);
+
+	function syncQueueState() {
+		queuedCount = turnQueue?.pendingCount ?? 0;
+		queuedMessages = turnQueue ? [...turnQueue.pendingMessages] : [];
+	}
 
 	const turnQueue = createChatTurnQueue(async (text) => {
 		await startChat(
@@ -47,7 +54,6 @@
 				send: (t, opts) => chatStore.send(sessionId, t, opts),
 				onFirstTurnStart: async () => {
 					awaitingFirstAssistant = true;
-					shellStore.dockComposer();
 					firstTurnFlight.run(text);
 				},
 				onFirstTurnComplete: () => {
@@ -57,7 +63,7 @@
 			},
 			text
 		);
-	});
+	}, syncQueueState);
 
 	onMount(() => {
 		// Select this session and sync the model picker to it.
@@ -91,16 +97,9 @@
 		}
 	});
 
-	function syncQueueState() {
-		queuedCount = turnQueue.pendingCount;
-		queuedMessages = [...turnQueue.pendingMessages];
-	}
-
 	function submit(text: string) {
 		if (connectionState.status !== 'ready') return;
-		const pending = turnQueue.enqueue(text);
-		syncQueueState();
-		void pending.finally(syncQueueState);
+		void turnQueue.enqueue(text);
 	}
 
 	function stop() {
@@ -108,8 +107,7 @@
 	}
 
 	function removeQueuedMessage(id: string) {
-		if (!turnQueue.remove(id)) return;
-		syncQueueState();
+		turnQueue.remove(id);
 	}
 
 	function onWindowKeydown(e: KeyboardEvent) {
@@ -148,7 +146,11 @@
 			{/if}
 		</div>
 	{:else}
-		<div class="thread-shell" transition:fade={THREAD_IN}>
+		<div
+			class="thread-shell"
+			class:docked={!heroLayout}
+			in:fade={firstTurnActive ? { duration: 0 } : THREAD_IN}
+		>
 			<ChatThread {awaitingFirstAssistant} {firstTurnFlightDone} />
 		</div>
 	{/if}
@@ -161,6 +163,7 @@
 		onActiveChange={(active) => (firstTurnActive = active)}
 		onFlightDoneChange={(done) => {
 			firstTurnFlightDone = done;
+			if (done) shellStore.dockComposer();
 		}}
 	/>
 
@@ -202,14 +205,6 @@
 		padding: 0;
 	}
 
-	.chat-home.hero-layout .composer-wrapper {
-		position: relative;
-		bottom: auto;
-		left: auto;
-		transform: none;
-		width: min(700px, calc(100% - 64px));
-	}
-
 	.empty-region {
 		position: absolute;
 		inset: 0 0 180px;
@@ -225,6 +220,10 @@
 		inset: 0;
 	}
 
+	.thread-shell.docked {
+		bottom: var(--thread-dock-inset);
+	}
+
 	.boot-error {
 		margin: 18px 0 0;
 		max-width: 520px;
@@ -236,30 +235,36 @@
 
 	.composer-wrapper {
 		position: absolute;
-		left: 50%;
-		transform: translateX(-50%);
-		width: min(var(--composer-width), calc(100% - 64px));
+		left: 0;
+		width: 100%;
 		z-index: 10;
-		bottom: 40px;
+		padding: 0 var(--chat-gutter);
+		display: flex;
+		justify-content: center;
 		transition:
 			bottom var(--duration-flight) var(--ease-smooth),
-			transform var(--duration-flight) var(--ease-smooth),
-			width var(--duration-flight) var(--ease-smooth);
+			transform var(--duration-flight) var(--ease-smooth);
+	}
+
+	.composer-wrapper.centered {
+		bottom: var(--composer-hero-bottom);
+		transform: translateY(50%);
+	}
+
+	.composer-wrapper:not(.centered) {
+		bottom: var(--composer-dock-bottom);
+		transform: none;
+	}
+
+	.composer-wrapper :global(.composer) {
+		width: min(var(--chat-composer-width), 100%);
+		max-width: 100%;
 	}
 
 	@media (max-width: 900px) {
-		.composer-wrapper {
-			bottom: 24px;
-			width: calc(100% - 40px);
-		}
-
 		.chat-home.hero-layout {
 			gap: 40px;
 			padding: 32px 28px;
-		}
-
-		.chat-home.hero-layout .composer-wrapper {
-			width: calc(100% - 40px);
 		}
 
 		.empty-region {

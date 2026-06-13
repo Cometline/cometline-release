@@ -71,7 +71,15 @@
 		bottom: auto;
 		left: auto;
 		transform: none;
-		width: min(700px, calc(100% - 64px));
+		width: 100%;
+		padding: 0 var(--chat-gutter);
+		display: flex;
+		justify-content: center;
+	}
+
+	.chat-home.hero-layout .composer-wrapper :global(.composer) {
+		width: min(var(--chat-composer-width), 100%);
+		max-width: 100%;
 	}
 
 	.empty-region {
@@ -91,28 +99,10 @@
 		text-align: center;
 	}
 
-	.composer-wrapper {
-		position: absolute;
-		left: 50%;
-		transform: translateX(-50%);
-		width: min(var(--composer-width), calc(100% - 64px));
-		z-index: 10;
-		bottom: 40px;
-	}
-
 	@media (max-width: 900px) {
-		.composer-wrapper {
-			bottom: 24px;
-			width: calc(100% - 40px);
-		}
-
 		.chat-home.hero-layout {
 			gap: 40px;
 			padding: 32px 28px;
-		}
-
-		.chat-home.hero-layout .composer-wrapper {
-			width: calc(100% - 40px);
 		}
 	}
 </style>

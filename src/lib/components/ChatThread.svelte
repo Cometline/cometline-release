@@ -399,14 +399,19 @@
 <style>
 	.thread {
 		position: absolute;
-		inset: 0 0 178px;
+		inset: 0;
 		overflow-y: auto;
-		padding: 32px 20px 20px;
+		padding: 32px var(--chat-gutter) var(--thread-padding-bottom);
 		scrollbar-width: thin;
 	}
 
 	.thread-inner {
-		width: min(760px, 100%);
+		--chat-content-column: min(
+			var(--chat-content-max),
+			calc(100% - var(--chat-avatar-size) - var(--chat-row-gap))
+		);
+		--chat-assistant-column: calc(var(--chat-content-column) * var(--chat-assistant-fill));
+		width: min(var(--chat-thread-width), 100%);
 		margin: 0 auto;
 		display: flex;
 		flex-direction: column;
@@ -415,15 +420,11 @@
 
 	@media (min-width: 768px) {
 		.thread {
-			padding: 40px 32px 24px;
+			padding: 40px var(--chat-gutter) var(--thread-padding-bottom);
 		}
 
 		.thread-inner {
 			gap: 16px;
-		}
-
-		.assistant-stack {
-			max-width: min(640px, 84%);
 		}
 
 		.bubble {
@@ -433,16 +434,11 @@
 
 	@media (min-width: 1024px) {
 		.thread {
-			padding: 48px 40px 24px;
+			padding: 48px var(--chat-gutter) var(--thread-padding-bottom);
 		}
 
 		.thread-inner {
 			gap: 18px;
-			width: min(800px, 100%);
-		}
-
-		.assistant-stack {
-			max-width: min(680px, 86%);
 		}
 
 		.bubble {
@@ -453,11 +449,7 @@
 
 	@media (min-width: 1280px) {
 		.thread {
-			padding: 56px 48px 28px;
-		}
-
-		.thread-inner {
-			width: min(840px, 100%);
+			padding: 56px var(--chat-gutter) var(--thread-padding-bottom);
 		}
 	}
 
@@ -510,7 +502,7 @@
 	.tool-stack {
 		min-width: 0;
 		flex: 1;
-		max-width: min(620px, 82%);
+		max-width: var(--chat-content-column);
 	}
 
 	.flight-placeholder {
@@ -534,7 +526,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
-		max-width: min(620px, 82%);
+		max-width: var(--chat-assistant-column);
 		min-width: 0;
 		flex: 0 1 auto;
 		align-items: flex-start;
@@ -697,6 +689,7 @@
 		color: white;
 		border-bottom-right-radius: 6px;
 		box-shadow: 0 8px 20px rgba(31, 41, 51, 0.12);
+		max-width: var(--chat-content-column);
 	}
 
 	.assistant-bubble {
@@ -713,7 +706,7 @@
 	}
 
 	.event-row .event-card {
-		max-width: min(620px, 82%);
+		max-width: var(--chat-content-column);
 	}
 
 	.event-card {
@@ -797,18 +790,6 @@
 		40% {
 			opacity: 1;
 			transform: translateY(-2px);
-		}
-	}
-
-	@media (max-width: 767px) {
-		.thread {
-			inset: 0 0 158px;
-		}
-
-		.bubble,
-		.assistant-stack,
-		.tool-stack {
-			max-width: 92%;
 		}
 	}
 </style>

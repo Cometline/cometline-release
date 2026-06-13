@@ -38,8 +38,6 @@
 
 	export function run(text: string): void {
 		if (active) return;
-		setActive(true);
-		setFlightDone(false);
 		void animate(text);
 	}
 
@@ -69,6 +67,8 @@
 		const textareaFrom =
 			textarea instanceof HTMLElement ? textarea.getBoundingClientRect() : null;
 
+		setActive(true);
+		setFlightDone(false);
 		stageUser(text);
 		await tick();
 

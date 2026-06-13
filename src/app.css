@@ -22,7 +22,24 @@
 
 	/* Layout */
 	--sidebar-width: 280px;
-	--composer-width: 760px;
+
+	/* Chat column tracks avatar + gap + message width; composer is slightly wider. */
+	--chat-avatar-size: 2.25rem;
+	--chat-row-gap: 0.625rem;
+	--chat-content-max: 34rem;
+	--chat-assistant-fill: 0.8;
+	--chat-thread-width: calc(
+		var(--chat-avatar-size) + var(--chat-row-gap) + var(--chat-content-max)
+	);
+	--chat-composer-width: var(--chat-thread-width);
+	--chat-gutter: 1.25rem;
+	--composer-width: 640px;
+	--composer-dock-bottom: 1.25rem;
+	--composer-hero-bottom: calc(50% - 11rem);
+	--composer-dock-clearance: 11.5rem;
+	--thread-scroll-gap: 1.25rem;
+	--thread-dock-inset: calc(var(--composer-dock-bottom) + var(--composer-dock-clearance));
+	--thread-padding-bottom: var(--thread-scroll-gap);
 
 	/* Motion */
 	--ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
@@ -97,6 +114,39 @@ textarea {
 @keyframes spin {
 	to {
 		transform: rotate(360deg);
+	}
+}
+
+@media (min-width: 768px) {
+	:root {
+		--chat-avatar-size: 2.5rem;
+		--chat-row-gap: 0.75rem;
+		--chat-content-max: 38rem;
+		--chat-gutter: 2rem;
+	}
+}
+
+@media (min-width: 1024px) {
+	:root {
+		--chat-avatar-size: 2.75rem;
+		--chat-row-gap: 1rem;
+		--chat-content-max: 42rem;
+		--chat-gutter: 2.5rem;
+	}
+}
+
+@media (min-width: 1280px) {
+	:root {
+		--chat-avatar-size: 3rem;
+		--chat-content-max: 46rem;
+		--chat-gutter: 3rem;
+	}
+}
+
+@media (max-width: 767px) {
+	:root {
+		--composer-dock-bottom: 0.75rem;
+		--composer-dock-clearance: 13rem;
 	}
 }
 

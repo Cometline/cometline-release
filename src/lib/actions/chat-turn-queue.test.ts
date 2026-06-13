@@ -14,6 +14,26 @@ describe('createChatTurnQueue', () => {
 		expect(queue.processing).toBe(false);
 	});
 
+	it('does not place the first idle submit in the pending queue', async () => {
+		let releaseFirst: (() => void) | undefined;
+		const firstGate = new Promise<void>((resolve) => {
+			releaseFirst = resolve;
+		});
+		const runTurn = vi.fn().mockImplementation(async (text: string) => {
+			if (text === 'first') await firstGate;
+		});
+		const queue = createChatTurnQueue(runTurn);
+
+		void queue.enqueue('first');
+
+		await vi.waitFor(() => expect(queue.processing).toBe(true));
+		expect(queue.pendingCount).toBe(0);
+		expect(queue.pendingMessages).toEqual([]);
+
+		releaseFirst!();
+		await vi.waitFor(() => expect(queue.processing).toBe(false));
+	});
+
 	it('queues overlapping submits and runs them in order', async () => {
 		const order: string[] = [];
 		let releaseFirst: (() => void) | undefined;
