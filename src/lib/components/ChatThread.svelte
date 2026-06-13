@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { fade, fly } from 'svelte/transition';
+	import { fade, fly, slide } from 'svelte/transition';
 	import { Brain, CheckCircle2, ChevronDown, Loader2, Terminal, TriangleAlert } from '@lucide/svelte';
 	import { chatStore, type ChatItem } from '$lib/stores/chat.svelte';
 
@@ -8,6 +8,7 @@
 	const ASSISTANT_ROW_IN = { y: 10, duration: 220 };
 	const TOOL_ROW_IN = { y: 8, duration: 200 };
 	const STATUS_ROW_IN = { y: 6, duration: 180 };
+	const FOLD_IN = { duration: 180 };
 
 	let { awaitingFirstAssistant = false, firstTurnFlightDone = false }: {
 		awaitingFirstAssistant?: boolean;
@@ -78,11 +79,14 @@
 	}
 
 	function reasoningExpanded(item: Extract<ChatItem, { type: 'assistant' }>) {
-		return Boolean(item.reasoning && expandedReasoning.has(item.id));
+		return Boolean(
+			item.reasoning &&
+				(expandedReasoning.has(item.id) || (item.reasoning.pending && chatStore.isStreaming))
+		);
 	}
 
 	function toolOutputExpanded(item: Extract<ChatItem, { type: 'tool' }>) {
-		return expandedToolOutput.has(item.id);
+		return expandedToolOutput.has(item.id) || Boolean(item.pending && chatStore.isStreaming);
 	}
 
 	function showToolOutputPanel(item: Extract<ChatItem, { type: 'tool' }>) {
@@ -104,11 +108,17 @@
 		);
 	}
 
-	function showAssistantAvatar(index: number) {
+	function speakerFor(item: ChatItem): 'user' | 'assistant' | null {
+		if (item.type === 'user') return 'user';
+		if (item.type === 'assistant' || item.type === 'tool') return 'assistant';
+		return null;
+	}
+
+	function startsSpeakerRun(index: number, speaker: 'user' | 'assistant') {
 		for (let i = index - 1; i >= 0; i--) {
-			const previous = chatStore.items[i];
-			if (previous.type === 'status' || previous.type === 'error') continue;
-			return previous.type === 'user';
+			const previousSpeaker = speakerFor(chatStore.items[i]);
+			if (!previousSpeaker) continue;
+			return previousSpeaker !== speaker;
 		}
 		return true;
 	}
@@ -159,7 +169,7 @@
 					<ChevronDown size={13} class={reasoningExpanded(item) ? 'expanded' : ''} />
 				</button>
 				{#if reasoningExpanded(item)}
-					<div class="fold-body" transition:fade={{ duration: 120 }}>
+					<div class="fold-body" transition:slide={FOLD_IN}>
 						<p>{item.reasoning.text || 'Thinking…'}</p>
 					</div>
 				{/if}
@@ -197,6 +207,7 @@
 			{#if item.type === 'user'}
 				<div
 					class="row user-row"
+					class:continuation-row={!startsSpeakerRun(index, 'user')}
 					transition:fly={item.reveal === false ? undefined : USER_ROW_IN}
 				>
 					<div
@@ -230,9 +241,10 @@
 			{:else if item.type === 'assistant' && showAssistantRow(item) && !(awaitingFirstAssistant && item.id === firstAssistantId)}
 				<div
 					class="row assistant-row gap-2.5 md:gap-3 lg:gap-4"
+					class:continuation-row={!startsSpeakerRun(index, 'assistant')}
 					transition:fly={item.id === firstAssistantId ? undefined : ASSISTANT_ROW_IN}
 				>
-					{#if showAssistantAvatar(index)}
+					{#if startsSpeakerRun(index, 'assistant')}
 						<div class="avatar-mini size-9 shrink-0 md:size-10 lg:size-11 xl:size-12">
 							<img src="/project_icon.png" alt="" />
 						</div>
@@ -242,7 +254,11 @@
 					{@render assistantStack(item)}
 				</div>
 			{:else if item.type === 'tool'}
-				<div class="row tool-row gap-2.5 md:gap-3 lg:gap-4" transition:fly={TOOL_ROW_IN}>
+				<div
+					class="row tool-row gap-2.5 md:gap-3 lg:gap-4"
+					class:continuation-row={!startsSpeakerRun(index, 'assistant')}
+					transition:fly={TOOL_ROW_IN}
+				>
 					<div class="avatar-gutter size-9 shrink-0 md:size-10 lg:size-11 xl:size-12" aria-hidden="true"></div>
 					<div class="tool-stack">
 						<div class="event-card tool-card" class:error={!!item.error}>
@@ -273,7 +289,7 @@
 										<ChevronDown size={13} class={toolOutputExpanded(item) ? 'expanded' : ''} />
 									</button>
 									{#if toolOutputExpanded(item)}
-										<div class="fold-body tool-output-body" transition:fade={{ duration: 120 }}>
+										<div class="fold-body tool-output-body" transition:slide={FOLD_IN}>
 											{#if item.output}
 												<p>{item.output}</p>
 											{/if}
@@ -386,6 +402,10 @@
 	.row {
 		display: flex;
 		width: 100%;
+	}
+
+	.continuation-row {
+		margin-top: -6px;
 	}
 
 	.user-row {
