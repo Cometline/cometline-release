@@ -216,10 +216,54 @@ function applyEvent(
 	}
 }
 
+function cloneReasoning(r: { text: string; pending: boolean } | null): { text: string; pending: boolean } | null {
+	return r ? { text: r.text, pending: r.pending } : null;
+}
+
+function cloneAssistant(a: AssistantItem | null): AssistantItem | null {
+	if (!a) return null;
+	return {
+		...a,
+		reasoning: a.reasoning ? { text: a.reasoning.text, pending: a.reasoning.pending } : undefined
+	};
+}
+
+function cloneItem(item: ChatItem): ChatItem {
+	if (item.type === 'assistant') {
+		return {
+			...item,
+			reasoning: item.reasoning
+				? { text: item.reasoning.text, pending: item.reasoning.pending }
+				: undefined
+		};
+	}
+	return { ...item };
+}
+
+function cloneChatState(state: ChatState): ChatState {
+	const itemMap = new Map<ChatItem, ChatItem>();
+	const items = state.items.map((item) => {
+		const clone = cloneItem(item);
+		itemMap.set(item, clone);
+		return clone;
+	});
+	const assistant = state.assistant
+		? ((itemMap.get(state.assistant) as AssistantItem | undefined) ??
+			cloneAssistant(state.assistant))
+		: null;
+	return {
+		items,
+		error: state.error,
+		assistant,
+		reasoning: cloneReasoning(state.reasoning),
+		nextId: state.nextId
+	};
+}
+
 /** Reduce a chat state by one stream event. The input state is never mutated;
  *  a new ChatState is returned. */
 export function reduceChatState(state: ChatState, event: StreamEvent): ChatState {
-	const draft = structuredClone(state) as ChatState;
+	const draft = cloneChatState(state);
 	const ctx = {
 		assistant: { current: draft.assistant },
 		reasoning: { current: draft.reasoning }
