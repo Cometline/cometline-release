@@ -114,7 +114,7 @@
 
 <style>
 	.settings-layer {
-		position: absolute;
+		position: fixed;
 		inset: 0;
 		z-index: 80;
 		display: grid;

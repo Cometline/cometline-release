@@ -2,7 +2,7 @@
 </script>
 
 <div class="empty-state">
-	<div class="avatar" aria-hidden="true">
+	<div class="avatar rounded-full border border-border-soft" aria-hidden="true">
 		<img src="/project_icon.png" alt="" />
 	</div>
 	<p class="subtitle">A thought, a task, a file — Cometline continues.</p>
@@ -20,9 +20,7 @@
 	.avatar {
 		width: 82px;
 		height: 82px;
-		border-radius: 50%;
 		background: #fff;
-		border: 1px solid var(--border-soft);
 		margin-bottom: 24px;
 		box-shadow: var(--shadow-card);
 		overflow: hidden;

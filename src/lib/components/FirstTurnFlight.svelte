@@ -114,7 +114,7 @@
 	<div class="flight-particle user-flight" style={userFlightStyle}>{userFlightText}</div>
 {/if}
 {#if showAvatarFlight}
-	<div class="flight-particle avatar-flight" style={avatarFlightStyle}>
+	<div class="flight-particle avatar-flight rounded-full border border-border-soft overflow-hidden" style={avatarFlightStyle}>
 		<img src="/project_icon.png" alt="" />
 	</div>
 {/if}
@@ -142,11 +142,8 @@
 	}
 
 	.avatar-flight {
-		border-radius: 50%;
 		background: linear-gradient(145deg, #ffffff, #eef2f6);
-		border: 1px solid var(--border-soft);
 		box-shadow: 0 5px 14px rgba(15, 23, 42, 0.06);
-		overflow: hidden;
 	}
 
 	.avatar-flight img {

@@ -11,6 +11,12 @@
 
 	onMount(() => {
 		function onKeydown(event: KeyboardEvent) {
+			if (event.key === 'Escape' && shellStore.settingsOpen) {
+				event.preventDefault();
+				shellStore.closeSettings();
+				return;
+			}
+
 			const command = event.metaKey || event.ctrlKey;
 			if (!command) return;
 			const key = event.key.toLowerCase();
@@ -38,8 +44,8 @@
 	<main class="main">
 		{@render children()}
 		<RuntimeOverlay />
-		<SettingsModal />
 	</main>
+	<SettingsModal />
 </div>
 
 <style>
