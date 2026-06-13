@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import EmptyChatState from '$lib/components/EmptyChatState.svelte';
 	import Composer from '$lib/components/Composer.svelte';
@@ -11,7 +12,9 @@
 
 	let bootMessage = $derived(shellStore.bootMessage);
 
-	$effect(() => {
+	// Entering the home route is a one-shot reset: no reactive inputs, so this
+	// is a lifecycle action, not a reactive effect.
+	onMount(() => {
 		sessionStore.selectSession(null);
 		chatStore.clear();
 		shellStore.centerComposer();
