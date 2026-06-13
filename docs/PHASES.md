@@ -6,6 +6,13 @@ Cometline is the SvelteKit frontend and desktop shell for CometMind. It should m
 
 Build a SvelteKit UI that can run inside Electron for local desktop distribution and later deploy as a hosted web frontend with minimal component changes. The UI consumes CometMind through REST/SSE and uses Electron IPC only for native shell operations.
 
+## Status Snapshot
+
+- **Phase 0 — Scaffold SvelteKit Desktop Shell**: done. SvelteKit + Electron project exists, main/preload processes use `contextIsolation: true` and `nodeIntegration: false`, the CometMind process manager polls health, a typed API client exists, and `pnpm dev` opens a desktop window.
+- **Phase 1 — Session List And Chat MVP**: largely done. Session list, creation, transcript, message streaming, reasoning/tool rendering, abort, and delete are implemented. Provider settings can be edited in-app and restart CometMind, although model lists are still fetched directly from the provider endpoint rather than through a CometMind-owned API. Remaining before calling Phase 1 closed: add an explicit abort/stop button during streaming, wire session title generation, and move model fetching behind CometMind's provider/config API.
+- **Phase 2 — Permission UX**: **next phase**. Not started (blocked on CometMind Phase 1 permission events).
+- **Phase 3+**: not started.
+
 ## Frontend Architecture Decision
 
 Use SvelteKit as the application framework, even for the desktop app. Phase 1 packages the SvelteKit app with Electron and serves/renders it against the local CometMind process. Future cloud mode can reuse the same route tree with a remote CometMind-compatible API.
