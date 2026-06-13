@@ -13,7 +13,6 @@ import (
 
 	cometsdk "github.com/cometline/comet-sdk"
 	"github.com/cometline/cometmind/internal/config"
-	"github.com/cometline/cometmind/internal/db"
 	"github.com/cometline/cometmind/internal/event"
 	"github.com/cometline/cometmind/internal/session"
 	"github.com/cometline/cometmind/internal/store"
@@ -29,9 +28,9 @@ func (f fakeRunner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- e
 func TestCreateSessionAutoRegistersWorkspacePath(t *testing.T) {
 	t.Parallel()
 
-	engine, svc, cleanup := newTestEngine(t, func(sess db.Session, workspacePath string) (Runner, error) {
+	engine, svc, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
 		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
-			ch <- event.Event{Kind: event.KindDone}
+			ch <- event.Done()
 			return nil
 		}), nil
 	})
@@ -69,9 +68,9 @@ func TestCreateSessionAutoRegistersWorkspacePath(t *testing.T) {
 func TestListSessionsRequiresWorkspaceScope(t *testing.T) {
 	t.Parallel()
 
-	engine, svc, cleanup := newTestEngine(t, func(sess db.Session, workspacePath string) (Runner, error) {
+	engine, svc, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
 		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
-			ch <- event.Event{Kind: event.KindDone}
+			ch <- event.Done()
 			return nil
 		}), nil
 	})
@@ -112,9 +111,9 @@ func TestListSessionsRequiresWorkspaceScope(t *testing.T) {
 func TestDeleteSessionRemovesSession(t *testing.T) {
 	t.Parallel()
 
-	engine, svc, cleanup := newTestEngine(t, func(sess db.Session, workspacePath string) (Runner, error) {
+	engine, svc, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
 		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
-			ch <- event.Event{Kind: event.KindDone}
+			ch <- event.Done()
 			return nil
 		}), nil
 	})
@@ -159,9 +158,9 @@ func TestDeleteSessionRemovesSession(t *testing.T) {
 func TestGetMessagesReturnsTranscriptItems(t *testing.T) {
 	t.Parallel()
 
-	engine, svc, cleanup := newTestEngine(t, func(sess db.Session, workspacePath string) (Runner, error) {
+	engine, svc, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
 		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
-			ch <- event.Event{Kind: event.KindDone}
+			ch <- event.Done()
 			return nil
 		}), nil
 	})
@@ -234,24 +233,14 @@ func TestGetMessagesReturnsTranscriptItems(t *testing.T) {
 func TestPostMessageStreamsSSEAndPersistsUserTurn(t *testing.T) {
 	t.Parallel()
 
-	engine, svc, cleanup := newTestEngine(t, func(sess db.Session, workspacePath string) (Runner, error) {
+	engine, svc, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
 		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
-			ch <- event.Event{Kind: event.KindReasoningStart}
-			ch <- event.Event{Kind: event.KindTextDelta, TextDelta: &event.TextDelta{Delta: "hello"}}
-			ch <- event.Event{Kind: event.KindToolCall, ToolCall: &event.ToolCall{
-				ID:    "tool-1",
-				Tool:  "read_file",
-				Input: []byte(`{"path":"main.go"}`),
-			}}
-			ch <- event.Event{Kind: event.KindToolResult, ToolOut: &event.ToolResult{
-				ID:     "tool-1",
-				Tool:   "read_file",
-				Output: "package main",
-			}}
-			ch <- event.Event{Kind: event.KindStepFinish, Step: &event.StepFinish{
-				Usage: cometsdk.TokenUsage{InputTokens: 10, OutputTokens: 4, CacheRead: 1},
-			}}
-			ch <- event.Event{Kind: event.KindDone}
+			ch <- event.ReasoningStart()
+			ch <- event.TextDelta("hello")
+			ch <- event.ToolCall("tool-1", "read_file", []byte(`{"path":"main.go"}`))
+			ch <- event.ToolResult("tool-1", "read_file", "package main", "")
+			ch <- event.StepFinish(cometsdk.TokenUsage{InputTokens: 10, OutputTokens: 4, CacheRead: 1})
+			ch <- event.Done()
 			return nil
 		}), nil
 	})
@@ -311,9 +300,9 @@ func TestPostMessageStreamsSSEAndPersistsUserTurn(t *testing.T) {
 func TestLocalCORSAllowsCometlineRenderer(t *testing.T) {
 	t.Parallel()
 
-	engine, _, cleanup := newTestEngine(t, func(sess db.Session, workspacePath string) (Runner, error) {
+	engine, _, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
 		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
-			ch <- event.Event{Kind: event.KindDone}
+			ch <- event.Done()
 			return nil
 		}), nil
 	})
@@ -350,13 +339,13 @@ func TestAbortSessionCancelsRunningStream(t *testing.T) {
 
 	started := make(chan struct{})
 	cancelled := make(chan struct{})
-	engine, svc, cleanup := newTestEngine(t, func(sess db.Session, workspacePath string) (Runner, error) {
+	engine, svc, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
 		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
 			close(started)
-			ch <- event.Event{Kind: event.KindTextDelta, TextDelta: &event.TextDelta{Delta: "working"}}
+			ch <- event.TextDelta("working")
 			<-ctx.Done()
 			close(cancelled)
-			ch <- event.Event{Kind: event.KindDone}
+			ch <- event.Done()
 			return nil
 		}), nil
 	})

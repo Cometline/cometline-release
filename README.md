@@ -23,17 +23,18 @@ CometMind started life as `cometcode`, a coding-specific agent. It has been **re
 
 ```
 main.go              entry point → cmd.Execute()
-cmd/                 Cobra commands: root / serve / chat / tui / init / session
+cmd/                 thin Cobra commands that build a Runtime and delegate
 server/
   server.go          Gin engine; /api/v1 handlers; SSE encoding
   run_manager.go     per-session single in-flight run control (start/cancel/finish)
 internal/
+  runtime/           shared composition root (config · DB · service · runner factory)
   agent/runner.go    core agent loop (multi-step tool iteration, max 50 steps)
   agent/request.go   builds cometsdk.Request from session history
-  session/service.go persistence coordination (workspace/session/message/tool_call CRUD)
-  tools/             read_file / write_file / list_dir / run_command + registry
+  session/           domain types + Service (workspace/session/message/tool persistence)
+  tools/             ToolSpec + Workspace + registry + built-in tool implementations
   tools/sandbox/     pathcheck — prevents path escape out of the workspace
-  provider/factory.go builds a comet-sdk provider from config (anthropic/openai)
+  provider/          builds a comet-sdk provider from config/session
   config/            config.toml loading + API key resolution
   db/                sqlc-generated querier + schema.sql + queries/*.sql
   event/event.go     CometMind-native event union (shared by SSE/TUI/CLI)

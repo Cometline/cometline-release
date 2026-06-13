@@ -9,24 +9,20 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/cometline/cometmind/internal/tools/sandbox"
 )
 
 // RunCommand runs a shell command with cwd set to the workspace root.
-type RunCommand struct{ Root string }
+type RunCommand struct{ Workspace Workspace }
 
-func (RunCommand) Name() string { return "run_command" }
-
-func (RunCommand) Description() string {
-	return "Run a shell command. Working directory is the workspace root. Dangerous patterns are rejected."
+func (RunCommand) Spec() ToolSpec {
+	return ToolSpec{
+		Name:        "run_command",
+		Description: "Run a shell command. Working directory is the workspace root. Dangerous patterns are rejected.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"command":{"type":"string","description":"Command with arguments (shell interpretation)"}},"required":["command"]}`),
+	}
 }
 
-func (RunCommand) Parameters() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"command":{"type":"string","description":"Command with arguments (shell interpretation)"}},"required":["command"]}`)
-}
-
-func (r RunCommand) Execute(ctx context.Context, workspaceRoot string, input json.RawMessage) (Result, error) {
+func (r RunCommand) Execute(ctx context.Context, input json.RawMessage) (Result, error) {
 	var in struct {
 		Command string `json:"command"`
 	}
@@ -36,10 +32,10 @@ func (r RunCommand) Execute(ctx context.Context, workspaceRoot string, input jso
 	if err := denylistCheck(in.Command); err != nil {
 		return Result{OK: false, Output: err.Error()}, nil
 	}
-	if _, err := sandbox.ResolveWorkspacePath(r.Root, "."); err != nil {
+	if _, err := r.Workspace.Resolve("."); err != nil {
 		return Result{}, err
 	}
-	root := filepath.Clean(r.Root)
+	root := filepath.Clean(r.Workspace.Root)
 
 	cmdCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()

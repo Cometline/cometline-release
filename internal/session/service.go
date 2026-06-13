@@ -32,35 +32,47 @@ func New(sqlDB *sql.DB) *Service {
 }
 
 // EnsureWorkspace registers the absolute workspace root in the global store when missing.
-func (s *Service) EnsureWorkspace(ctx context.Context, absRoot string) (db.Workspace, error) {
+func (s *Service) EnsureWorkspace(ctx context.Context, absRoot string) (Workspace, error) {
 	clean := filepath.Clean(absRoot)
 	w, err := s.q.GetWorkspaceByPath(ctx, clean)
 	if err == nil {
-		return w, nil
+		return workspaceFromDB(w), nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return db.Workspace{}, err
+		return Workspace{}, err
 	}
-	return s.q.CreateWorkspace(ctx, db.CreateWorkspaceParams{
+	created, err := s.q.CreateWorkspace(ctx, db.CreateWorkspaceParams{
 		ID:   id.New(),
 		Name: filepath.Base(clean),
 		Path: clean,
 	})
+	if err != nil {
+		return Workspace{}, err
+	}
+	return workspaceFromDB(created), nil
 }
 
 // GetWorkspace loads a workspace by id.
-func (s *Service) GetWorkspace(ctx context.Context, workspaceID string) (db.Workspace, error) {
-	return s.q.GetWorkspace(ctx, workspaceID)
+func (s *Service) GetWorkspace(ctx context.Context, workspaceID string) (Workspace, error) {
+	w, err := s.q.GetWorkspace(ctx, workspaceID)
+	if err != nil {
+		return Workspace{}, mapNotFound(err, ErrWorkspaceNotFound)
+	}
+	return workspaceFromDB(w), nil
 }
 
 // LookupWorkspaceByPath loads a workspace by path without creating it.
-func (s *Service) LookupWorkspaceByPath(ctx context.Context, absRoot string) (db.Workspace, error) {
-	return s.q.GetWorkspaceByPath(ctx, filepath.Clean(absRoot))
+func (s *Service) LookupWorkspaceByPath(ctx context.Context, absRoot string) (Workspace, error) {
+	w, err := s.q.GetWorkspaceByPath(ctx, filepath.Clean(absRoot))
+	if err != nil {
+		return Workspace{}, mapNotFound(err, ErrWorkspaceNotFound)
+	}
+	return workspaceFromDB(w), nil
 }
 
 // NewSession creates a persisted session row scoped to a workspace.
-func (s *Service) NewSession(ctx context.Context, workspaceID string, modelID, providerID string) (db.Session, error) {
-	return s.q.CreateSession(ctx, db.CreateSessionParams{
+func (s *Service) NewSession(ctx context.Context, workspaceID string, modelID, providerID string) (Session, error) {
+	sess, err := s.q.CreateSession(ctx, db.CreateSessionParams{
 		ID:          id.New(),
 		WorkspaceID: workspaceID,
 		Title:       "",
@@ -68,16 +80,28 @@ func (s *Service) NewSession(ctx context.Context, workspaceID string, modelID, p
 		ProviderID:  providerID,
 		Status:      "active",
 	})
+	if err != nil {
+		return Session{}, err
+	}
+	return sessionFromDB(sess), nil
 }
 
 // GetSession loads a session by id.
-func (s *Service) GetSession(ctx context.Context, sessionID string) (db.Session, error) {
-	return s.q.GetSession(ctx, sessionID)
+func (s *Service) GetSession(ctx context.Context, sessionID string) (Session, error) {
+	sess, err := s.q.GetSession(ctx, sessionID)
+	if err != nil {
+		return Session{}, mapNotFound(err, ErrSessionNotFound)
+	}
+	return sessionFromDB(sess), nil
 }
 
 // ListSessions lists sessions for a workspace ordered by recent activity.
-func (s *Service) ListSessions(ctx context.Context, workspaceID string) ([]db.Session, error) {
-	return s.q.ListSessionsByWorkspace(ctx, workspaceID)
+func (s *Service) ListSessions(ctx context.Context, workspaceID string) ([]Session, error) {
+	rows, err := s.q.ListSessionsByWorkspace(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	return sessionsFromDB(rows), nil
 }
 
 // DeleteSession removes a session and cascades its messages and tool calls.
@@ -89,7 +113,7 @@ func (s *Service) DeleteSession(ctx context.Context, sessionID string) error {
 func (s *Service) WorkspacePath(ctx context.Context, workspaceID string) (string, error) {
 	w, err := s.q.GetWorkspace(ctx, workspaceID)
 	if err != nil {
-		return "", err
+		return "", mapNotFound(err, ErrWorkspaceNotFound)
 	}
 	return w.Path, nil
 }
@@ -98,7 +122,7 @@ func (s *Service) WorkspacePath(ctx context.Context, workspaceID string) (string
 func (s *Service) SetTitleIfEmpty(ctx context.Context, sessionID, title string) error {
 	sess, err := s.q.GetSession(ctx, sessionID)
 	if err != nil {
-		return err
+		return mapNotFound(err, ErrSessionNotFound)
 	}
 	if strings.TrimSpace(sess.Title) != "" {
 		return nil
@@ -110,14 +134,36 @@ func (s *Service) SetTitleIfEmpty(ctx context.Context, sessionID, title string) 
 }
 
 // AppendUserMessage persists a user turn.
-func (s *Service) AppendUserMessage(ctx context.Context, sessionID, text string) (db.Message, error) {
-	return s.q.CreateMessage(ctx, db.CreateMessageParams{
+func (s *Service) AppendUserMessage(ctx context.Context, sessionID, text string) (Message, error) {
+	msg, err := s.q.CreateMessage(ctx, db.CreateMessageParams{
 		ID:         id.New(),
 		SessionID:  sessionID,
 		Role:       "user",
 		Content:    text,
 		TokenCount: 0,
 	})
+	if err != nil {
+		return Message{}, err
+	}
+	return messageFromDB(msg), nil
+}
+
+// AppendUserMessageAndMaybeTitle persists a user turn and, if the session
+// title is still empty, sets it to the first 80 characters of the message.
+// This is the single place the first-turn title rule lives.
+func (s *Service) AppendUserMessageAndMaybeTitle(ctx context.Context, sessionID, text string) (Message, error) {
+	msg, err := s.AppendUserMessage(ctx, sessionID, text)
+	if err != nil {
+		return Message{}, err
+	}
+	title := text
+	if len(title) > 80 {
+		title = title[:80] + "…"
+	}
+	if err := s.SetTitleIfEmpty(ctx, sessionID, title); err != nil {
+		return Message{}, err
+	}
+	return msg, nil
 }
 
 type reasoningBlockPayload struct {
@@ -161,10 +207,10 @@ func unmarshalReasoningContent(raw string) ([]cometsdk.Block, error) {
 
 // AppendAssistantStep persists assistant text and tool call shells (before execution).
 // It returns a mapping from provider-emitted tool call ids to persisted CometMind ids.
-func (s *Service) AppendAssistantStep(ctx context.Context, sessionID string, text string, reasoningBlocks []cometsdk.Block, toolCalls []cometsdk.ToolCallBlock) (db.Message, map[string]string, error) {
+func (s *Service) AppendAssistantStep(ctx context.Context, sessionID string, text string, reasoningBlocks []cometsdk.Block, toolCalls []cometsdk.ToolCallBlock) (Message, map[string]string, error) {
 	reasoningJSON, err := marshalReasoningContent(reasoningBlocks)
 	if err != nil {
-		return db.Message{}, nil, fmt.Errorf("marshal reasoning: %w", err)
+		return Message{}, nil, fmt.Errorf("marshal reasoning: %w", err)
 	}
 	assistant, err := s.q.CreateMessage(ctx, db.CreateMessageParams{
 		ID:               id.New(),
@@ -175,7 +221,7 @@ func (s *Service) AppendAssistantStep(ctx context.Context, sessionID string, tex
 		TokenCount:       0,
 	})
 	if err != nil {
-		return db.Message{}, nil, err
+		return Message{}, nil, err
 	}
 	toolIDs := make(map[string]string, len(toolCalls))
 	for _, tc := range toolCalls {
@@ -193,14 +239,14 @@ func (s *Service) AppendAssistantStep(ctx context.Context, sessionID string, tex
 			DurationMs: 0,
 			ExitCode:   sqlNullInt(nil),
 		}); err != nil {
-			return db.Message{}, nil, err
+			return Message{}, nil, err
 		}
 		toolIDs[tc.ID] = persistedID
 	}
 	if err := s.q.TouchSession(ctx, sessionID); err != nil {
-		return db.Message{}, nil, err
+		return Message{}, nil, err
 	}
-	return assistant, toolIDs, nil
+	return messageFromDB(assistant), toolIDs, nil
 }
 
 func sqlNullInt(v *int64) sql.NullInt64 {
@@ -210,8 +256,15 @@ func sqlNullInt(v *int64) sql.NullInt64 {
 	return sql.NullInt64{Int64: *v, Valid: true}
 }
 
+func mapNotFound(err error, notFound error) error {
+	if errors.Is(err, sql.ErrNoRows) {
+		return notFound
+	}
+	return err
+}
+
 // AppendToolResultMessage persists a tool result turn referenced by tool call id.
-func (s *Service) AppendToolResultMessage(ctx context.Context, sessionID, toolCallID, output string, isErr bool) (db.Message, error) {
+func (s *Service) AppendToolResultMessage(ctx context.Context, sessionID, toolCallID, output string, isErr bool) (Message, error) {
 	payload := toolResultPayload{
 		ToolCallID: toolCallID,
 		Content:    output,
@@ -219,7 +272,7 @@ func (s *Service) AppendToolResultMessage(ctx context.Context, sessionID, toolCa
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
-		return db.Message{}, err
+		return Message{}, err
 	}
 	msg, err := s.q.CreateMessage(ctx, db.CreateMessageParams{
 		ID:         id.New(),
@@ -229,12 +282,12 @@ func (s *Service) AppendToolResultMessage(ctx context.Context, sessionID, toolCa
 		TokenCount: 0,
 	})
 	if err != nil {
-		return db.Message{}, err
+		return Message{}, err
 	}
 	if err := s.q.TouchSession(ctx, sessionID); err != nil {
-		return db.Message{}, err
+		return Message{}, err
 	}
-	return msg, nil
+	return messageFromDB(msg), nil
 }
 
 // UpdateToolCallResult updates execution metadata on a persisted tool call row.

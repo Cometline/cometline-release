@@ -1,9 +1,7 @@
 package cmd
 
 import (
-	"os"
-	"path/filepath"
-
+	"github.com/cometline/cometmind/internal/paths"
 	"github.com/spf13/cobra"
 )
 
@@ -23,26 +21,6 @@ func init() {
 
 // WorkspaceRoot returns the effective workspace directory.
 func WorkspaceRoot() (string, error) {
-	if w, err := rootCmd.PersistentFlags().GetString("workspace"); err == nil && w != "" {
-		return absDir(w)
-	}
-	return os.Getwd()
-}
-
-func absDir(path string) (string, error) {
-	if path == "" {
-		return os.Getwd()
-	}
-	return absPath(path)
-}
-
-func absPath(path string) (string, error) {
-	if !filepath.IsAbs(path) {
-		wd, err := os.Getwd()
-		if err != nil {
-			return "", err
-		}
-		path = filepath.Join(wd, path)
-	}
-	return filepath.Clean(path), nil
+	explicit, _ := rootCmd.PersistentFlags().GetString("workspace")
+	return paths.ResolveWorkspace(explicit)
 }

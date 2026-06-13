@@ -14,9 +14,7 @@ import (
 
 	"github.com/cometline/cometmind/internal/agent"
 	"github.com/cometline/cometmind/internal/event"
-	"github.com/cometline/cometmind/internal/provider"
 	"github.com/cometline/cometmind/internal/session"
-	"github.com/cometline/cometmind/internal/tools"
 )
 
 type chatLineKind int
@@ -280,53 +278,40 @@ func (m *chatModel) applyEvent(ev event.Event) {
 		m.finalizeStreamingAssistant()
 		m.appendReasoning("")
 	case event.KindReasoningDelta:
-		if ev.ReasoningDelta != nil {
-			m.appendReasoning(ev.ReasoningDelta.Text)
-		}
+		m.appendReasoning(ev.Text)
 	case event.KindTextDelta:
-		if ev.TextDelta != nil {
-			m.appendAssistant(ev.TextDelta.Delta)
-		}
+		m.appendAssistant(ev.Delta)
 	case event.KindToolCall:
-		if ev.ToolCall != nil {
-			m.finalizeStreamingReasoning()
-			m.finalizeStreamingAssistant()
-			m.lines = append(m.lines, chatLine{
-				kind:     lineTool,
-				toolName: ev.ToolCall.Tool,
-				toolIn:   string(ev.ToolCall.Input),
-			})
-		}
+		m.finalizeStreamingReasoning()
+		m.finalizeStreamingAssistant()
+		m.lines = append(m.lines, chatLine{
+			kind:     lineTool,
+			toolName: ev.Tool,
+			toolIn:   string(ev.Input),
+		})
 	case event.KindToolResult:
-		if ev.ToolOut != nil {
-			for i := len(m.lines) - 1; i >= 0; i-- {
-				if m.lines[i].kind == lineTool && m.lines[i].toolName == ev.ToolOut.Tool && m.lines[i].toolOut == "" {
-					out := strings.TrimSpace(ev.ToolOut.Output)
-					if len(out) > 1200 {
-						out = out[:1200] + "…"
-					}
-					m.lines[i].toolOut = out
-					m.lines[i].toolErr = ev.ToolOut.Err != ""
-					break
+		for i := len(m.lines) - 1; i >= 0; i-- {
+			if m.lines[i].kind == lineTool && m.lines[i].toolName == ev.Tool && m.lines[i].toolOut == "" {
+				out := strings.TrimSpace(ev.Output)
+				if len(out) > 1200 {
+					out = out[:1200] + "…"
 				}
+				m.lines[i].toolOut = out
+				m.lines[i].toolErr = ev.ToolErr != ""
+				break
 			}
 		}
 	case event.KindStepFinish:
-		if ev.Step != nil {
-			u := ev.Step.Usage
-			m.footer = fmt.Sprintf("tokens in=%d out=%d", u.InputTokens, u.OutputTokens)
-			m.lines = append(m.lines, chatLine{
-				kind: lineMeta,
-				text: m.footer,
-			})
-		}
+		m.footer = fmt.Sprintf("tokens in=%d out=%d", ev.Usage.InputTokens, ev.Usage.OutputTokens)
+		m.lines = append(m.lines, chatLine{
+			kind: lineMeta,
+			text: m.footer,
+		})
 	case event.KindError:
-		if ev.Err != nil {
-			m.lines = append(m.lines, chatLine{
-				kind: lineErr,
-				text: fmt.Sprintf("%s (%s)", ev.Err.Message, ev.Err.Code),
-			})
-		}
+		m.lines = append(m.lines, chatLine{
+			kind: lineErr,
+			text: fmt.Sprintf("%s (%s)", ev.Message, ev.Code),
+		})
 	case event.KindDone:
 		m.finalizeStreaming()
 	}
@@ -339,16 +324,7 @@ func (m *chatModel) submit() (tea.Model, tea.Cmd) {
 	}
 
 	ctx := context.Background()
-	if _, err := m.deps.Sessions.AppendUserMessage(ctx, m.turn.ID, txt); err != nil {
-		m.lines = append(m.lines, chatLine{kind: lineErr, text: err.Error()})
-		m.refreshVP()
-		return m, nil
-	}
-	title := txt
-	if len(title) > 80 {
-		title = title[:80] + "…"
-	}
-	if err := m.deps.Sessions.SetTitleIfEmpty(ctx, m.turn.ID, title); err != nil {
+	if _, err := m.deps.Sessions.AppendUserMessageAndMaybeTitle(ctx, m.turn.ID, txt); err != nil {
 		m.lines = append(m.lines, chatLine{kind: lineErr, text: err.Error()})
 		m.refreshVP()
 		return m, nil
@@ -364,10 +340,7 @@ func (m *chatModel) submit() (tea.Model, tea.Cmd) {
 	m.cancelRun = cancel
 	m.running = true
 
-	cfg := *m.deps.Config
-	cfg.Model = m.turn.ModelID
-	cfg.Provider = m.turn.ProviderID
-	p, err := provider.New(&cfg)
+	runner, err := m.deps.NewRunner(m.turn)
 	if err != nil {
 		m.running = false
 		cancel()
@@ -375,17 +348,8 @@ func (m *chatModel) submit() (tea.Model, tea.Cmd) {
 		m.refreshVP()
 		return m, nil
 	}
-	reg := tools.NewRegistry(m.deps.WorkspacePath)
-	runner := agent.Runner{
-		Provider:      p,
-		Sessions:      m.deps.Sessions,
-		Registry:      reg,
-		WorkspaceRoot: m.deps.WorkspacePath,
-		MaxSteps:      cfg.MaxSteps,
-		MaxTokens:     cfg.MaxTokens,
-	}
 
-	go m.bridgeRun(runCtx, &runner)
+	go m.bridgeRun(runCtx, runner)
 
 	return m, textarea.Blink
 }

@@ -5,12 +5,9 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/cometline/cometmind/internal/config"
-	"github.com/cometline/cometmind/internal/paths"
-	"github.com/cometline/cometmind/internal/provider"
+	"github.com/cometline/cometmind/internal/agent"
+	"github.com/cometline/cometmind/internal/runtime"
 	"github.com/cometline/cometmind/internal/session"
-	"github.com/cometline/cometmind/internal/store"
-	"github.com/cometline/cometmind/internal/tools"
 	"github.com/cometline/cometmind/tui"
 	"github.com/spf13/cobra"
 )
@@ -28,47 +25,31 @@ func init() {
 func runTUI(_ *cobra.Command, _ []string) error {
 	ctx := context.Background()
 
-	cfg, err := config.Load()
+	rt, err := runtime.New(ctx)
 	if err != nil {
 		return err
 	}
+	defer rt.Close()
 
-	root, err := WorkspaceRoot()
+	ws, err := rt.WorkspaceForCommand(ctx, "")
 	if err != nil {
 		return err
 	}
-
-	dbpath, err := paths.DBPath()
-	if err != nil {
-		return err
-	}
-	sqlDB, err := store.OpenSQLite(ctx, dbpath)
-	if err != nil {
-		return err
-	}
-	defer sqlDB.Close()
-
-	svc := session.New(sqlDB)
-	ws, err := svc.EnsureWorkspace(ctx, root)
-	if err != nil {
-		return err
-	}
-
-	wsPath, err := svc.WorkspacePath(ctx, ws.ID)
-	if err != nil {
-		return err
-	}
-
-	if _, err := provider.New(cfg); err != nil {
-		return fmt.Errorf("provider: %w", err)
-	}
-	_ = tools.NewRegistry(wsPath)
 
 	deps := &tui.Deps{
-		Config:        cfg,
-		Sessions:      svc,
-		WorkspacePath: wsPath,
+		Config:        rt.Config,
+		Sessions:      rt.Sessions,
+		WorkspacePath: ws.Path,
 		WorkspaceID:   ws.ID,
+		NewRunner: func(turn session.AgentTurn) (*agent.Runner, error) {
+			sess := session.Session{
+				ID:          turn.ID,
+				WorkspaceID: ws.ID,
+				ModelID:     turn.ModelID,
+				ProviderID:  turn.ProviderID,
+			}
+			return rt.RunnerFor(sess, ws.Path)
+		},
 	}
 
 	app := tui.NewApp(deps)

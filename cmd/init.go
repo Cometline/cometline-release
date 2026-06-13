@@ -4,10 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/cometline/cometmind/internal/config"
-	"github.com/cometline/cometmind/internal/paths"
-	"github.com/cometline/cometmind/internal/session"
-	"github.com/cometline/cometmind/internal/store"
+	"github.com/cometline/cometmind/internal/runtime"
 	"github.com/spf13/cobra"
 )
 
@@ -23,25 +20,13 @@ func init() {
 
 func runInit(_ *cobra.Command, _ []string) error {
 	ctx := context.Background()
-	if _, err := config.Load(); err != nil {
-		return err
-	}
-	dbpath, err := paths.DBPath()
+	rt, err := runtime.New(ctx)
 	if err != nil {
 		return err
 	}
-	sqlDB, err := store.OpenSQLite(ctx, dbpath)
-	if err != nil {
-		return err
-	}
-	defer sqlDB.Close()
+	defer rt.Close()
 
-	root, err := WorkspaceRoot()
-	if err != nil {
-		return err
-	}
-	svc := session.New(sqlDB)
-	ws, err := svc.EnsureWorkspace(ctx, root)
+	ws, err := rt.WorkspaceForCommand(ctx, "")
 	if err != nil {
 		return err
 	}

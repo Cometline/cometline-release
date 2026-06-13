@@ -13,23 +13,34 @@ import (
 	"github.com/cometline/cometmind/internal/tools"
 )
 
+// TurnStore is the narrow persistence seam the agent loop drives. It is the
+// subset of session.Service the Runner actually needs, declared here on the
+// consumer side so the loop can be unit-tested with an in-memory fake instead
+// of a live SQLite database. *session.Service satisfies it.
+type TurnStore interface {
+	BuildSDKMessages(ctx context.Context, sessionID string) ([]cometsdk.Message, error)
+	SaveTokenUsage(ctx context.Context, sessionID string, u cometsdk.TokenUsage) error
+	AppendAssistantStep(ctx context.Context, sessionID, text string, reasoningBlocks []cometsdk.Block, toolCalls []cometsdk.ToolCallBlock) (session.Message, map[string]string, error)
+	UpdateToolCallResult(ctx context.Context, toolCallID, result string, durMs int64, exit *int64) error
+	AppendToolResultMessage(ctx context.Context, sessionID, toolCallID, output string, isErr bool) (session.Message, error)
+}
+
 // Runner executes the persisted agent loop for one user turn (which may span many tool steps).
 type Runner struct {
 	Provider cometsdk.Provider
-	Sessions *session.Service
+	Sessions TurnStore
 	Registry *tools.Registry
 
-	WorkspaceRoot string
-	MaxSteps      int
-	MaxTokens     int
-	SystemPrompt  string
+	MaxSteps     int
+	MaxTokens    int
+	SystemPrompt string
 }
 
 // Run streams CometMind-native events on ch until the turn completes or ctx is cancelled.
 // The caller must receive until the channel closes.
 func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
 	defer func() {
-		ch <- event.Event{Kind: event.KindDone}
+		ch <- event.Done()
 	}()
 
 	if r.MaxSteps <= 0 {
@@ -43,7 +54,7 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 	for steps < r.MaxSteps {
 		msgs, err := r.Sessions.BuildSDKMessages(ctx, turn.ID)
 		if err != nil {
-			ch <- event.Event{Kind: event.KindError, Err: &event.Error{Message: err.Error(), Code: "history"}}
+			ch <- event.Errorf(err.Error(), "history")
 			return err
 		}
 
@@ -53,28 +64,26 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 		for ev := range stream.Events() {
 			switch e := ev.(type) {
 			case cometsdk.TextDeltaEvent:
-				ch <- event.Event{Kind: event.KindTextDelta, TextDelta: &event.TextDelta{Delta: e.Text}}
+				ch <- event.TextDelta(e.Text)
 			case cometsdk.ReasoningStartEvent:
-				ch <- event.Event{Kind: event.KindReasoningStart}
+				ch <- event.ReasoningStart()
 			case cometsdk.ReasoningContentEvent:
-				ch <- event.Event{Kind: event.KindReasoningDelta, ReasoningDelta: &event.ReasoningDelta{Text: e.Text}}
+				ch <- event.ReasoningDelta(e.Text)
 			case cometsdk.ToolCallDoneEvent:
-				in := []byte(e.Input)
-				ch <- event.Event{Kind: event.KindToolCall, ToolCall: &event.ToolCall{ID: e.ID, Tool: e.Name, Input: in}}
+				ch <- event.ToolCall(e.ID, e.Name, []byte(e.Input))
 			case cometsdk.StepFinishEvent:
-				u := e.Usage
-				ch <- event.Event{Kind: event.KindStepFinish, Step: &event.StepFinish{Usage: u}}
+				ch <- event.StepFinish(e.Usage)
 			}
 		}
 
 		result, err := stream.Result()
 		if err != nil {
-			ch <- event.Event{Kind: event.KindError, Err: &event.Error{Message: err.Error(), Code: "llm"}}
+			ch <- event.Errorf(err.Error(), "llm")
 			return err
 		}
 
 		if err := r.Sessions.SaveTokenUsage(ctx, turn.ID, result.Usage); err != nil {
-			ch <- event.Event{Kind: event.KindError, Err: &event.Error{Message: err.Error(), Code: "db"}}
+			ch <- event.Errorf(err.Error(), "db")
 			return err
 		}
 
@@ -82,12 +91,12 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 		reasoningBlocks := result.Message.ReasoningContent
 		_, persistedToolIDs, err := r.Sessions.AppendAssistantStep(ctx, turn.ID, text, reasoningBlocks, result.ToolCalls)
 		if err != nil {
-			ch <- event.Event{Kind: event.KindError, Err: &event.Error{Message: err.Error(), Code: "db"}}
+			ch <- event.Errorf(err.Error(), "db")
 			return err
 		}
 
 		switch result.FinishReason {
-		case "stop", "max_tokens":
+		case cometsdk.FinishStop, cometsdk.FinishMaxTokens:
 			return nil
 		}
 		if len(result.ToolCalls) == 0 {
@@ -97,11 +106,11 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 		for _, tc := range result.ToolCalls {
 			persistedID := persistedToolIDs[tc.ID]
 			if persistedID == "" {
-				ch <- event.Event{Kind: event.KindError, Err: &event.Error{Message: "missing persisted tool call id", Code: "db"}}
+				ch <- event.Errorf("missing persisted tool call id", "db")
 				return fmt.Errorf("missing persisted tool call id for %s", tc.ID)
 			}
 			start := time.Now()
-			res, execErr := r.Registry.Execute(ctx, r.WorkspaceRoot, tc.Name, tc.Input)
+			res, execErr := r.Registry.Execute(ctx, tc.Name, tc.Input)
 			dur := time.Since(start).Milliseconds()
 
 			out := res.Output
@@ -113,11 +122,11 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 
 			exit := int64PtrFromIntPtr(res.ExitCode)
 			if err := r.Sessions.UpdateToolCallResult(ctx, persistedID, out, dur, exit); err != nil {
-				ch <- event.Event{Kind: event.KindError, Err: &event.Error{Message: err.Error(), Code: "db"}}
+				ch <- event.Errorf(err.Error(), "db")
 				return err
 			}
 			if _, err := r.Sessions.AppendToolResultMessage(ctx, turn.ID, persistedID, out, isErr); err != nil {
-				ch <- event.Event{Kind: event.KindError, Err: &event.Error{Message: err.Error(), Code: "db"}}
+				ch <- event.Errorf(err.Error(), "db")
 				return err
 			}
 
@@ -125,13 +134,13 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 			if isErr {
 				toolErr = out
 			}
-			ch <- event.Event{Kind: event.KindToolResult, ToolOut: &event.ToolResult{ID: tc.ID, Tool: tc.Name, Output: out, Err: toolErr}}
+			ch <- event.ToolResult(tc.ID, tc.Name, out, toolErr)
 		}
 
 		steps++
 	}
 
-	ch <- event.Event{Kind: event.KindError, Err: &event.Error{Message: "max steps exceeded", Code: "max_steps"}}
+	ch <- event.Errorf("max steps exceeded", "max_steps")
 	return fmt.Errorf("max steps exceeded")
 }
 

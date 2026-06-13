@@ -6,9 +6,7 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/cometline/cometmind/internal/paths"
-	"github.com/cometline/cometmind/internal/session"
-	"github.com/cometline/cometmind/internal/store"
+	"github.com/cometline/cometmind/internal/runtime"
 	"github.com/spf13/cobra"
 )
 
@@ -30,27 +28,17 @@ func init() {
 
 func runSessionList(_ *cobra.Command, _ []string) error {
 	ctx := context.Background()
-	dbpath, err := paths.DBPath()
+	rt, err := runtime.New(ctx)
 	if err != nil {
 		return err
 	}
-	sqlDB, err := store.OpenSQLite(ctx, dbpath)
-	if err != nil {
-		return err
-	}
-	defer sqlDB.Close()
+	defer rt.Close()
 
-	root, err := WorkspaceRoot()
+	ws, err := rt.WorkspaceForCommand(ctx, "")
 	if err != nil {
 		return err
 	}
-
-	svc := session.New(sqlDB)
-	ws, err := svc.EnsureWorkspace(ctx, root)
-	if err != nil {
-		return err
-	}
-	list, err := svc.ListSessions(ctx, ws.ID)
+	list, err := rt.Sessions.ListSessions(ctx, ws.ID)
 	if err != nil {
 		return err
 	}

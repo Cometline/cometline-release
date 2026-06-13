@@ -8,14 +8,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cometline/cometmind/internal/agent"
-	"github.com/cometline/cometmind/internal/config"
-	"github.com/cometline/cometmind/internal/db"
-	"github.com/cometline/cometmind/internal/paths"
-	"github.com/cometline/cometmind/internal/provider"
+	"github.com/cometline/cometmind/internal/runtime"
 	"github.com/cometline/cometmind/internal/session"
-	"github.com/cometline/cometmind/internal/store"
-	"github.com/cometline/cometmind/internal/tools"
 	"github.com/cometline/cometmind/server"
 	"github.com/spf13/cobra"
 )
@@ -37,43 +31,17 @@ func runServe(_ *cobra.Command, _ []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	cfg, err := config.Load()
+	rt, err := runtime.New(ctx)
 	if err != nil {
 		return err
 	}
+	defer rt.Close()
 
-	dbpath, err := paths.DBPath()
-	if err != nil {
-		return err
-	}
-	sqlDB, err := store.OpenSQLite(ctx, dbpath)
-	if err != nil {
-		return err
-	}
-	defer sqlDB.Close()
-
-	svc := session.New(sqlDB)
 	engine, err := server.New(server.Deps{
-		Config:   cfg,
-		Sessions: svc,
-		NewRunner: func(sess db.Session, workspacePath string) (server.Runner, error) {
-			runCfg := *cfg
-			runCfg.Model = sess.ModelID
-			runCfg.Provider = sess.ProviderID
-
-			p, err := provider.New(&runCfg)
-			if err != nil {
-				return nil, err
-			}
-
-			return &agent.Runner{
-				Provider:      p,
-				Sessions:      svc,
-				Registry:      tools.NewRegistry(workspacePath),
-				WorkspaceRoot: workspacePath,
-				MaxSteps:      runCfg.MaxSteps,
-				MaxTokens:     runCfg.MaxTokens,
-			}, nil
+		Config:   rt.Config,
+		Sessions: rt.Sessions,
+		NewRunner: func(sess session.Session, workspacePath string) (server.Runner, error) {
+			return rt.RunnerFor(sess, workspacePath)
 		},
 	})
 	if err != nil {

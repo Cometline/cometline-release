@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,7 +11,6 @@ import (
 
 	cometsdk "github.com/cometline/comet-sdk"
 	"github.com/cometline/cometmind/internal/config"
-	"github.com/cometline/cometmind/internal/db"
 	"github.com/cometline/cometmind/internal/event"
 	"github.com/cometline/cometmind/internal/session"
 	"github.com/gin-gonic/gin"
@@ -22,7 +20,7 @@ type Runner interface {
 	Run(context.Context, session.AgentTurn, chan<- event.Event) error
 }
 
-type RunnerFactory func(sess db.Session, workspacePath string) (Runner, error)
+type RunnerFactory func(sess session.Session, workspacePath string) (Runner, error)
 
 type Deps struct {
 	Config    *config.Config
@@ -167,50 +165,6 @@ type transcriptResponse struct {
 
 type statusResponse struct {
 	Status string `json:"status"`
-}
-
-type sseReasoningStart struct {
-	Type string `json:"type"`
-}
-
-type sseReasoningDelta struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-}
-
-type sseTextDelta struct {
-	Type  string `json:"type"`
-	Delta string `json:"delta"`
-}
-
-type sseToolCall struct {
-	Type  string          `json:"type"`
-	ID    string          `json:"id"`
-	Tool  string          `json:"tool"`
-	Input json.RawMessage `json:"input"`
-}
-
-type sseToolResult struct {
-	Type   string `json:"type"`
-	ID     string `json:"id"`
-	Tool   string `json:"tool"`
-	Output string `json:"output"`
-	Error  string `json:"error,omitempty"`
-}
-
-type sseStepFinish struct {
-	Type  string             `json:"type"`
-	Usage tokenUsageResource `json:"usage"`
-}
-
-type sseError struct {
-	Type    string `json:"type"`
-	Message string `json:"message"`
-	Code    string `json:"code,omitempty"`
-}
-
-type sseDone struct {
-	Type string `json:"type"`
 }
 
 func (a *App) handleHealth(c *gin.Context) {
@@ -393,11 +347,7 @@ func (a *App) handlePostMessage(c *gin.Context) {
 	}()
 
 	for ev := range evCh {
-		payload := payloadFromEvent(ev)
-		if payload == nil {
-			continue
-		}
-		if err := writeSSE(c.Writer, payload); err != nil {
+		if err := writeSSE(c.Writer, ev); err != nil {
 			return
 		}
 		flusher.Flush()
@@ -418,25 +368,25 @@ func (a *App) handleAbortSession(c *gin.Context) {
 	c.JSON(http.StatusAccepted, statusResponse{Status: "aborting"})
 }
 
-func (a *App) resolveCreateWorkspace(c *gin.Context, workspaceID, workspacePath string) (db.Workspace, bool) {
+func (a *App) resolveCreateWorkspace(c *gin.Context, workspaceID, workspacePath string) (session.Workspace, bool) {
 	ctx := c.Request.Context()
 	workspaceID = strings.TrimSpace(workspaceID)
 	workspacePath = strings.TrimSpace(workspacePath)
 
-	var byID db.Workspace
-	var byPath db.Workspace
+	var byID session.Workspace
+	var byPath session.Workspace
 	var hasID bool
 	var hasPath bool
 
 	if workspaceID != "" {
 		ws, err := a.sessions.GetWorkspace(ctx, workspaceID)
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, session.ErrWorkspaceNotFound) {
 			writeError(c, http.StatusNotFound, "workspace_not_found", "workspace_id was not found")
-			return db.Workspace{}, false
+			return session.Workspace{}, false
 		}
 		if err != nil {
 			writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
-			return db.Workspace{}, false
+			return session.Workspace{}, false
 		}
 		byID = ws
 		hasID = true
@@ -445,15 +395,15 @@ func (a *App) resolveCreateWorkspace(c *gin.Context, workspaceID, workspacePath 
 	if workspacePath != "" {
 		clean, ok := cleanWorkspacePath(c, workspacePath)
 		if !ok {
-			return db.Workspace{}, false
+			return session.Workspace{}, false
 		}
 		ws, err := a.sessions.LookupWorkspaceByPath(ctx, clean)
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, session.ErrWorkspaceNotFound) {
 			ws, err = a.sessions.EnsureWorkspace(ctx, clean)
 		}
 		if err != nil {
 			writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
-			return db.Workspace{}, false
+			return session.Workspace{}, false
 		}
 		byPath = ws
 		hasPath = true
@@ -461,11 +411,11 @@ func (a *App) resolveCreateWorkspace(c *gin.Context, workspaceID, workspacePath 
 
 	if !hasID && !hasPath {
 		writeError(c, http.StatusBadRequest, "workspace_scope_required", "workspace_id or workspace_path is required")
-		return db.Workspace{}, false
+		return session.Workspace{}, false
 	}
 	if hasID && hasPath && byID.ID != byPath.ID {
 		writeError(c, http.StatusBadRequest, "workspace_scope_mismatch", "workspace_id and workspace_path refer to different workspaces")
-		return db.Workspace{}, false
+		return session.Workspace{}, false
 	}
 	if hasID {
 		return byID, true
@@ -473,30 +423,30 @@ func (a *App) resolveCreateWorkspace(c *gin.Context, workspaceID, workspacePath 
 	return byPath, true
 }
 
-func (a *App) resolveReadWorkspace(c *gin.Context, workspaceID, workspacePath string) (db.Workspace, bool) {
+func (a *App) resolveReadWorkspace(c *gin.Context, workspaceID, workspacePath string) (session.Workspace, bool) {
 	ctx := c.Request.Context()
 	workspaceID = strings.TrimSpace(workspaceID)
 	workspacePath = strings.TrimSpace(workspacePath)
 
 	if workspaceID == "" && workspacePath == "" {
 		writeError(c, http.StatusBadRequest, "workspace_scope_required", "workspace_id or workspace_path is required")
-		return db.Workspace{}, false
+		return session.Workspace{}, false
 	}
 
-	var byID db.Workspace
-	var byPath db.Workspace
+	var byID session.Workspace
+	var byPath session.Workspace
 	var hasID bool
 	var hasPath bool
 
 	if workspaceID != "" {
 		ws, err := a.sessions.GetWorkspace(ctx, workspaceID)
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, session.ErrWorkspaceNotFound) {
 			writeError(c, http.StatusNotFound, "workspace_not_found", "workspace_id was not found")
-			return db.Workspace{}, false
+			return session.Workspace{}, false
 		}
 		if err != nil {
 			writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
-			return db.Workspace{}, false
+			return session.Workspace{}, false
 		}
 		byID = ws
 		hasID = true
@@ -505,16 +455,16 @@ func (a *App) resolveReadWorkspace(c *gin.Context, workspaceID, workspacePath st
 	if workspacePath != "" {
 		clean, ok := cleanWorkspacePath(c, workspacePath)
 		if !ok {
-			return db.Workspace{}, false
+			return session.Workspace{}, false
 		}
 		ws, err := a.sessions.LookupWorkspaceByPath(ctx, clean)
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, session.ErrWorkspaceNotFound) {
 			writeError(c, http.StatusNotFound, "workspace_not_found", "workspace_path was not found")
-			return db.Workspace{}, false
+			return session.Workspace{}, false
 		}
 		if err != nil {
 			writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
-			return db.Workspace{}, false
+			return session.Workspace{}, false
 		}
 		byPath = ws
 		hasPath = true
@@ -522,7 +472,7 @@ func (a *App) resolveReadWorkspace(c *gin.Context, workspaceID, workspacePath st
 
 	if hasID && hasPath && byID.ID != byPath.ID {
 		writeError(c, http.StatusBadRequest, "workspace_scope_mismatch", "workspace_id and workspace_path refer to different workspaces")
-		return db.Workspace{}, false
+		return session.Workspace{}, false
 	}
 	if hasID {
 		return byID, true
@@ -530,25 +480,25 @@ func (a *App) resolveReadWorkspace(c *gin.Context, workspaceID, workspacePath st
 	return byPath, true
 }
 
-func (a *App) loadSessionWithWorkspace(c *gin.Context, sessionID string) (db.Session, string, bool) {
+func (a *App) loadSessionWithWorkspace(c *gin.Context, sessionID string) (session.Session, string, bool) {
 	sess, err := a.sessions.GetSession(c.Request.Context(), sessionID)
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, session.ErrSessionNotFound) {
 		writeError(c, http.StatusNotFound, "session_not_found", "session was not found")
-		return db.Session{}, "", false
+		return session.Session{}, "", false
 	}
 	if err != nil {
 		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
-		return db.Session{}, "", false
+		return session.Session{}, "", false
 	}
 
 	wsPath, err := a.sessions.WorkspacePath(c.Request.Context(), sess.WorkspaceID)
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, session.ErrWorkspaceNotFound) {
 		writeError(c, http.StatusNotFound, "workspace_not_found", "workspace was not found")
-		return db.Session{}, "", false
+		return session.Session{}, "", false
 	}
 	if err != nil {
 		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
-		return db.Session{}, "", false
+		return session.Session{}, "", false
 	}
 
 	return sess, wsPath, true
@@ -562,7 +512,7 @@ func cleanWorkspacePath(c *gin.Context, workspacePath string) (string, bool) {
 	return filepath.Clean(workspacePath), true
 }
 
-func sessionResourceFromModel(sess db.Session, workspacePath string) (sessionResource, error) {
+func sessionResourceFromModel(sess session.Session, workspacePath string) (sessionResource, error) {
 	usage, err := decodeTokenUsage(sess.TokenUsage)
 	if err != nil {
 		return sessionResource{}, err
@@ -629,74 +579,6 @@ func parseOpaqueJSON(raw string) any {
 		return v
 	}
 	return raw
-}
-
-func payloadFromEvent(ev event.Event) any {
-	switch ev.Kind {
-	case event.KindReasoningStart:
-		return sseReasoningStart{Type: string(event.KindReasoningStart)}
-	case event.KindReasoningDelta:
-		if ev.ReasoningDelta == nil {
-			return nil
-		}
-		return sseReasoningDelta{Type: string(event.KindReasoningDelta), Text: ev.ReasoningDelta.Text}
-	case event.KindTextDelta:
-		if ev.TextDelta == nil {
-			return nil
-		}
-		return sseTextDelta{Type: string(event.KindTextDelta), Delta: ev.TextDelta.Delta}
-	case event.KindToolCall:
-		if ev.ToolCall == nil {
-			return nil
-		}
-		input := json.RawMessage(ev.ToolCall.Input)
-		if len(input) == 0 {
-			input = json.RawMessage("{}")
-		}
-		return sseToolCall{
-			Type:  string(event.KindToolCall),
-			ID:    ev.ToolCall.ID,
-			Tool:  ev.ToolCall.Tool,
-			Input: input,
-		}
-	case event.KindToolResult:
-		if ev.ToolOut == nil {
-			return nil
-		}
-		return sseToolResult{
-			Type:   string(event.KindToolResult),
-			ID:     ev.ToolOut.ID,
-			Tool:   ev.ToolOut.Tool,
-			Output: ev.ToolOut.Output,
-			Error:  ev.ToolOut.Err,
-		}
-	case event.KindStepFinish:
-		if ev.Step == nil {
-			return nil
-		}
-		return sseStepFinish{
-			Type: string(event.KindStepFinish),
-			Usage: tokenUsageResource{
-				InputTokens:  ev.Step.Usage.InputTokens,
-				OutputTokens: ev.Step.Usage.OutputTokens,
-				CacheRead:    ev.Step.Usage.CacheRead,
-				CacheWrite:   ev.Step.Usage.CacheWrite,
-			},
-		}
-	case event.KindError:
-		if ev.Err == nil {
-			return nil
-		}
-		return sseError{
-			Type:    string(event.KindError),
-			Message: ev.Err.Message,
-			Code:    ev.Err.Code,
-		}
-	case event.KindDone:
-		return sseDone{Type: string(event.KindDone)}
-	default:
-		return nil
-	}
 }
 
 func writeSSE(w http.ResponseWriter, payload any) error {
