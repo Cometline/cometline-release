@@ -3,6 +3,7 @@
 	import Sidebar from './Sidebar.svelte';
 	import RuntimeOverlay from './RuntimeOverlay.svelte';
 	import SettingsModal from './SettingsModal.svelte';
+	import UpdateButton from './UpdateButton.svelte';
 	import { shellStore } from '$lib/stores/shell.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
 	import { startNewChat } from '$lib/actions/new-chat';
@@ -110,6 +111,7 @@
 		<RuntimeOverlay />
 	</main>
 	<SettingsModal />
+	<UpdateButton />
 </div>
 
 <style>

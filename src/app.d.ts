@@ -55,6 +55,16 @@ declare global {
 		duration: number;
 	}
 
+	type UpdateStatus = 'idle' | 'checking' | 'downloading' | 'ready' | 'error';
+
+	interface UpdateState {
+		status: UpdateStatus;
+		version?: string;
+		percent?: number;
+		message?: string;
+		updatedAt?: number;
+	}
+
 	interface Window {
 		electronAPI?: {
 			restartCometMind?: () => void;
@@ -65,6 +75,10 @@ declare global {
 			setSidebarOpen?: (state: SidebarChromeState) => void;
 			getFullScreen?: () => Promise<boolean>;
 			onFullScreenChange?: (callback: (isFullScreen: boolean) => void) => () => void;
+			getUpdateState?: () => Promise<UpdateState>;
+			checkForUpdates?: () => Promise<UpdateState>;
+			installUpdate?: () => Promise<boolean>;
+			onUpdateState?: (callback: (state: UpdateState) => void) => () => void;
 		};
 	}
 }

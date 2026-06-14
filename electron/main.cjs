@@ -658,9 +658,22 @@ async function waitForHealth() {
 	return false;
 }
 
+// Tracks the latest known auto-update state so a freshly loaded renderer can
+// query it via IPC instead of waiting for the next event.
+let updateState = { status: 'idle' };
+
+function setUpdateState(next) {
+	updateState = { ...next, updatedAt: Date.now() };
+	if (mainWindow && !mainWindow.isDestroyed()) {
+		mainWindow.webContents.send('cometline:update-state', updateState);
+	}
+}
+
 function configureAutoUpdater() {
 	if (!app.isPackaged) return;
 
+	// We surface a button in the UI and let the user choose when to restart, so
+	// download automatically but never install behind their back.
 	autoUpdater.autoDownload = true;
 	autoUpdater.autoInstallOnAppQuit = true;
 	autoUpdater.logger = {
@@ -670,8 +683,32 @@ function configureAutoUpdater() {
 		debug: (message) => console.debug(`[auto-updater] ${message}`)
 	};
 
+	autoUpdater.on('checking-for-update', () => {
+		setUpdateState({ status: 'checking' });
+	});
+
+	autoUpdater.on('update-available', (info) => {
+		setUpdateState({ status: 'downloading', version: info?.version, percent: 0 });
+	});
+
+	autoUpdater.on('update-not-available', (info) => {
+		setUpdateState({ status: 'idle', version: info?.version });
+	});
+
+	autoUpdater.on('download-progress', (progress) => {
+		setUpdateState({
+			status: 'downloading',
+			percent: Math.round(progress?.percent ?? 0)
+		});
+	});
+
+	autoUpdater.on('update-downloaded', (info) => {
+		setUpdateState({ status: 'ready', version: info?.version });
+	});
+
 	autoUpdater.on('error', (err) => {
 		console.error('Auto-update error:', err);
+		setUpdateState({ status: 'error', message: String(err?.message ?? err) });
 	});
 
 	const check = () => {
@@ -969,4 +1006,26 @@ ipcMain.handle('cometline:save-provider-settings', async (_event, settings) => {
 	startCometMind();
 	void waitForHealth();
 	return saved;
+});
+
+ipcMain.handle('cometline:get-update-state', () => updateState);
+
+ipcMain.handle('cometline:check-for-updates', async () => {
+	if (!app.isPackaged) return { status: 'idle' };
+	try {
+		await autoUpdater.checkForUpdates();
+	} catch (err) {
+		console.error('Manual update check failed:', err);
+		setUpdateState({ status: 'error', message: String(err?.message ?? err) });
+	}
+	return updateState;
+});
+
+ipcMain.handle('cometline:install-update', () => {
+	if (updateState.status !== 'ready') return false;
+	// quitAndInstall() triggers app quit, which runs the before-quit handler
+	// (graceful CometMind shutdown + stoppingForQuit=true). That flag lets the
+	// macOS hide-on-close handler actually close the window for the relaunch.
+	setImmediate(() => autoUpdater.quitAndInstall());
+	return true;
 });

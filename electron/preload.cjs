@@ -13,5 +13,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 		const handler = (_event, isFullScreen) => callback(Boolean(isFullScreen));
 		ipcRenderer.on('cometline:fullscreen-changed', handler);
 		return () => ipcRenderer.removeListener('cometline:fullscreen-changed', handler);
+	},
+	getUpdateState: () => ipcRenderer.invoke('cometline:get-update-state'),
+	checkForUpdates: () => ipcRenderer.invoke('cometline:check-for-updates'),
+	installUpdate: () => ipcRenderer.invoke('cometline:install-update'),
+	onUpdateState: (callback) => {
+		const handler = (_event, state) => callback(state);
+		ipcRenderer.on('cometline:update-state', handler);
+		return () => ipcRenderer.removeListener('cometline:update-state', handler);
 	}
 });
