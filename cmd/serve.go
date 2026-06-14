@@ -14,7 +14,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var servePort int
+var (
+	servePort        int
+	serveWatchParent bool
+)
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
@@ -24,12 +27,20 @@ var serveCmd = &cobra.Command{
 
 func init() {
 	serveCmd.Flags().IntVar(&servePort, "port", 7700, "Port to bind on 127.0.0.1")
+	serveCmd.Flags().BoolVar(&serveWatchParent, "watch-parent", false, "Shut down automatically when the launching parent process exits (for sidecar use)")
 	rootCmd.AddCommand(serveCmd)
 }
 
 func runServe(_ *cobra.Command, _ []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	if serveWatchParent {
+		watchCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		watchParent(watchCtx, cancel)
+		ctx = watchCtx
+	}
 
 	rt, err := runtime.New(ctx)
 	if err != nil {
