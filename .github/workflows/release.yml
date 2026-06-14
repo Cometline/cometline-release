@@ -58,6 +58,19 @@ jobs:
           fs.writeFileSync(path, `${JSON.stringify(pkg, null, '\t')}\n`);
           NODE
 
+      - name: Remove any pre-existing draft for this tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -e
+          for id in $(gh api -H "Accept: application/vnd.github+json" \
+              "/repos/${{ github.repository }}/releases?per_page=100" \
+              --jq '.[] | select(.tag_name == env.TAG) | .id'); do
+            echo "Deleting stale release $id for tag $TAG"
+            gh release delete "$id" --repo "${{ github.repository }}" --yes
+          done
+
       - name: Build, sign, notarize, and publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
