@@ -80,10 +80,13 @@ export function heroComposerCssVars(
 ): Record<string, string> {
 	const colors = normalizeHeroComposerAppearance(appearance);
 	return {
+		'--hero-composer-glow-color': colors.glowColor,
 		'--hero-composer-glow-strong': hexToRgba(colors.glowColor, 0.52),
 		'--hero-composer-glow-soft': hexToRgba(colors.glowColor, 0.24),
 		'--hero-composer-glow-ring': hexToRgba(colors.glowColor, 0.14),
-		'--hero-composer-ring': hexToRgba(colors.ringColor, 0.24)
+		'--hero-composer-ring': hexToRgba(colors.ringColor, 0.24),
+		'--user-bubble-bg': `color-mix(in srgb, ${colors.glowColor} 70%, #1f2933)`,
+		'--user-bubble-shadow': hexToRgba(colors.glowColor, 0.22)
 	};
 }
 

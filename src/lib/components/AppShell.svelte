@@ -12,6 +12,24 @@
 	}: { children: import('svelte').Snippet; workspacePath?: string } = $props();
 
 	onMount(() => {
+		function sidebarAutoCollapseQuery() {
+			const max = getComputedStyle(document.documentElement)
+				.getPropertyValue('--sidebar-auto-collapse-max')
+				.trim();
+			return window.matchMedia(`(max-width: ${max || '900px'})`);
+		}
+
+		function syncSidebarForViewport() {
+			if (sidebarAutoCollapseQuery().matches && shellStore.sidebarOpen) {
+				shellStore.closeSidebar();
+			}
+		}
+
+		const narrow = sidebarAutoCollapseQuery();
+		syncSidebarForViewport();
+		narrow.addEventListener('change', syncSidebarForViewport);
+		window.addEventListener('resize', syncSidebarForViewport);
+
 		function onKeydown(event: KeyboardEvent) {
 			if (event.key === 'Escape' && shellStore.settingsOpen) {
 				event.preventDefault();
@@ -37,7 +55,11 @@
 		}
 
 		window.addEventListener('keydown', onKeydown);
-		return () => window.removeEventListener('keydown', onKeydown);
+		return () => {
+			window.removeEventListener('keydown', onKeydown);
+			narrow.removeEventListener('change', syncSidebarForViewport);
+			window.removeEventListener('resize', syncSidebarForViewport);
+		};
 	});
 </script>
 

@@ -691,10 +691,10 @@
 	}
 
 	.user-bubble {
-		background: #1f2933;
+		background: var(--user-bubble-bg);
 		color: white;
 		border-bottom-right-radius: 6px;
-		box-shadow: 0 8px 20px rgba(31, 41, 51, 0.12);
+		box-shadow: 0 8px 20px var(--user-bubble-shadow);
 		max-width: var(--chat-content-column);
 	}
 

@@ -86,13 +86,13 @@
 	.user-flight {
 		padding: 11px 14px;
 		border-radius: 18px 18px 6px 18px;
-		background: #1f2933;
+		background: var(--user-bubble-bg);
 		color: white;
 		font-size: 14px;
 		line-height: 1.55;
 		white-space: pre-wrap;
 		word-break: break-word;
-		box-shadow: 0 16px 40px rgba(31, 41, 51, 0.18);
+		box-shadow: 0 16px 40px var(--user-bubble-shadow);
 		animation: user-bubble-flight var(--duration-flight) var(--ease-smooth) forwards;
 	}
 

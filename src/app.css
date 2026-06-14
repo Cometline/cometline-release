@@ -22,6 +22,7 @@
 
 	/* Layout */
 	--sidebar-width: 280px;
+	--sidebar-auto-collapse-max: 900px;
 
 	/* Chat column tracks avatar + gap + message width; composer is slightly wider. */
 	--chat-avatar-size: 2.25rem;
@@ -56,10 +57,13 @@
 	--duration-hero-exit-ring: 0.24s;
 
 	/* Hero composer aura (default blue; overridden by settings) */
+	--hero-composer-glow-color: #72c0ff;
 	--hero-composer-glow-strong: rgba(114, 192, 255, 0.52);
 	--hero-composer-glow-soft: rgba(114, 192, 255, 0.24);
 	--hero-composer-glow-ring: rgba(114, 192, 255, 0.14);
 	--hero-composer-ring: rgba(158, 216, 255, 0.24);
+	--user-bubble-bg: color-mix(in srgb, #72c0ff 70%, #1f2933);
+	--user-bubble-shadow: rgba(114, 192, 255, 0.22);
 }
 
 @theme inline {
