@@ -7,6 +7,8 @@ struct Output {
 	let path: String
 	let size: Int
 	let radius: CGFloat
+	/// How much of the canvas the artwork should fill, centered (1.0 = full bleed).
+	let artworkScale: CGFloat
 }
 
 func fail(_ message: String) -> Never {
@@ -56,11 +58,12 @@ guard let sourcePath = sourceCandidates.first(where: { fileManager.fileExists(at
 }
 
 let outputs = [
-	Output(path: "static/project_avatar_96.png", size: 96, radius: 48),
-	Output(path: "static/project_avatar_192.png", size: 192, radius: 96),
-	Output(path: "static/project_avatar_384.png", size: 384, radius: 192),
-	Output(path: "static/app_icon.png", size: 1024, radius: 224),
-	Output(path: "buildResources/icon.png", size: 1024, radius: 224)
+	Output(path: "static/project_avatar_96.png", size: 96, radius: 48, artworkScale: 1.0),
+	Output(path: "static/project_avatar_192.png", size: 192, radius: 96, artworkScale: 1.0),
+	Output(path: "static/project_avatar_384.png", size: 384, radius: 192, artworkScale: 1.0),
+	// macOS app icons need padding so the artwork does not fill the whole Dock tile.
+	Output(path: "static/app_icon.png", size: 1024, radius: 224, artworkScale: 0.78),
+	Output(path: "buildResources/icon.png", size: 1024, radius: 224, artworkScale: 0.78)
 ]
 
 guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: sourcePath) as CFURL, nil),
@@ -96,7 +99,15 @@ for output in outputs {
 	context.interpolationQuality = .high
 	context.addPath(CGPath(roundedRect: rect, cornerWidth: output.radius, cornerHeight: output.radius, transform: nil))
 	context.clip()
-	context.draw(cropped, in: rect)
+	let artworkSize = CGFloat(output.size) * output.artworkScale
+	let artworkOffset = (CGFloat(output.size) - artworkSize) / 2
+	let artworkRect = CGRect(
+		x: artworkOffset,
+		y: artworkOffset,
+		width: artworkSize,
+		height: artworkSize
+	)
+	context.draw(cropped, in: artworkRect)
 
 	guard let image = context.makeImage() else {
 		fail("could not render \(output.path)")
