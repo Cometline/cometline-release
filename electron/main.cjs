@@ -521,7 +521,7 @@ function startCometMind() {
 		return;
 	}
 
-	cometMindProcess = spawn(binary, ['serve', '--port', String(COMETMIND_PORT)], {
+	cometMindProcess = spawn(binary, ['serve', '--port', String(COMETMIND_PORT), '--watch-parent'], {
 		stdio: ['ignore', 'pipe', 'pipe'],
 		env: providerEnv()
 	});
@@ -798,6 +798,21 @@ app.on('before-quit', async (event) => {
 	await stopCometMind();
 	stoppedForQuit = true;
 	app.quit();
+});
+
+// Last-resort synchronous cleanup. `before-quit` handles graceful shutdown,
+// but if the main process exits without it (e.g. an uncaught crash) this best
+// effort SIGTERM avoids leaving an orphaned sidecar holding the port and DB
+// lock. The Go-side --watch-parent watchdog is the real safety net for hard
+// kills where no JS runs at all.
+process.on('exit', () => {
+	if (cometMindProcess) {
+		try {
+			cometMindProcess.kill('SIGTERM');
+		} catch {
+			// ignore
+		}
+	}
 });
 
 ipcMain.on('cometmind:restart', async () => {
