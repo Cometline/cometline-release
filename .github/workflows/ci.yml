@@ -1,56 +1,40 @@
 name: CI
 
 on:
-  pull_request:
   push:
-    branches:
-      - main
+    branches: [main, master]
+  pull_request:
 
 jobs:
-  test:
-    runs-on: macos-latest
+  check:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v4
         with:
           submodules: recursive
+          token: ${{ secrets.COMETLINE_SUBMODULE_TOKEN }}
 
-      - name: Setup Go
-        uses: actions/setup-go@v6
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          go-version-file: cometmind/go.mod
-          cache-dependency-path: |
-            comet-sdk/go.sum
-            cometmind/go.sum
+          go-version-file: comet-sdk/go.mod
 
-      - name: Setup pnpm
+      - name: Set up pnpm
         uses: pnpm/action-setup@v4
-        with:
-          package_json_file: cometline/package.json
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
           cache: pnpm
           cache-dependency-path: cometline/pnpm-lock.yaml
 
       - name: Install frontend dependencies
-        run: pnpm --dir cometline install --frozen-lockfile
+        run: make install
 
-      - name: Test SDK
-        run: go test ./...
-        working-directory: comet-sdk
+      - name: Run checks
+        run: make check
 
-      - name: Test CometMind
-        run: go test ./...
-        working-directory: cometmind
-
-      - name: Check Cometline
-        run: pnpm --dir cometline run check
-
-      - name: Build Cometline renderer
-        run: pnpm --dir cometline run build
-
-      - name: Build CometMind sidecar
-        run: pnpm --dir cometline run build:sidecar
+      - name: Run build
+        run: make build
