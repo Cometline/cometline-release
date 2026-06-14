@@ -2,6 +2,12 @@
 
 CometMind is the Go backend and local agent runtime for Cometline. It owns the trusted boundary: provider selection, agent loop, persistence, permissions, tools, memory, secrets, local API, and future extension systems.
 
+## Status Snapshot
+
+- **Phase 0 — Stabilize Current Runtime Slice**: largely done. All `/api/v1` session routes are implemented and covered by server tests, SQLite schema migrations carry a version marker, the runner has unit tests with a fake provider, and `openapi.yaml` is aligned with the current Phase 0 surface. Remaining before calling Phase 0 closed: document SSE event ordering / cancellation guarantees.
+- **Phase 1 — Permissioned Tool Loop**: **next phase**. Not started.
+- **Phase 2+**: not started.
+
 ## North Star
 
 Build a local-first Hermes-like agent runtime in Go: persistent sessions, provider switching, permissioned tools, durable memory, skills, scheduler, subagents, MCP, browser/computer-use tools, and a stable HTTP/SSE API consumed by the SvelteKit frontend.

@@ -12,17 +12,30 @@ import (
 )
 
 const (
-	ProviderAnthropic = "anthropic"
-	ProviderOpenAI    = "openai"
+	ProviderAnthropic      = "anthropic"
+	ProviderOpenAI         = "openai"
+	ProviderOpenAICompat   = "openai-compatible"
+	ProviderOpencodeGo     = "opencode-go"
 )
+
+// ProviderEntry is one configured LLM provider managed by Cometline.
+type ProviderEntry struct {
+	ID      string `mapstructure:"id"`
+	Name    string `mapstructure:"name"`
+	Method  string `mapstructure:"method"`
+	BaseURL string `mapstructure:"base_url"`
+	APIKey  string `mapstructure:"api_key"`
+	Model   string `mapstructure:"model"`
+}
 
 // Config holds user-visible runtime settings loaded from ~/.cometmind/config.toml and environment.
 type Config struct {
-	Provider  string `mapstructure:"provider"`
-	Model     string `mapstructure:"model"`
-	BaseURL   string `mapstructure:"base_url"`
-	MaxTokens int    `mapstructure:"max_tokens"`
-	MaxSteps  int    `mapstructure:"max_steps"`
+	Provider  string          `mapstructure:"provider"`
+	Model     string          `mapstructure:"model"`
+	BaseURL   string          `mapstructure:"base_url"`
+	MaxTokens int             `mapstructure:"max_tokens"`
+	MaxSteps  int             `mapstructure:"max_steps"`
+	Providers []ProviderEntry `mapstructure:"providers"`
 }
 
 // Defaults returns baseline values when the config file is missing keys.
@@ -90,6 +103,16 @@ func Load() (*Config, error) {
 	}
 
 	return &c, nil
+}
+
+// FindProvider returns the provider entry matching id, or nil if none exists.
+func (c *Config) FindProvider(id string) *ProviderEntry {
+	for i := range c.Providers {
+		if c.Providers[i].ID == id {
+			return &c.Providers[i]
+		}
+	}
+	return nil
 }
 
 func writeDefaultFile(path string, def *Config) error {

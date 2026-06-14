@@ -11,6 +11,56 @@ import (
 	"github.com/cometline/cometmind/internal/config"
 )
 
+func TestNewForFallsBackToLegacyMethod(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "anthropic-key")
+
+	cfg := &config.Config{
+		Provider: config.ProviderOpenAI,
+		BaseURL:  "http://example.com/v1",
+		Providers: []config.ProviderEntry{{
+			ID:      "my-openai",
+			Method:  config.ProviderOpenAI,
+			BaseURL: "http://example.com/v1",
+			APIKey:  "openai-key",
+		}},
+	}
+
+	// A legacy session stored "anthropic" as the provider id. There is no
+	// matching provider entry, so the factory should treat it as the method and
+	// resolve the Anthropic API key.
+	p, err := NewFor(cfg, config.ProviderAnthropic)
+	if err != nil {
+		t.Fatalf("NewFor() error = %v", err)
+	}
+	if p == nil {
+		t.Fatal("NewFor() returned nil")
+	}
+}
+
+func TestNewForUsesMultiProviderEntry(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "entry-key")
+
+	cfg := &config.Config{
+		Provider: config.ProviderAnthropic,
+		Providers: []config.ProviderEntry{{
+			ID:      "local-llm",
+			Name:    "Local LLM",
+			Method:  config.ProviderOpenAICompat,
+			BaseURL: "http://localhost:11434/v1",
+			APIKey:  "entry-key",
+			Model:   "qwen2.5",
+		}},
+	}
+
+	p, err := NewFor(cfg, "local-llm")
+	if err != nil {
+		t.Fatalf("NewFor() error = %v", err)
+	}
+	if p == nil {
+		t.Fatal("NewFor() returned nil")
+	}
+}
+
 func TestNewOpenAIProviderUsesConfiguredBaseURL(t *testing.T) {
 	var gotPath string
 	var gotAuth string

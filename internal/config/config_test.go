@@ -42,3 +42,57 @@ func TestLoadReadsBaseURLEnvironmentOverride(t *testing.T) {
 		t.Fatalf("BaseURL = %q, want %q", cfg.BaseURL, "http://localhost:11434/v1")
 	}
 }
+
+func TestLoadReadsProvidersArray(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	configDir := filepath.Join(home, ".cometmind")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	content := `provider = "local-llm"
+model = "qwen2.5"
+base_url = "http://localhost:11434/v1"
+max_tokens = 4096
+max_steps = 25
+
+[[providers]]
+id = "local-llm"
+name = "Local LLM"
+method = "openai-compatible"
+base_url = "http://localhost:11434/v1"
+api_key = "ignored"
+model = "qwen2.5"
+
+[[providers]]
+id = "anthropic"
+name = "Anthropic"
+method = "anthropic"
+base_url = "https://api.anthropic.com"
+api_key = "sk-ant-123"
+model = "claude-sonnet-4-5"
+`
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if len(cfg.Providers) != 2 {
+		t.Fatalf("len(Providers) = %d, want 2", len(cfg.Providers))
+	}
+	if cfg.FindProvider("local-llm") == nil {
+		t.Fatal("expected to find provider 'local-llm'")
+	}
+	anthropic := cfg.FindProvider("anthropic")
+	if anthropic == nil {
+		t.Fatal("expected to find provider 'anthropic'")
+	}
+	if anthropic.APIKey != "sk-ant-123" {
+		t.Fatalf("anthropic APIKey = %q, want %q", anthropic.APIKey, "sk-ant-123")
+	}
+}

@@ -72,8 +72,7 @@ func (r *Runtime) WorkspaceForCommand(ctx context.Context, explicitWorkspace str
 func (r *Runtime) ProviderForSession(sess session.Session) (cometsdk.Provider, error) {
 	cfg := *r.Config
 	cfg.Model = sess.ModelID
-	cfg.Provider = sess.ProviderID
-	return provider.New(&cfg)
+	return provider.NewFor(&cfg, sess.ProviderID)
 }
 
 // RunnerFor returns an agent runner wired for a specific session and workspace.

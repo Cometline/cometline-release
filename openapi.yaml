@@ -3,7 +3,7 @@ info:
   title: CometMind Local Serve API
   version: 0.1.0
   description: |
-    Minimal local HTTP + SSE surface for CometMind Phase 8.
+    Minimal local HTTP + SSE surface for CometMind Phase 0.
 
     v1 is localhost-only, has no app-layer auth, keeps `/api/v1` path versioning,
     and exposes only the first serve slice endpoints.
