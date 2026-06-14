@@ -60,6 +60,7 @@
 	let thinkingForAssistant = $derived.by(() => {
 		const map = new Map<string, ThinkingBlock>();
 		const reasoningOnlyIds = new Set<string>();
+		const toolIdsInBuffer = new Set<string>();
 		let buffer: ThinkingBlock = { tools: [] };
 
 		for (const item of threadItems) {
@@ -71,6 +72,7 @@
 				if (item.text.trim()) {
 					const reasoning = item.reasoning ?? buffer.reasoning;
 					map.set(item.id, { reasoning, tools: buffer.tools });
+					buffer.tools.forEach((tool) => toolIdsInBuffer.add(tool.id));
 					buffer = { tools: [] };
 				} else if (item.reasoning?.text.trim() || item.reasoning?.pending) {
 					buffer.reasoning = item.reasoning;
@@ -81,11 +83,15 @@
 			}
 		}
 
-		return { map, reasoningOnlyIds };
+		return { map, reasoningOnlyIds, toolIdsInBuffer };
 	});
 
 	function isReasoningOnlyInBuffer(item: Extract<ChatItem, { type: 'assistant' }>) {
 		return thinkingForAssistant.reasoningOnlyIds.has(item.id);
+	}
+
+	function isToolInBuffer(item: Extract<ChatItem, { type: 'tool' }>) {
+		return thinkingForAssistant.toolIdsInBuffer.has(item.id);
 	}
 
 	function thinkingExpanded(id: string) {
@@ -466,7 +472,7 @@
 					{/if}
 					{@render assistantStack(item)}
 				</div>
-			{:else if item.type === 'tool'}
+			{:else if item.type === 'tool' && !isToolInBuffer(item)}
 				<div
 					class="row tool-row gap-2.5 md:gap-3 lg:gap-4"
 					class:continuation-row={!startsSpeakerRun(index, 'assistant')}

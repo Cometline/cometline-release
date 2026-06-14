@@ -132,6 +132,7 @@ let mainWindow = null;
 let cometMindProcess = null;
 let stoppingForQuit = false;
 let stoppedForQuit = false;
+let relaunchForUpdate = false;
 let updateCheckTimer = null;
 let windowButtonAnimationTimer = null;
 let windowButtonPosition = { x: 16, y: 17 };
@@ -996,6 +997,17 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', async (event) => {
 	if (stoppedForQuit || stoppingForQuit) return;
+
+	if (relaunchForUpdate) {
+		// quitAndInstall() is driving the quit; don't intercept it so the
+		// updater can relaunch the app after installation.
+		if (updateCheckTimer) {
+			clearInterval(updateCheckTimer);
+			updateCheckTimer = null;
+		}
+		return;
+	}
+
 	event.preventDefault();
 	stoppingForQuit = true;
 	if (updateCheckTimer) {
@@ -1073,11 +1085,12 @@ ipcMain.handle('cometline:check-for-updates', async () => {
 	return updateState;
 });
 
-ipcMain.handle('cometline:install-update', () => {
+ipcMain.handle('cometline:install-update', async () => {
 	if (updateState.status !== 'ready') return false;
-	// quitAndInstall() triggers app quit, which runs the before-quit handler
-	// (graceful CometMind shutdown + stoppingForQuit=true). That flag lets the
-	// macOS hide-on-close handler actually close the window for the relaunch.
-	setImmediate(() => autoUpdater.quitAndInstall());
+	relaunchForUpdate = true;
+	// Stop the sidecar gracefully before the updater takes over the quit flow.
+	await stopCometMind();
+	// isSilent=true, isForceRunAfter=true so the updater relaunches the app.
+	setImmediate(() => autoUpdater.quitAndInstall(true, true));
 	return true;
 });

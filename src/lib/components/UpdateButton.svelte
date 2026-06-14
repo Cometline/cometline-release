@@ -79,9 +79,9 @@
 		padding: 8px 12px;
 		font-size: 0.8125rem;
 		font-weight: 500;
-		color: var(--text-primary, #f5f5f5);
-		background: var(--panel-bg, #1c1c1e);
-		border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.12));
+		color: var(--text-main, #1f2933);
+		background: var(--panel-bg, #ffffff);
+		border: 1px solid var(--border-soft, #e5e7eb);
 		border-radius: var(--radius-pill, 999px);
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
 		cursor: default;
