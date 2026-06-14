@@ -23,6 +23,13 @@
 	// per-session work live in onMount instead of sessionId-watching effects.
 	let { sessionId, bootMessage = '' }: { sessionId: string; bootMessage?: string } = $props();
 
+	$effect.pre(() => {
+		chatStore.bindSession(sessionId);
+		if (sessionStore.hasPendingMessage(sessionId)) return;
+		if (chatStore.isStreaming && chatStore.sessionID === sessionId) return;
+		void chatStore.loadTranscript(sessionId);
+	});
+
 	let chatHome = $state<HTMLDivElement | null>(null);
 	let userBubbleFlight = $state<UserBubbleFlight>();
 	let firstTurnFlight = $state<FirstTurnFlight>();
@@ -32,7 +39,9 @@
 	let queuedCount = $state(0);
 	let queuedMessages = $state<QueuedMessage[]>([]);
 
-	let hasVisibleConversation = $derived(chatStore.items.length > 0 || chatStore.isLoading);
+	let hasVisibleConversation = $derived(
+		chatStore.sessionID === sessionId && (chatStore.items.length > 0 || chatStore.isLoading)
+	);
 	let composerVariant = $derived<'hero' | 'dock'>(
 		shellStore.composerPhase === 'centered' ? 'hero' : 'dock'
 	);
@@ -92,11 +101,19 @@
 		const pending = sessionStore.takePendingMessage(sessionId);
 		if (pending) {
 			submit(pending);
-		} else if (!(chatStore.isStreaming && chatStore.sessionID === sessionId)) {
-			void chatStore.loadTranscript(sessionId).then(() => {
-				if (chatStore.items.length > 0) shellStore.dockComposer();
-				else shellStore.centerComposer();
-			});
+		} else {
+			void chatStore.loadTranscript(sessionId);
+		}
+	});
+
+	$effect(() => {
+		if (chatStore.sessionID !== sessionId) return;
+		if (firstTurnActive) return;
+
+		if (hasVisibleConversation) {
+			shellStore.dockComposer();
+		} else if (!chatStore.isLoading) {
+			shellStore.centerComposer();
 		}
 	});
 
@@ -162,7 +179,7 @@
 			class:docked={!heroLayout}
 			in:fade={firstTurnActive ? { duration: 0 } : THREAD_IN}
 		>
-			<ChatThread {awaitingFirstAssistant} {firstTurnFlightDone} />
+			<ChatThread {sessionId} {awaitingFirstAssistant} {firstTurnFlightDone} />
 		</div>
 	{/if}
 
@@ -234,6 +251,17 @@
 		position: static;
 		inset: unset;
 		padding: 0;
+	}
+
+	.chat-home.hero-layout .composer-wrapper {
+		position: relative;
+		bottom: auto;
+		left: auto;
+		transform: none;
+		width: 100%;
+		padding: 0 var(--chat-gutter);
+		display: flex;
+		justify-content: center;
 	}
 
 	.empty-region {

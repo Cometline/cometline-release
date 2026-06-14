@@ -32,6 +32,10 @@ function createSessionStore() {
 		pendingMessage = { sessionId, text };
 	}
 
+	function hasPendingMessage(sessionId: string) {
+		return pendingMessage?.sessionId === sessionId;
+	}
+
 	function takePendingMessage(sessionId: string): string | null {
 		if (pendingMessage?.sessionId !== sessionId) return null;
 		const text = pendingMessage.text;
@@ -52,6 +56,7 @@ function createSessionStore() {
 		updateSession,
 		removeSession,
 		queuePendingMessage,
+		hasPendingMessage,
 		takePendingMessage
 	};
 }

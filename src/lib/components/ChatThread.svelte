@@ -16,14 +16,20 @@
 	const TOOL_ROW_IN = { y: 8, duration: 200 };
 	const STATUS_ROW_IN = { y: 6, duration: 180 };
 	const FOLD_IN = { duration: 180 };
+	const TRANSCRIPT_IN = { duration: 220 };
 
 	let {
+		sessionId,
 		awaitingFirstAssistant = false,
 		firstTurnFlightDone = false
 	}: {
+		sessionId: string;
 		awaitingFirstAssistant?: boolean;
 		firstTurnFlightDone?: boolean;
 	} = $props();
+
+	let isInitialTranscriptPaint = $state(true);
+	let isSessionSynced = $derived(chatStore.sessionID === sessionId);
 
 	let scroller: HTMLDivElement;
 	let scrollFrame = 0;
@@ -35,6 +41,11 @@
 		threadItems.find((item) => item.type === 'assistant')?.id ?? null
 	);
 	let firstUserId = $derived(threadItems.find((item) => item.type === 'user')?.id ?? null);
+	let showMessages = $derived(
+		isSessionSynced &&
+			(threadItems.length > 0 || (awaitingFirstAssistant && !firstUserId))
+	);
+	let transcriptFadeIn = $derived(awaitingFirstAssistant ? { duration: 0 } : TRANSCRIPT_IN);
 	let firstAssistantItem = $derived(
 		threadItems.find((item) => item.type === 'assistant') as
 			| Extract<ChatItem, { type: 'assistant' }>
@@ -172,6 +183,10 @@
 		);
 	}
 
+	function rowIntro<T extends object>(transition: T) {
+		return isInitialTranscriptPaint || awaitingFirstAssistant ? undefined : transition;
+	}
+
 	function startsSpeakerRun(index: number, speaker: 'user' | 'assistant') {
 		for (let i = index - 1; i >= 0; i--) {
 			const previousSpeaker = speakerFor(chatStore.items[i]);
@@ -187,6 +202,22 @@
 	});
 
 	$effect(() => {
+		if (!isSessionSynced) {
+			isInitialTranscriptPaint = true;
+			return;
+		}
+		if (chatStore.isLoading) {
+			isInitialTranscriptPaint = true;
+			return;
+		}
+		if (threadItems.length === 0) return;
+		const frame = requestAnimationFrame(() => {
+			isInitialTranscriptPaint = false;
+		});
+		return () => cancelAnimationFrame(frame);
+	});
+
+	$effect(() => {
 		void scrollKey;
 		if (scrollFrame) cancelAnimationFrame(scrollFrame);
 		scrollFrame = requestAnimationFrame(() => {
@@ -195,7 +226,8 @@
 				if (!scroller) return;
 				scroller.scrollTo({
 					top: scroller.scrollHeight,
-					behavior: chatStore.isStreaming ? 'auto' : 'smooth'
+					behavior:
+						chatStore.isStreaming || isInitialTranscriptPaint ? 'auto' : 'smooth'
 				});
 			});
 		});
@@ -243,14 +275,9 @@
 
 <div class="thread" bind:this={scroller} aria-live="polite">
 	<div class="thread-inner">
-		{#if chatStore.isLoading && chatStore.items.length === 0}
-			<div class="loading" transition:fade={{ duration: 140 }}>
-				<LoaderCircle size={15} class="spin" />
-				<span>Loading conversation…</span>
-			</div>
-		{/if}
-
-		{#if awaitingFirstAssistant && !firstUserId}
+		{#if showMessages}
+			<div class="thread-messages" in:fade={transcriptFadeIn}>
+				{#if awaitingFirstAssistant && !firstUserId}
 			<div
 				class="row assistant-row gap-2.5 md:gap-3 lg:gap-4 flight-placeholder"
 				aria-hidden="true"
@@ -315,7 +342,7 @@
 				<div
 					class="row assistant-row gap-2.5 md:gap-3 lg:gap-4"
 					class:continuation-row={!startsSpeakerRun(index, 'assistant')}
-					in:fly={ASSISTANT_ROW_IN}
+					in:fly={rowIntro(ASSISTANT_ROW_IN)}
 				>
 					{#if startsSpeakerRun(index, 'assistant')}
 						<div
@@ -340,7 +367,7 @@
 				<div
 					class="row tool-row gap-2.5 md:gap-3 lg:gap-4"
 					class:continuation-row={!startsSpeakerRun(index, 'assistant')}
-					in:fly={TOOL_ROW_IN}
+					in:fly={rowIntro(TOOL_ROW_IN)}
 				>
 					<div
 						class="avatar-gutter size-9 shrink-0 md:size-10 lg:size-11 xl:size-12"
@@ -395,9 +422,9 @@
 					</div>
 				</div>
 			{:else if item.type === 'status'}
-				<div class="status" in:fly={STATUS_ROW_IN}>{usageText(item)}</div>
+				<div class="status" in:fly={rowIntro(STATUS_ROW_IN)}>{usageText(item)}</div>
 			{:else if item.type === 'error'}
-				<div class="row event-row" in:fly={TOOL_ROW_IN}>
+				<div class="row event-row" in:fly={rowIntro(TOOL_ROW_IN)}>
 					<div class="event-card error-card">
 						<div class="event-title"><TriangleAlert size={14} /><span>Error</span></div>
 						<p>{item.text}</p>
@@ -405,6 +432,8 @@
 				</div>
 			{/if}
 		{/each}
+			</div>
+		{/if}
 	</div>
 </div>
 
@@ -426,6 +455,12 @@
 		--chat-assistant-column: calc(var(--chat-content-column) * var(--chat-assistant-fill));
 		width: min(var(--chat-thread-width), 100%);
 		margin: 0 auto;
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+	}
+
+	.thread-messages {
 		display: flex;
 		flex-direction: column;
 		gap: 14px;
@@ -466,7 +501,6 @@
 		}
 	}
 
-	.loading,
 	.status {
 		align-self: center;
 		display: inline-flex;

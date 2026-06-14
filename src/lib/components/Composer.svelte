@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { fade, fly } from 'svelte/transition';
 	import { Check, ChevronDown, Send, Sparkles, Square, X } from '@lucide/svelte';
 	import type { QueuedMessage } from '$lib/actions/chat-turn-queue';
@@ -14,7 +15,8 @@
 		queuedMessages = [],
 		waitingForReply = false,
 		turnProcessing = false,
-		variant = 'dock'
+		variant = 'dock',
+		autofocus = true
 	}: {
 		onSend: (text: string) => void;
 		onStop?: () => void;
@@ -26,9 +28,11 @@
 		waitingForReply?: boolean;
 		turnProcessing?: boolean;
 		variant?: 'hero' | 'dock';
+		autofocus?: boolean;
 	} = $props();
 
 	let value = $state('');
+	let textarea = $state<HTMLTextAreaElement | null>(null);
 	let modelOpen = $state(false);
 	let modelSearch = $state('');
 	let queuePreviewOpen = $state(false);
@@ -66,6 +70,11 @@
 			group.options.push(option);
 		}
 		return groups;
+	});
+
+	$effect(() => {
+		if (!autofocus) return;
+		void focusInput();
 	});
 
 	$effect(() => {
@@ -125,6 +134,11 @@
 	function removeQueued(id: string) {
 		onRemoveQueued?.(id);
 	}
+
+	async function focusInput() {
+		await tick();
+		textarea?.focus({ preventScroll: true });
+	}
 </script>
 
 <div class="composer" class:hero={variant === 'hero'}>
@@ -182,6 +196,7 @@
 	{/if}
 
 	<textarea
+		bind:this={textarea}
 		bind:value
 		{rows}
 		placeholder={waitingForReply
