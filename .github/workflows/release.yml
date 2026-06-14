@@ -44,8 +44,14 @@ jobs:
 
       - name: Sync package version from tag
         run: |
+          set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
-          pnpm --dir cometline version "$VERSION" --no-git-tag-version
+          CURRENT="$(node -p "require('./cometline/package.json').version")"
+          if [ "$CURRENT" = "$VERSION" ]; then
+            echo "package.json already at $VERSION; skipping version bump"
+          else
+            pnpm --dir cometline version "$VERSION" --no-git-tag-version
+          fi
 
       - name: Configure GitHub release target
         run: |
