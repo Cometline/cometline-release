@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import EmptyChatState from '$lib/components/EmptyChatState.svelte';
 	import Composer from '$lib/components/Composer.svelte';
+	import HeroComposerFrame from '$lib/components/HeroComposerFrame.svelte';
 	import { sessionStore } from '$lib/stores/session.svelte';
 	import { createSession } from '$lib/client/cometmind';
 	import { connectionState } from '$lib/stores/runtime.svelte';
@@ -43,7 +44,9 @@
 	</div>
 
 	<div class="composer-wrapper centered">
-		<Composer {onSend} disabled={connectionState.status !== 'ready'} variant="hero" />
+		<HeroComposerFrame>
+			<Composer {onSend} disabled={connectionState.status !== 'ready'} variant="hero" />
+		</HeroComposerFrame>
 	</div>
 </div>
 
@@ -75,7 +78,7 @@
 		justify-content: center;
 	}
 
-	.chat-home.hero-layout .composer-wrapper :global(.composer) {
+	.chat-home.hero-layout .composer-wrapper :global(.hero-composer-frame) {
 		width: min(var(--chat-composer-width), 100%);
 		max-width: 100%;
 	}

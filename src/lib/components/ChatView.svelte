@@ -3,6 +3,7 @@
 	import { fade } from 'svelte/transition';
 	import EmptyChatState from '$lib/components/EmptyChatState.svelte';
 	import Composer from '$lib/components/Composer.svelte';
+	import HeroComposerFrame from '$lib/components/HeroComposerFrame.svelte';
 	import ChatThread from '$lib/components/ChatThread.svelte';
 	import FirstTurnFlight from '$lib/components/FirstTurnFlight.svelte';
 	import UserBubbleFlight from '$lib/components/UserBubbleFlight.svelte';
@@ -41,6 +42,7 @@
 				(firstTurnActive && !firstTurnFlightDone))
 	);
 
+	let heroFrameExiting = $state(false);
 	let turnProcessing = $state(false);
 
 	function syncQueueState() {
@@ -102,6 +104,7 @@
 		if (!hasVisibleConversation && !firstTurnActive) {
 			awaitingFirstAssistant = false;
 			firstTurnFlightDone = false;
+			heroFrameExiting = false;
 		}
 	});
 
@@ -177,25 +180,36 @@
 		stageUser={(text) => chatStore.stageUser(text)}
 		revealStagedUser={() => chatStore.revealStagedUser()}
 		onActiveChange={(active) => (firstTurnActive = active)}
-		onPrepareFlight={() => shellStore.dockComposer()}
+		onPrepareFlight={() => {
+			if (composerVariant === 'hero') heroFrameExiting = true;
+			shellStore.dockComposer();
+		}}
 		onFlightDoneChange={(done) => {
 			firstTurnFlightDone = done;
 		}}
 	/>
 
 	<div class="composer-wrapper" class:centered={shellStore.composerPhase === 'centered'}>
-		<Composer
-			onSend={submit}
-			onStop={stop}
-			onRemoveQueued={removeQueuedMessage}
-			disabled={connectionState.status !== 'ready'}
-			streaming={chatStore.isStreaming}
-			{queuedCount}
-			{queuedMessages}
-			waitingForReply={chatStore.isStreaming || firstTurnActive}
-			turnProcessing={turnProcessing}
-			variant={composerVariant}
-		/>
+		<HeroComposerFrame
+			active={composerVariant === 'hero' && !heroFrameExiting}
+			exiting={heroFrameExiting}
+			onExitComplete={() => {
+				heroFrameExiting = false;
+			}}
+		>
+			<Composer
+				onSend={submit}
+				onStop={stop}
+				onRemoveQueued={removeQueuedMessage}
+				disabled={connectionState.status !== 'ready'}
+				streaming={chatStore.isStreaming}
+				{queuedCount}
+				{queuedMessages}
+				waitingForReply={chatStore.isStreaming || firstTurnActive}
+				turnProcessing={turnProcessing}
+				variant={composerVariant}
+			/>
+		</HeroComposerFrame>
 	</div>
 </div>
 
@@ -259,6 +273,7 @@
 		padding: 0 var(--chat-gutter);
 		display: flex;
 		justify-content: center;
+		overflow: visible;
 		transition:
 			bottom var(--duration-flight) var(--ease-smooth),
 			transform var(--duration-flight) var(--ease-smooth);
@@ -274,7 +289,7 @@
 		transform: none;
 	}
 
-	.composer-wrapper :global(.composer) {
+	.composer-wrapper :global(.hero-composer-frame) {
 		width: min(var(--chat-composer-width), 100%);
 		max-width: 100%;
 	}
