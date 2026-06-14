@@ -58,20 +58,33 @@ jobs:
           fs.writeFileSync(path, `${JSON.stringify(pkg, null, '\t')}\n`);
           NODE
 
-      - name: Remove any pre-existing draft for this tag
+      - name: Remove stale releases for this tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: |
-          set -e
-          for id in $(gh api -H "Accept: application/vnd.github+json" \
-              "/repos/${{ github.repository }}/releases?per_page=100" \
-              --jq '.[] | select(.tag_name == env.TAG) | .id'); do
-            echo "Deleting stale release $id for tag $TAG"
-            gh release delete "$id" --repo "${{ github.repository }}" --yes
-          done
+          set -euo pipefail
+          # electron-builder used to create partial DRAFT releases whose tag is
+          # not yet attached (they appear as "untagged-*"). Delete both the
+          # properly tagged release for this tag and any untagged drafts whose
+          # assets belong to this version so the run starts from a clean slate.
+          VERSION="${TAG#v}"
+          gh api -H "Accept: application/vnd.github+json" \
+            "/repos/${{ github.repository }}/releases?per_page=100" \
+            --jq '.[] | [.id, .tag_name, .draft, ((.assets // []) | map(.name) | join(","))] | @tsv' \
+            | while IFS=$'\t' read -r id tag draft assets; do
+                if [ "$tag" = "$TAG" ]; then
+                  echo "Deleting existing release $id (tag $tag)"
+                  gh api -X DELETE "/repos/${{ github.repository }}/releases/$id"
+                elif [ "$draft" = "true" ] && printf '%s' "$assets" | grep -q "$VERSION"; then
+                  echo "Deleting stale untagged draft $id (assets: $assets)"
+                  gh api -X DELETE "/repos/${{ github.repository }}/releases/$id"
+                fi
+              done
+          # Drop the git tag ref on any leftover draft so a fresh release can be created.
+          true
 
-      - name: Build, sign, notarize, and publish
+      - name: Build, sign, and notarize
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -79,18 +92,49 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: pnpm --dir cometline run release:mac
+        run: pnpm --dir cometline run build:mac
 
-      - name: Verify updater metadata exists
-        run: test -f cometline/dist/latest-mac.yml
+      - name: Verify build artifacts
+        run: |
+          set -euo pipefail
+          test -f cometline/dist/latest-mac.yml
+          ls -lh cometline/dist/*.dmg cometline/dist/*.zip cometline/dist/*.blockmap
+          # Fail early if the large binaries are missing/empty.
+          for f in cometline/dist/*.dmg cometline/dist/*.zip; do
+            test -s "$f"
+          done
 
-      - name: Upload release artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: cometline-macos-${{ github.ref_name }}
-          path: |
-            cometline/dist/*.dmg
-            cometline/dist/*.zip
-            cometline/dist/*.blockmap
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Create a NON-draft release and upload every asset synchronously.
+          # gh release create waits for each upload to finish, unlike
+          # electron-builder's fire-and-forget --publish always.
+          gh release create "$TAG" \
+            --repo "${{ github.repository }}" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --generate-notes \
+            cometline/dist/*.dmg \
+            cometline/dist/*.dmg.blockmap \
+            cometline/dist/*.zip \
+            cometline/dist/*.zip.blockmap \
             cometline/dist/latest-mac.yml
-          if-no-files-found: error
+
+      - name: Verify release assets uploaded
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ASSETS="$(gh release view "$TAG" --repo "${{ github.repository }}" --json assets --jq '.assets[].name')"
+          echo "Uploaded assets:"
+          echo "$ASSETS"
+          for required in latest-mac.yml; do
+            echo "$ASSETS" | grep -q "$required" || { echo "Missing $required"; exit 1; }
+          done
+          echo "$ASSETS" | grep -q '\.dmg$' || { echo "Missing .dmg"; exit 1; }
+          echo "$ASSETS" | grep -q '\-mac\.zip$' || { echo "Missing -mac.zip"; exit 1; }
