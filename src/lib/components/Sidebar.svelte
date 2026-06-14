@@ -11,6 +11,7 @@
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { modelStore } from '$lib/stores/model.svelte';
 	import { shellStore } from '$lib/stores/shell.svelte';
+	import { isNarrowViewport } from '$lib/layout/narrow-viewport';
 
 	let {
 		workspacePath = '/',
@@ -25,14 +26,22 @@
 		skipDeleteConfirm = localStorage.getItem('cometline.skipDeleteConfirm') === 'true';
 	});
 
+	function closeSidebarIfNarrow() {
+		if (isNarrowViewport()) {
+			shellStore.closeSidebar();
+		}
+	}
+
 	function newChat() {
 		startNewChat();
+		closeSidebarIfNarrow();
 	}
 
 	function selectSession(session: Session) {
 		sessionStore.selectSession(session);
 		modelStore.selectFromSession(session);
 		void goto(`/session/${session.id}`);
+		closeSidebarIfNarrow();
 	}
 
 	async function removeSession(session: Session) {
@@ -396,5 +405,12 @@
 	.confirm-delete {
 		background: #b42318;
 		color: white;
+	}
+
+	@media (max-width: 900px) {
+		.sidebar:not(.collapsed) .sidebar-content {
+			width: auto;
+			max-width: none;
+		}
 	}
 </style>

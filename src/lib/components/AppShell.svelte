@@ -5,6 +5,7 @@
 	import SettingsModal from './SettingsModal.svelte';
 	import { shellStore } from '$lib/stores/shell.svelte';
 	import { startNewChat } from '$lib/actions/new-chat';
+	import { narrowViewportQuery } from '$lib/layout/narrow-viewport';
 
 	let {
 		children,
@@ -12,23 +13,10 @@
 	}: { children: import('svelte').Snippet; workspacePath?: string } = $props();
 
 	onMount(() => {
-		function sidebarAutoCollapseQuery() {
-			const max = getComputedStyle(document.documentElement)
-				.getPropertyValue('--sidebar-auto-collapse-max')
-				.trim();
-			return window.matchMedia(`(max-width: ${max || '900px'})`);
+		// Narrow viewports start with the sidebar closed so chat gets full width.
+		if (narrowViewportQuery().matches) {
+			shellStore.closeSidebar();
 		}
-
-		function syncSidebarForViewport() {
-			if (sidebarAutoCollapseQuery().matches && shellStore.sidebarOpen) {
-				shellStore.closeSidebar();
-			}
-		}
-
-		const narrow = sidebarAutoCollapseQuery();
-		syncSidebarForViewport();
-		narrow.addEventListener('change', syncSidebarForViewport);
-		window.addEventListener('resize', syncSidebarForViewport);
 
 		function onKeydown(event: KeyboardEvent) {
 			if (event.key === 'Escape' && shellStore.settingsOpen) {
@@ -57,8 +45,6 @@
 		window.addEventListener('keydown', onKeydown);
 		return () => {
 			window.removeEventListener('keydown', onKeydown);
-			narrow.removeEventListener('change', syncSidebarForViewport);
-			window.removeEventListener('resize', syncSidebarForViewport);
 		};
 	});
 </script>
@@ -92,5 +78,22 @@
 		flex-direction: column;
 		position: relative;
 		overflow: hidden;
+	}
+
+	/* Keep chat full-width; open sidebar becomes a full-window overlay. */
+	@media (max-width: 900px) {
+		.app-shell {
+			--active-sidebar-width: 0px;
+		}
+
+		.app-shell:not(.sidebar-collapsed) :global(.sidebar:not(.collapsed)) {
+			position: fixed;
+			inset: 0;
+			width: 100vw;
+			height: 100vh;
+			z-index: 50;
+			flex-shrink: 0;
+			border-right: none;
+		}
 	}
 </style>
