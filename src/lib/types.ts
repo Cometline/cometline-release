@@ -25,6 +25,11 @@ export interface CreateSessionRequest {
 	provider_id?: string;
 }
 
+export interface Workspace {
+	id: string;
+	path: string;
+}
+
 export interface PostMessageRequest {
 	text: string;
 }

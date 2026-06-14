@@ -10,6 +10,7 @@
 	import { modelStore } from '$lib/stores/model.svelte';
 	import { shellStore } from '$lib/stores/shell.svelte';
 	import { chatStore } from '$lib/stores/chat.svelte';
+	import { FolderOpen } from '@lucide/svelte';
 
 	let bootMessage = $derived(shellStore.bootMessage);
 
@@ -20,6 +21,10 @@
 		chatStore.clear();
 		shellStore.centerComposer();
 	});
+
+	function openSettings() {
+		shellStore.openSettings();
+	}
 
 	async function onSend(text: string) {
 		const selectedModel = modelStore.selected;
@@ -39,7 +44,13 @@
 	<div class="empty-region">
 		<EmptyChatState />
 		{#if bootMessage}
-			<p class="boot-error">{bootMessage}</p>
+			<div class="boot-error-wrap">
+				<p class="boot-error">{bootMessage}</p>
+				<button class="set-workspace-button" onclick={openSettings}>
+					<FolderOpen size={14} />
+					Set workspace
+				</button>
+			</div>
 		{/if}
 	</div>
 
@@ -91,13 +102,40 @@
 		padding: 0;
 	}
 
+	.boot-error-wrap {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 10px;
+		margin-top: 18px;
+	}
+
 	.boot-error {
-		margin: 18px 0 0;
+		margin: 0;
 		max-width: 520px;
 		font-size: 12px;
 		line-height: 1.5;
 		color: #b42318;
 		text-align: center;
+	}
+
+	.set-workspace-button {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 7px 11px;
+		font: inherit;
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--text-main);
+		background: rgba(15, 23, 42, 0.04);
+		border: none;
+		border-radius: 10px;
+		cursor: pointer;
+	}
+
+	.set-workspace-button:hover {
+		background: rgba(15, 23, 42, 0.08);
 	}
 
 	@media (max-width: 900px) {

@@ -3,6 +3,7 @@
 	import {
 		Check,
 		Download,
+		FolderOpen,
 		Info,
 		Keyboard,
 		LoaderCircle,
@@ -187,6 +188,14 @@
 			console.error('Failed to install update:', error);
 			installingUpdate = false;
 		}
+	}
+
+	async function changeWorkspace() {
+		const api = window.electronAPI;
+		if (!api?.selectWorkspacePath) return;
+		const selected = await api.selectWorkspacePath();
+		if (!selected) return;
+		shellStore.setWorkspacePath(selected);
 	}
 
 	function updateProvider(providerId: string, patch: Partial<ProviderConfig>) {
@@ -618,6 +627,18 @@
 						<div class="about-row">
 							<span class="about-label">Version</span>
 							<span class="about-value">{appVersion || '—'}</span>
+						</div>
+						<div class="about-row workspace-row">
+							<div class="workspace-info">
+								<span class="about-label">Workspace</span>
+								<span class="about-value workspace-path" title={shellStore.workspacePath}>
+									{shellStore.workspacePath}
+								</span>
+							</div>
+							<button class="secondary" onclick={changeWorkspace}>
+								<FolderOpen size={14} />
+								Change
+							</button>
 						</div>
 						<div class="about-row update-row">
 							<div class="update-info">
@@ -1211,6 +1232,23 @@
 
 	.update-status.update-ready {
 		color: #027a48;
+	}
+
+	.workspace-row {
+		align-items: flex-start;
+	}
+
+	.workspace-info {
+		display: grid;
+		gap: 6px;
+		min-width: 0;
+	}
+
+	.workspace-path {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		max-width: 420px;
 	}
 
 	@media (max-width: 780px) {

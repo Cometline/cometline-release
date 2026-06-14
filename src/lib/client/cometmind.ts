@@ -4,7 +4,8 @@ import type {
 	Session,
 	SessionListResponse,
 	StreamEvent,
-	TranscriptResponse
+	TranscriptResponse,
+	Workspace
 } from '$lib/types';
 import { createSSEParser } from '$lib/sse/parser';
 
@@ -23,6 +24,13 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 		throw new Error(`${res.status}: ${body || res.statusText}`);
 	}
 	return res.json() as Promise<T>;
+}
+
+export function ensureWorkspace(workspacePath: string): Promise<Workspace> {
+	return api<Workspace>('/api/v1/workspaces', {
+		method: 'POST',
+		body: JSON.stringify({ workspace_path: workspacePath })
+	});
 }
 
 export function createSession(req: CreateSessionRequest): Promise<Session> {

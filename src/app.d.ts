@@ -68,13 +68,15 @@ declare global {
 	interface Window {
 		electronAPI?: {
 			restartCometMind?: () => void;
-			getWorkspacePath?: () => Promise<string>;
 			getProviderSettings?: () => Promise<ProviderSettings>;
 			fetchProviderModels?: (config: ProviderConfig) => Promise<string[]>;
 			saveProviderSettings?: (settings: ProviderSettings) => Promise<ProviderSettings>;
 			setSidebarOpen?: (state: SidebarChromeState) => void;
 			getFullScreen?: () => Promise<boolean>;
 			onFullScreenChange?: (callback: (isFullScreen: boolean) => void) => () => void;
+			getWorkspacePath?: () => Promise<string>;
+			selectWorkspacePath?: () => Promise<string | null>;
+			setWorkspacePath?: (workspacePath: string) => Promise<string>;
 			getAppVersion?: () => Promise<string>;
 			getUpdateState?: () => Promise<UpdateState>;
 			checkForUpdates?: () => Promise<UpdateState>;

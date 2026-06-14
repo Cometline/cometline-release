@@ -3,6 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
 	restartCometMind: () => ipcRenderer.send('cometmind:restart'),
 	getWorkspacePath: () => ipcRenderer.invoke('cometline:get-workspace-path'),
+	selectWorkspacePath: () => ipcRenderer.invoke('cometline:select-workspace-path'),
+	setWorkspacePath: (workspacePath) => ipcRenderer.invoke('cometline:set-workspace-path', workspacePath),
 	getProviderSettings: () => ipcRenderer.invoke('cometline:get-provider-settings'),
 	fetchProviderModels: (config) => ipcRenderer.invoke('cometline:fetch-provider-models', config),
 	saveProviderSettings: (settings) =>

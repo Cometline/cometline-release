@@ -7,14 +7,14 @@
 	import { sessionStore } from '$lib/stores/session.svelte';
 	import { shellStore } from '$lib/stores/shell.svelte';
 	import { heroComposerCssVars } from '$lib/hero-composer-appearance';
-	import { listSessions } from '$lib/client/cometmind';
+	import { ensureWorkspace, listSessions } from '$lib/client/cometmind';
 
 	let { children } = $props();
 
 	onMount(() => {
 		connectionState.startPolling();
 		void settingsStore.load();
-		void initialize();
+		void initializeWorkspace();
 		return () => connectionState.stopPolling();
 	});
 
@@ -26,10 +26,27 @@
 		}
 	});
 
-	async function initialize() {
+	$effect(() => {
+		const workspacePath = shellStore.workspacePath;
+		if (workspacePath && workspacePath !== '/') {
+			void loadSessions(workspacePath);
+		}
+	});
+
+	async function initializeWorkspace() {
 		try {
 			const workspacePath = (await window.electronAPI?.getWorkspacePath?.()) ?? '/';
 			shellStore.setWorkspacePath(workspacePath);
+		} catch (err) {
+			shellStore.setBootMessage(
+				err instanceof Error ? err.message : 'Failed to initialize workspace'
+			);
+		}
+	}
+
+	async function loadSessions(workspacePath: string) {
+		try {
+			await ensureWorkspace(workspacePath);
 			const result = await listSessions(workspacePath);
 			sessionStore.setSessions(result.sessions);
 			shellStore.setBootMessage('');

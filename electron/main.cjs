@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, protocol, net } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, protocol, net } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const { spawn } = require('child_process');
@@ -551,14 +551,57 @@ function providerEnv() {
 	return env;
 }
 
+function getWorkspaceStoragePath() {
+	const dir = path.join(os.homedir(), '.cometmind');
+	if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+	return path.join(dir, 'cometline-workspace.json');
+}
+
+function readStoredWorkspacePath() {
+	try {
+		const raw = fs.readFileSync(getWorkspaceStoragePath(), 'utf8');
+		const parsed = JSON.parse(raw);
+		const stored = String(parsed?.workspacePath || '').trim();
+		if (stored && fs.existsSync(stored)) return path.resolve(stored);
+	} catch {
+		// Fall through to defaults.
+	}
+	return '';
+}
+
+function writeStoredWorkspacePath(workspacePath) {
+	const clean = path.resolve(workspacePath);
+	fs.writeFileSync(getWorkspaceStoragePath(), JSON.stringify({ workspacePath: clean }, null, 2));
+	fs.chmodSync(getWorkspaceStoragePath(), 0o600);
+	return clean;
+}
+
+function getDefaultWorkspacePath() {
+	const defaultPath = path.join(os.homedir(), 'Cometline');
+	if (!fs.existsSync(defaultPath)) {
+		fs.mkdirSync(defaultPath, { recursive: true });
+	}
+	return defaultPath;
+}
+
 function getWorkspacePath() {
 	if (process.env.COMETMIND_WORKSPACE_PATH) {
 		return path.resolve(process.env.COMETMIND_WORKSPACE_PATH);
 	}
-	if (app.isPackaged) {
-		return os.homedir();
-	}
-	return path.resolve(__dirname, '..', '..');
+	const stored = readStoredWorkspacePath();
+	if (stored) return stored;
+	return getDefaultWorkspacePath();
+}
+
+async function selectWorkspacePath() {
+	const window = BrowserWindow.getFocusedWindow();
+	const result = await dialog.showOpenDialog(window || undefined, {
+		properties: ['openDirectory', 'createDirectory'],
+		buttonLabel: 'Select workspace',
+		title: 'Choose a workspace folder'
+	});
+	if (result.canceled || result.filePaths.length === 0) return null;
+	return writeStoredWorkspacePath(result.filePaths[0]);
 }
 
 function getAppIconPath() {
@@ -993,6 +1036,13 @@ ipcMain.handle('cometline:get-fullscreen', () =>
 );
 
 ipcMain.handle('cometline:get-workspace-path', () => getWorkspacePath());
+
+ipcMain.handle('cometline:select-workspace-path', selectWorkspacePath);
+
+ipcMain.handle('cometline:set-workspace-path', (_event, workspacePath) => {
+	const clean = writeStoredWorkspacePath(workspacePath);
+	return clean;
+});
 
 ipcMain.handle('cometline:get-provider-settings', () => readProviderSettings());
 
