@@ -114,3 +114,5 @@ Until FLIP or unified placement lands, small viewport / padding changes can rein
 3. Open session with existing messages → composer docked once after transcript load, no hero flash.
 4. Home → new session with pending message → first turn matches (2) after navigation.
 5. Composer width identical in hero and dock on the same breakpoint.
+
+See also: [session-switch-composer-stuck-hero.md](./session-switch-composer-stuck-hero.md) — loading dedupe + `onMount` `.then()` can call `centerComposer()` while a session transcript is still fetching; do not remove the session-route `$effect` dock without fixing load promise sharing.
