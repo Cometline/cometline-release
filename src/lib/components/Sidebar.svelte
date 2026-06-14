@@ -22,6 +22,12 @@
 	let skipDeleteConfirm = $state(false);
 	let rememberDeleteChoice = $state(false);
 	let searchQuery = $state('');
+	let searchInput = $state<HTMLInputElement | null>(null);
+
+	export function focusSearch() {
+		searchInput?.focus();
+		searchInput?.select();
+	}
 
 	onMount(() => {
 		skipDeleteConfirm = localStorage.getItem('cometline.skipDeleteConfirm') === 'true';
@@ -102,6 +108,7 @@
 					class="min-w-0 flex-1 border-0 bg-transparent p-0 text-xs text-text-main outline-none placeholder:text-text-soft"
 					placeholder="Search chats"
 					bind:value={searchQuery}
+					bind:this={searchInput}
 					spellcheck="false"
 					autocomplete="off"
 					aria-label="Search chats by title"

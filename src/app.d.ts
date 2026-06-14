@@ -28,7 +28,8 @@ declare global {
 		| 'newChat'
 		| 'stopResponse'
 		| 'sendMessage'
-		| 'closeSettings';
+		| 'closeSettings'
+		| 'focusSearch';
 
 	interface ShortcutBinding {
 		key: string;

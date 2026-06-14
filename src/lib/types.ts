@@ -63,7 +63,8 @@ export type ShortcutAction =
 	| 'newChat'
 	| 'stopResponse'
 	| 'sendMessage'
-	| 'closeSettings';
+	| 'closeSettings'
+	| 'focusSearch';
 
 export interface ShortcutBinding {
 	key: string;

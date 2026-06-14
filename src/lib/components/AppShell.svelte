@@ -17,6 +17,8 @@
 		workspacePath = '/'
 	}: { children: import('svelte').Snippet; workspacePath?: string } = $props();
 
+	let sidebarRef = $state<{ focusSearch: () => void } | null>(null);
+
 	onMount(() => {
 		// Narrow viewports start with the sidebar closed so chat gets full width.
 		if (narrowViewportQuery().matches) {
@@ -44,6 +46,12 @@
 			if (matchesShortcut(event, shortcuts.newChat)) {
 				event.preventDefault();
 				startNewChat();
+				return;
+			}
+			if (matchesShortcut(event, shortcuts.focusSearch)) {
+				event.preventDefault();
+				shellStore.openSidebar();
+				sidebarRef?.focusSearch();
 				return;
 			}
 		}
@@ -105,7 +113,7 @@
 	class:sidebar-collapsed={!shellStore.sidebarOpen}
 	class:is-fullscreen={shellStore.fullscreen}
 >
-	<Sidebar {workspacePath} collapsed={!shellStore.sidebarOpen} />
+	<Sidebar bind:this={sidebarRef} {workspacePath} collapsed={!shellStore.sidebarOpen} />
 	<main class="main shadow max-[900px]:shadow-none">
 		{@render children()}
 		<RuntimeOverlay />

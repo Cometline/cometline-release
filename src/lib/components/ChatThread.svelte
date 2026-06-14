@@ -35,22 +35,70 @@
 	let scrollFrame = 0;
 	let expandedReasoning = $state(new Set<string>());
 	let expandedToolOutput = $state(new Set<string>());
+	let expandedThinking = $state(new Set<string>());
 	let now = $state(Date.now());
 	let threadItems = $derived(chatStore.items);
-	let firstAssistantId = $derived(
-		threadItems.find((item) => item.type === 'assistant')?.id ?? null
+	let firstAssistantItem = $derived(
+		threadItems.find((item) =>
+			item.type === 'assistant' &&
+			(item.text.trim() || item.reasoning?.text.trim() || item.reasoning?.pending)
+		) as Extract<ChatItem, { type: 'assistant' }> | undefined
 	);
+	let firstAssistantId = $derived(firstAssistantItem?.id ?? null);
 	let firstUserId = $derived(threadItems.find((item) => item.type === 'user')?.id ?? null);
 	let showMessages = $derived(
 		isSessionSynced &&
 			(threadItems.length > 0 || (awaitingFirstAssistant && !firstUserId))
 	);
 	let transcriptFadeIn = $derived(awaitingFirstAssistant ? { duration: 0 } : TRANSCRIPT_IN);
-	let firstAssistantItem = $derived(
-		threadItems.find((item) => item.type === 'assistant') as
-			| Extract<ChatItem, { type: 'assistant' }>
-			| undefined
-	);
+
+	type ThinkingBlock = {
+		reasoning?: { text: string; pending?: boolean };
+		tools: Extract<ChatItem, { type: 'tool' }>[];
+	};
+
+	let thinkingForAssistant = $derived.by(() => {
+		const map = new Map<string, ThinkingBlock>();
+		const reasoningOnlyIds = new Set<string>();
+		let buffer: ThinkingBlock = { tools: [] };
+
+		for (const item of threadItems) {
+			if (item.type === 'user' || item.type === 'status' || item.type === 'error') {
+				buffer = { tools: [] };
+				continue;
+			}
+			if (item.type === 'assistant') {
+				if (item.text.trim()) {
+					const reasoning = item.reasoning ?? buffer.reasoning;
+					map.set(item.id, { reasoning, tools: buffer.tools });
+					buffer = { tools: [] };
+				} else if (item.reasoning?.text.trim() || item.reasoning?.pending) {
+					buffer.reasoning = item.reasoning;
+					reasoningOnlyIds.add(item.id);
+				}
+			} else if (item.type === 'tool') {
+				buffer.tools.push(item);
+			}
+		}
+
+		return { map, reasoningOnlyIds };
+	});
+
+	function isReasoningOnlyInBuffer(item: Extract<ChatItem, { type: 'assistant' }>) {
+		return thinkingForAssistant.reasoningOnlyIds.has(item.id);
+	}
+
+	function thinkingExpanded(id: string) {
+		return expandedThinking.has(id);
+	}
+
+	function toggleThinking(id: string) {
+		expandedThinking = toggleExpanded(expandedThinking, id);
+	}
+
+	function thinkingPending(block: ThinkingBlock) {
+		return block.reasoning?.pending === true || block.tools.some((tool) => tool.pending);
+	}
 	let scrollKey = $derived(
 		`${chatStore.isStreaming}:${threadItems
 			.map((item) => {
@@ -237,8 +285,64 @@
 	});
 </script>
 
+{#snippet thinkingBlock(block: ThinkingBlock, hostId: string)}
+	<div class="fold-panel thinking-panel">
+		<button
+			type="button"
+			class="fold-toggle thinking-toggle"
+			aria-expanded={thinkingExpanded(hostId)}
+			onclick={() => toggleThinking(hostId)}
+		>
+			<Brain size={13} />
+			<span>
+				{block.tools.length > 0 ? `Thinking · ${block.tools.length} tool${block.tools.length === 1 ? '' : 's'}` : 'Thinking'}
+			</span>
+			{#if thinkingPending(block)}
+				<LoaderCircle size={12} class="spin" />
+			{/if}
+			<ChevronDown size={13} class={thinkingExpanded(hostId) ? 'expanded' : ''} />
+		</button>
+		{#if thinkingExpanded(hostId)}
+			<div class="fold-body thinking-body" transition:slide={FOLD_IN}>
+				{#if block.reasoning}
+					<div class="thinking-reasoning">
+						<p>{block.reasoning.text || 'Thinking…'}</p>
+					</div>
+				{/if}
+				{#if block.tools.length > 0}
+					<div class="thinking-tools">
+						{#each block.tools as tool (tool.id)}
+							<div class="thinking-tool" class:error={!!tool.error} class:pending={tool.pending}>
+								<div class="thinking-tool-header">
+									<Terminal size={12} />
+									<span class="thinking-tool-name">{tool.toolName}</span>
+									{#if tool.pending}
+										<LoaderCircle size={11} class="spin" />
+									{:else}
+										<CircleCheck size={11} />
+									{/if}
+								</div>
+								{#if tool.output || tool.error}
+									<div class="thinking-tool-output">
+										{#if tool.output}<p>{tool.output}</p>{/if}
+										{#if tool.error}<p class="tool-error-text">{tool.error}</p>{/if}
+									</div>
+								{/if}
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{/if}
+	</div>
+{/snippet}
+
 {#snippet assistantStack(item: Extract<ChatItem, { type: 'assistant' }>)}
+	{@const block = item.text.trim() ? thinkingForAssistant.map.get(item.id) : undefined}
 	<div class="assistant-stack">
+		{#if block && (block.reasoning || block.tools.length > 0)}
+			{@render thinkingBlock(block, item.id)}
+		{/if}
 		{#if item.text}
 			<div class="bubble assistant-bubble">
 				{item.text}
@@ -247,8 +351,7 @@
 			<div class="bubble assistant-bubble pending">
 				<span class="typing"><span></span><span></span><span></span></span>
 			</div>
-		{/if}
-		{#if item.reasoning}
+		{:else if item.reasoning}
 			<div class="fold-panel">
 				<button
 					type="button"
@@ -338,7 +441,7 @@
 						{/if}
 					</div>
 				{/if}
-			{:else if item.type === 'assistant' && showAssistantRow(item) && firstAssistantInNormalList(item)}
+			{:else if item.type === 'assistant' && showAssistantRow(item) && firstAssistantInNormalList(item) && (!isReasoningOnlyInBuffer(item) || (awaitingFirstAssistant && item.id === firstAssistantId))}
 				<div
 					class="row assistant-row gap-2.5 md:gap-3 lg:gap-4"
 					class:continuation-row={!startsSpeakerRun(index, 'assistant')}
@@ -627,6 +730,92 @@
 		max-height: 220px;
 		overflow: auto;
 		scrollbar-gutter: stable;
+	}
+
+	.thinking-body {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.thinking-reasoning p {
+		margin: 0;
+		font-size: 12px;
+		line-height: 1.5;
+		white-space: pre-wrap;
+		word-break: break-word;
+		max-height: 220px;
+		overflow: auto;
+		scrollbar-gutter: stable;
+		color: var(--text-muted);
+	}
+
+	.thinking-tools {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.thinking-tool {
+		border: 1px solid var(--border-soft);
+		border-radius: 10px;
+		padding: 7px 9px;
+		background: rgba(15, 23, 42, 0.02);
+	}
+
+	.thinking-tool.pending {
+		background: rgba(255, 255, 255, 0.5);
+	}
+
+	.thinking-tool.error {
+		background: rgba(255, 245, 245, 0.72);
+		border-color: rgba(244, 63, 94, 0.18);
+	}
+
+	.thinking-tool-header {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		font-size: 11px;
+		font-weight: 650;
+		color: var(--text-main);
+	}
+
+	.thinking-tool-header :global(svg) {
+		flex-shrink: 0;
+		color: var(--text-muted);
+	}
+
+	.thinking-tool-name {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.thinking-tool-output {
+		margin-top: 6px;
+		padding-top: 6px;
+		border-top: 1px solid var(--border-soft);
+		color: var(--text-muted);
+	}
+
+	.thinking-tool-output p {
+		margin: 0;
+		font-size: 11px;
+		line-height: 1.45;
+		white-space: pre-wrap;
+		word-break: break-word;
+		max-height: 160px;
+		overflow: auto;
+		scrollbar-gutter: stable;
+	}
+
+	.thinking-tool-output p + p {
+		margin-top: 6px;
+		padding-top: 6px;
+		border-top: 1px solid var(--border-soft);
 	}
 
 	.tool-card {
