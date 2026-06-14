@@ -4,10 +4,14 @@ function createShellStore() {
 	let composerPhase = $state<'centered' | 'docked'>('centered');
 	let workspacePath = $state('/');
 	let bootMessage = $state('');
+	let fullscreen = $state(false);
 
 	return {
 		get sidebarOpen() {
 			return sidebarOpen;
+		},
+		get fullscreen() {
+			return fullscreen;
 		},
 		get settingsOpen() {
 			return settingsOpen;
@@ -26,6 +30,9 @@ function createShellStore() {
 		},
 		setBootMessage(message: string) {
 			bootMessage = message;
+		},
+		setFullscreen(value: boolean) {
+			fullscreen = value;
 		},
 		toggleSidebar() {
 			sidebarOpen = !sidebarOpen;

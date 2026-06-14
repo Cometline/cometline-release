@@ -92,11 +92,9 @@
 
 <aside class="sidebar" class:collapsed aria-hidden={collapsed} data-workspace-path={workspacePath}>
 	<div class="sidebar-content">
-		<div
-			class="sidebar-titlebar-row mb-2.5 grid h-11 w-full shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2"
-		>
+		<div class="sidebar-titlebar-row">
 			<label
-				class="no-drag flex h-7 min-w-0 items-center gap-1.5 rounded-lg border border-border-soft bg-white/70 px-2.5 text-text-soft focus-within:border-slate-900/15 focus-within:bg-white/95 focus-within:text-text-muted"
+				class="search-field no-drag flex h-7 min-w-0 items-center gap-1.5 rounded-lg border border-border-soft bg-white/70 px-2.5 text-text-soft focus-within:border-slate-900/15 focus-within:bg-white/95 focus-within:text-text-muted"
 			>
 				<Search size={14} stroke-width={2} aria-hidden="true" />
 				<input
@@ -191,17 +189,10 @@
 		flex-direction: column;
 		background: transparent;
 		border-right: none;
-		padding: 12px 10px 10px;
+		padding: 0;
 		overflow: hidden;
-		transition:
-			width var(--duration-fast) var(--ease-smooth),
-			padding var(--duration-fast) var(--ease-smooth);
+		transition: width var(--duration-fast) var(--ease-smooth);
 		view-transition-name: sidebar;
-	}
-
-	.sidebar.collapsed {
-		padding-left: 0;
-		padding-right: 0;
 	}
 
 	.sidebar-content {
@@ -224,8 +215,20 @@
 	}
 
 	.sidebar-titlebar-row {
-		padding-left: var(--traffic-light-gutter);
+		height: var(--titlebar-height);
+		width: 100%;
+		flex-shrink: 0;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 8px;
+		padding: 10px 8px;
 		-webkit-app-region: drag;
+	}
+
+	.search-field {
+		margin-left: var(--traffic-light-gutter);
+		transition: margin-left var(--duration-fast) var(--ease-smooth);
 	}
 
 	.sidebar-footer button {
@@ -255,6 +258,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
+		padding: 0 10px;
 	}
 
 	.session-row {
@@ -347,6 +351,8 @@
 
 	.sidebar-footer {
 		margin-top: auto;
+		margin-right: 10px;
+		margin-left: 10px;
 		padding-top: 8px;
 		border-top: 1px solid var(--border-soft);
 	}

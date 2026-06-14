@@ -41,6 +41,8 @@ declare global {
 			fetchProviderModels?: (config: ProviderConfig) => Promise<string[]>;
 			saveProviderSettings?: (settings: ProviderSettings) => Promise<ProviderSettings>;
 			setSidebarOpen?: (state: SidebarChromeState) => void;
+			getFullScreen?: () => Promise<boolean>;
+			onFullScreenChange?: (callback: (isFullScreen: boolean) => void) => () => void;
 		};
 	}
 }

@@ -45,8 +45,21 @@
 		}
 
 		window.addEventListener('keydown', onKeydown);
+
+		// macOS hides the traffic lights in fullscreen, so the renderer reclaims
+		// the gutter that normally keeps the search bar clear of them. Pull the
+		// current state on mount in case the initial push fired before this
+		// listener was registered, then subscribe to future changes.
+		void window.electronAPI?.getFullScreen?.().then((isFullScreen) => {
+			shellStore.setFullscreen(isFullScreen);
+		});
+		const unsubscribeFullScreen = window.electronAPI?.onFullScreenChange?.((isFullScreen) => {
+			shellStore.setFullscreen(isFullScreen);
+		});
+
 		return () => {
 			window.removeEventListener('keydown', onKeydown);
+			unsubscribeFullScreen?.();
 		};
 	});
 
@@ -73,7 +86,11 @@
 	});
 </script>
 
-<div class="app-shell" class:sidebar-collapsed={!shellStore.sidebarOpen}>
+<div
+	class="app-shell"
+	class:sidebar-collapsed={!shellStore.sidebarOpen}
+	class:is-fullscreen={shellStore.fullscreen}
+>
 	<Sidebar {workspacePath} collapsed={!shellStore.sidebarOpen} />
 	<main class="main shadow max-[900px]:shadow-none">
 		{@render children()}
@@ -89,13 +106,17 @@
 		width: 100vw;
 		height: 100vh;
 		background: var(--shell-canvas-bg);
-		padding: var(--content-panel-inset) var(--content-panel-inset) var(--content-panel-inset) 0;
 		box-sizing: border-box;
 	}
 
 	.app-shell.sidebar-collapsed {
 		--active-sidebar-width: 0px;
-		padding-left: var(--content-panel-inset);
+	}
+
+	/* In fullscreen the native traffic lights are hidden, so the search bar can
+	   reclaim the gutter that normally keeps it clear of them. */
+	.app-shell.is-fullscreen {
+		--traffic-light-gutter: 8px;
 	}
 
 	.main {
@@ -105,6 +126,7 @@
 		flex-direction: column;
 		position: relative;
 		z-index: 1;
+		margin: var(--content-panel-inset);
 		margin-left: calc(-1 * var(--content-panel-overlap));
 		overflow: hidden;
 		background: var(--panel-bg);
@@ -114,19 +136,18 @@
 	}
 
 	.app-shell.sidebar-collapsed .main {
-		margin-left: 0;
+		margin-left: var(--content-panel-inset);
 	}
 
 	/* Keep chat full-width; open sidebar becomes a full-window overlay. */
 	@media (max-width: 900px) {
 		.app-shell {
 			--active-sidebar-width: 0px;
-			padding: 0;
 			background: var(--app-bg);
 		}
 
 		.main {
-			margin-left: 0;
+			margin: 0;
 			border: none;
 			border-radius: 0;
 			background: transparent;

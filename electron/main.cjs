@@ -92,10 +92,14 @@ const VALID_PROVIDER_METHODS = ['openai-compatible', 'openai', 'anthropic', 'ope
 let mainWindow = null;
 let cometMindProcess = null;
 let windowButtonAnimationTimer = null;
-let windowButtonPosition = { x: 16, y: 16 };
+let windowButtonPosition = { x: 16, y: 17 };
 
-const WINDOW_BUTTON_OPEN_POSITION = { x: 16, y: 16 };
-const WINDOW_BUTTON_CLOSED_POSITION = { x: 12, y: 16 };
+// Vertically center the native buttons on the sidebar search bar. The titlebar
+// row now sits flush against the window top, so the search input center is:
+// titlebar row top padding (10px) + half the 28px search input (14px) = 24px.
+// A traffic light is ~14px tall, so y = 24 - 7 = 17 lines the centers up.
+const WINDOW_BUTTON_OPEN_POSITION = { x: 16, y: 17 };
+const WINDOW_BUTTON_CLOSED_POSITION = { x: 17, y: 17 };
 const WINDOW_BUTTON_DEFAULT_DURATION = 240;
 const sidebarChromeEase = cubicBezier(0.22, 1, 0.36, 1);
 
@@ -194,6 +198,11 @@ function animateWindowButtons(payload) {
 		}
 	};
 	step();
+}
+
+function sendFullScreenState() {
+	if (!mainWindow || mainWindow.isDestroyed()) return;
+	mainWindow.webContents.send('cometline:fullscreen-changed', mainWindow.isFullScreen());
 }
 
 function resolveCometMindBinary() {
@@ -585,7 +594,11 @@ async function createWindow() {
 		height: 800,
 		minWidth: 880,
 		minHeight: 560,
-		titleBarStyle: 'hiddenInset',
+		// 'hidden' (not 'hiddenInset') is required for setWindowButtonPosition to
+		// take effect: Electron only honors custom traffic-light positions on a
+		// frameless window. With 'hiddenInset' the buttons are pinned at a fixed
+		// inset and every setWindowButtonPosition call is silently ignored.
+		titleBarStyle: 'hidden',
 		...(process.platform === 'darwin'
 			? {
 					backgroundColor: '#00000000',
@@ -614,7 +627,16 @@ async function createWindow() {
 
 	mainWindow.once('ready-to-show', () => {
 		mainWindow.show();
+		// Re-apply once the window is realized; an early call right after
+		// construction can be dropped before the buttons exist.
+		setWindowButtonPosition(WINDOW_BUTTON_OPEN_POSITION);
+		sendFullScreenState();
 	});
+
+	// macOS hides the native traffic lights in fullscreen, freeing the gutter.
+	// Tell the renderer so it can reclaim that space for the search bar.
+	mainWindow.on('enter-full-screen', sendFullScreenState);
+	mainWindow.on('leave-full-screen', sendFullScreenState);
 
 	mainWindow.on('closed', () => {
 		if (windowButtonAnimationTimer) {
@@ -743,6 +765,10 @@ ipcMain.on('cometmind:restart', async () => {
 ipcMain.on('cometline:set-sidebar-open', (_event, payload) => {
 	animateWindowButtons(payload);
 });
+
+ipcMain.handle('cometline:get-fullscreen', () =>
+	Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isFullScreen())
+);
 
 ipcMain.handle('cometline:get-workspace-path', () => getWorkspacePath());
 
