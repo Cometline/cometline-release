@@ -125,7 +125,7 @@ function cubicBezier(x1, y1, x2, y2) {
 		let start = 0;
 		let end = 1;
 		t = x;
-		while (start < end) {
+		for (let i = 0; i < 12; i++) {
 			const currentX = sampleCurveX(t);
 			if (Math.abs(currentX - x) < 0.000001) return t;
 			if (x > currentX) start = t;

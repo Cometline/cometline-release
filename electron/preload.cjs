@@ -7,5 +7,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
 	fetchProviderModels: (config) => ipcRenderer.invoke('cometline:fetch-provider-models', config),
 	saveProviderSettings: (settings) =>
 		ipcRenderer.invoke('cometline:save-provider-settings', settings),
-	setSidebarOpen: (open) => ipcRenderer.send('cometline:set-sidebar-open', open)
+	setSidebarOpen: (payload) => ipcRenderer.send('cometline:set-sidebar-open', payload)
 });

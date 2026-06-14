@@ -7,6 +7,8 @@
 	import { startNewChat } from '$lib/actions/new-chat';
 	import { narrowViewportQuery } from '$lib/layout/narrow-viewport';
 
+	const FALLBACK_SIDEBAR_DURATION = 240;
+
 	let {
 		children,
 		workspacePath = '/'
@@ -46,6 +48,28 @@
 		return () => {
 			window.removeEventListener('keydown', onKeydown);
 		};
+	});
+
+	function parseDuration(value: string) {
+		const trimmed = value.trim();
+		if (!trimmed) return FALLBACK_SIDEBAR_DURATION;
+		if (trimmed.endsWith('ms')) return Number(trimmed.slice(0, -2)) || FALLBACK_SIDEBAR_DURATION;
+		if (trimmed.endsWith('s')) return (Number(trimmed.slice(0, -1)) || 0) * 1000;
+		return Number(trimmed) || FALLBACK_SIDEBAR_DURATION;
+	}
+
+	function sidebarTransitionDuration() {
+		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return 0;
+		return parseDuration(
+			getComputedStyle(document.documentElement).getPropertyValue('--duration-fast')
+		);
+	}
+
+	$effect(() => {
+		window.electronAPI?.setSidebarOpen?.({
+			open: shellStore.sidebarOpen,
+			duration: sidebarTransitionDuration()
+		});
 	});
 </script>
 

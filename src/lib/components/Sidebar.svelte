@@ -93,10 +93,10 @@
 <aside class="sidebar" class:collapsed aria-hidden={collapsed} data-workspace-path={workspacePath}>
 	<div class="sidebar-content">
 		<div
-			class="mb-2.5 grid h-11 w-full shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 pl-[72px]"
+			class="sidebar-titlebar-row mb-2.5 grid h-11 w-full shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2"
 		>
 			<label
-				class="flex h-7 min-w-0 items-center gap-1.5 rounded-lg border border-border-soft bg-white/70 px-2.5 text-text-soft focus-within:border-slate-900/15 focus-within:bg-white/95 focus-within:text-text-muted"
+				class="no-drag flex h-7 min-w-0 items-center gap-1.5 rounded-lg border border-border-soft bg-white/70 px-2.5 text-text-soft focus-within:border-slate-900/15 focus-within:bg-white/95 focus-within:text-text-muted"
 			>
 				<Search size={14} stroke-width={2} aria-hidden="true" />
 				<input
@@ -110,7 +110,7 @@
 				/>
 			</label>
 			<button
-				class="grid h-7 w-7 shrink-0 place-items-center rounded-md border-0 bg-transparent text-text-muted hover:bg-black/4 hover:text-text-main active:bg-black/7"
+				class="no-drag grid h-7 w-7 shrink-0 place-items-center rounded-md border-0 bg-transparent text-text-muted hover:bg-black/4 hover:text-text-main active:bg-black/7"
 				onclick={newChat}
 				aria-label="New chat"
 				title="New chat"
@@ -205,6 +205,8 @@
 	}
 
 	.sidebar-content {
+		position: relative;
+		z-index: 1;
 		width: 100%;
 		min-width: 0;
 		height: 100%;
@@ -219,6 +221,11 @@
 		opacity: 0;
 		transform: translateX(-14px);
 		pointer-events: none;
+	}
+
+	.sidebar-titlebar-row {
+		padding-left: var(--traffic-light-gutter);
+		-webkit-app-region: drag;
 	}
 
 	.sidebar-footer button {

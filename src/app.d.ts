@@ -28,6 +28,11 @@ declare global {
 		appearance: AppearanceSettings;
 	}
 
+	interface SidebarChromeState {
+		open: boolean;
+		duration: number;
+	}
+
 	interface Window {
 		electronAPI?: {
 			restartCometMind?: () => void;
@@ -35,6 +40,7 @@ declare global {
 			getProviderSettings?: () => Promise<ProviderSettings>;
 			fetchProviderModels?: (config: ProviderConfig) => Promise<string[]>;
 			saveProviderSettings?: (settings: ProviderSettings) => Promise<ProviderSettings>;
+			setSidebarOpen?: (state: SidebarChromeState) => void;
 		};
 	}
 }
