@@ -38,6 +38,9 @@ function cleanErrorMessage(message: string) {
 	if (text.includes('OPENAI_API_KEY') || text.includes('COMETMIND_API_KEY')) {
 		return 'API key is missing. Open Settings with Command+, and save your provider API key.';
 	}
+	if (text.includes('authentication failed') || text.includes('HTTP 401')) {
+		return 'API key is invalid or missing. Open Settings (⌘,), enter your provider API key, and click Save.';
+	}
 	return text.replace(/^\d+:\s*/, '') || 'The request failed.';
 }
 

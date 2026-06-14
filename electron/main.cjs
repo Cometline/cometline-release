@@ -91,6 +91,110 @@ const VALID_PROVIDER_METHODS = ['openai-compatible', 'openai', 'anthropic', 'ope
 
 let mainWindow = null;
 let cometMindProcess = null;
+let windowButtonAnimationTimer = null;
+let windowButtonPosition = { x: 16, y: 16 };
+
+const WINDOW_BUTTON_OPEN_POSITION = { x: 16, y: 16 };
+const WINDOW_BUTTON_CLOSED_POSITION = { x: 12, y: 16 };
+const WINDOW_BUTTON_DEFAULT_DURATION = 240;
+const sidebarChromeEase = cubicBezier(0.22, 1, 0.36, 1);
+
+function cubicBezier(x1, y1, x2, y2) {
+	function sampleCurveX(t) {
+		return ((1 - 3 * x2 + 3 * x1) * t + (3 * x2 - 6 * x1)) * t * t + 3 * x1 * t;
+	}
+
+	function sampleCurveY(t) {
+		return ((1 - 3 * y2 + 3 * y1) * t + (3 * y2 - 6 * y1)) * t * t + 3 * y1 * t;
+	}
+
+	function sampleCurveDerivativeX(t) {
+		return (3 * (1 - 3 * x2 + 3 * x1) * t + 2 * (3 * x2 - 6 * x1)) * t + 3 * x1;
+	}
+
+	function solveCurveX(x) {
+		let t = x;
+		for (let i = 0; i < 8; i++) {
+			const currentX = sampleCurveX(t) - x;
+			if (Math.abs(currentX) < 0.000001) return t;
+			const derivative = sampleCurveDerivativeX(t);
+			if (Math.abs(derivative) < 0.000001) break;
+			t -= currentX / derivative;
+		}
+
+		let start = 0;
+		let end = 1;
+		t = x;
+		while (start < end) {
+			const currentX = sampleCurveX(t);
+			if (Math.abs(currentX - x) < 0.000001) return t;
+			if (x > currentX) start = t;
+			else end = t;
+			t = (end - start) * 0.5 + start;
+		}
+		return t;
+	}
+
+	return (x) => {
+		if (x <= 0) return 0;
+		if (x >= 1) return 1;
+		return sampleCurveY(solveCurveX(x));
+	};
+}
+
+function setWindowButtonPosition(position) {
+	if (
+		process.platform !== 'darwin' ||
+		!mainWindow ||
+		typeof mainWindow.setWindowButtonPosition !== 'function'
+	) {
+		return;
+	}
+	const next = { x: Math.round(position.x), y: Math.round(position.y) };
+	mainWindow.setWindowButtonPosition(next);
+	windowButtonPosition = next;
+}
+
+function animateWindowButtons(payload) {
+	if (process.platform !== 'darwin' || !mainWindow) return;
+
+	const open = typeof payload?.open === 'boolean' ? payload.open : Boolean(payload);
+	const target = open ? WINDOW_BUTTON_OPEN_POSITION : WINDOW_BUTTON_CLOSED_POSITION;
+	const rawDuration = Number(payload?.duration);
+	const duration = Number.isFinite(rawDuration)
+		? Math.max(0, Math.min(rawDuration, 1000))
+		: WINDOW_BUTTON_DEFAULT_DURATION;
+	const start = { ...windowButtonPosition };
+
+	if (windowButtonAnimationTimer) {
+		clearTimeout(windowButtonAnimationTimer);
+		windowButtonAnimationTimer = null;
+	}
+
+	if (duration <= 16 || (start.x === target.x && start.y === target.y)) {
+		setWindowButtonPosition(target);
+		return;
+	}
+
+	const startedAt = Date.now();
+	const step = () => {
+		if (!mainWindow) return;
+		const progress = Math.min(1, (Date.now() - startedAt) / duration);
+		const eased = sidebarChromeEase(progress);
+		setWindowButtonPosition({
+			x: start.x + (target.x - start.x) * eased,
+			y: start.y + (target.y - start.y) * eased
+		});
+
+		if (progress < 1) {
+			windowButtonAnimationTimer = setTimeout(step, 16);
+		} else {
+			windowButtonAnimationTimer = null;
+			setWindowButtonPosition(target);
+		}
+	};
+	step();
+}
 
 function resolveCometMindBinary() {
 	if (process.env.COMETMIND_BINARY_PATH) {
@@ -268,15 +372,22 @@ function readProviderSettings() {
 			base.providers[0].id;
 	}
 
-	// Allow env overrides for the active provider only.
-	const active = base.providers.find((p) => p.id === base.activeProviderId) ?? base.providers[0];
+	// Allow env overrides for the active provider only. Apply provider first so
+	// key/baseURL/model attach to the provider selected by COMETMIND_PROVIDER.
 	if (fromEnv.activeProviderId) {
 		const matched = base.providers.find((p) => p.id === fromEnv.activeProviderId.trim());
 		if (matched) base.activeProviderId = matched.id;
 	}
+	const active = base.providers.find((p) => p.id === base.activeProviderId) ?? base.providers[0];
 	if (fromEnv.baseURL) active.baseURL = fromEnv.baseURL.trim();
 	if (fromEnv.apiKey) active.apiKey = fromEnv.apiKey.trim();
-	if (fromEnv.selectedModel) active.selectedModel = fromEnv.selectedModel.trim();
+	if (fromEnv.selectedModel) {
+		const model = fromEnv.selectedModel.trim();
+		active.selectedModel = model;
+		active.enabled = true;
+		if (model && !active.models.includes(model)) active.models = [...active.models, model];
+		if (model && !active.enabledModels.includes(model)) active.enabledModels = [model];
+	}
 
 	return base;
 }
@@ -475,6 +586,14 @@ async function createWindow() {
 		minWidth: 880,
 		minHeight: 560,
 		titleBarStyle: 'hiddenInset',
+		...(process.platform === 'darwin'
+			? {
+					backgroundColor: '#00000000',
+					transparent: true,
+					vibrancy: 'sidebar',
+					visualEffectState: 'active'
+				}
+			: {}),
 		...(icon ? { icon } : {}),
 		show: false,
 		webPreferences: {
@@ -484,6 +603,7 @@ async function createWindow() {
 			allowRunningInsecureContent: false
 		}
 	});
+	setWindowButtonPosition(WINDOW_BUTTON_OPEN_POSITION);
 	if (process.platform === 'darwin' && icon) app.dock?.setIcon(icon);
 
 	if (app.isPackaged) {
@@ -497,6 +617,10 @@ async function createWindow() {
 	});
 
 	mainWindow.on('closed', () => {
+		if (windowButtonAnimationTimer) {
+			clearTimeout(windowButtonAnimationTimer);
+			windowButtonAnimationTimer = null;
+		}
 		mainWindow = null;
 	});
 }
@@ -614,6 +738,10 @@ app.on('before-quit', () => {
 ipcMain.on('cometmind:restart', async () => {
 	await stopCometMind();
 	startCometMind();
+});
+
+ipcMain.on('cometline:set-sidebar-open', (_event, payload) => {
+	animateWindowButtons(payload);
 });
 
 ipcMain.handle('cometline:get-workspace-path', () => getWorkspacePath());
