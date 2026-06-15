@@ -2,11 +2,12 @@
 	import { tick } from 'svelte';
 	import UserBubbleFlight from '$lib/components/UserBubbleFlight.svelte';
 	import { afterPaint, rectStyle, waitForSelector } from '$lib/first-turn-flight';
+import type { ImageAttachment } from '$lib/types';
 
 	interface Props {
 		root: HTMLElement | null;
 		userBubbleFlight: UserBubbleFlight;
-		stageUser: (text: string) => void;
+		stageUser: (text: string, images?: ImageAttachment[]) => void;
 		revealStagedUser: () => void;
 		onActiveChange?: (active: boolean) => void;
 		onFlightDoneChange?: (done: boolean) => void;
@@ -29,9 +30,9 @@
 	let avatarFlightStyle = $state('');
 	let showAvatarFlight = $state(false);
 
-	export function run(text: string): void {
+	export function run(text: string, images?: ImageAttachment[]): void {
 		if (active) return;
-		void animate(text);
+		void animate(text, images);
 	}
 
 	function setActive(value: boolean) {
@@ -48,9 +49,9 @@
 		avatarFlightStyle = '';
 	}
 
-	async function animate(text: string): Promise<void> {
+	async function animate(text: string, images?: ImageAttachment[]): Promise<void> {
 		if (!root) {
-			stageUser(text);
+			stageUser(text, images);
 			revealStagedUser();
 			setFlightDone(true);
 			setActive(false);
@@ -59,7 +60,7 @@
 		}
 
 		const emptyAvatar = root.querySelector('.empty-state .avatar');
-		const textarea = root.querySelector('.composer textarea');
+		const textarea = root.querySelector('.composer .rce-editor');
 		const avatarFrom =
 			emptyAvatar instanceof HTMLElement ? emptyAvatar.getBoundingClientRect() : null;
 		const textareaFrom =
@@ -68,7 +69,7 @@
 		onPrepareFlight?.();
 		setActive(true);
 		setFlightDone(false);
-		stageUser(text);
+		stageUser(text, images);
 		await tick();
 
 		const avatarTarget = await waitForSelector(root, '[data-flight-target="avatar"]');
@@ -77,7 +78,7 @@
 			showAvatarFlight = true;
 		}
 
-		const userFlew = await userBubbleFlight.runAsync(text, {
+		const userFlew = await userBubbleFlight.runAsync(text, images, {
 			skipOnPrepare: true,
 			skipStage: true,
 			textareaFrom,

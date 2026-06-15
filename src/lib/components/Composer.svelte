@@ -1,12 +1,15 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { onDestroy, tick } from 'svelte';
 	import { fade, fly } from 'svelte/transition';
-	import { Check, ChevronDown, Send, Sparkles, Square, X } from '@lucide/svelte';
+	import { Check, ChevronDown, FileText, Send, Sparkles, Square, X } from '@lucide/svelte';
 	import type { QueuedMessage } from '$lib/actions/chat-turn-queue';
 	import { modelStore, type ModelOption } from '$lib/stores/model.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
 	import { matchesShortcut } from '$lib/keyboard-shortcuts';
 	import RichComposerInput from '$lib/components/RichComposerInput.svelte';
+	import { formatDroppedFiles, readDroppedTextFiles } from '$lib/files/dropped-files';
+	import { imageDataURL, isSupportedImageFile, readImageAttachments } from '$lib/files/images';
+import type { ImageAttachment } from '$lib/types';
 
 	let {
 		onSend,
@@ -21,7 +24,7 @@
 		variant = 'dock',
 		autofocus = true
 	}: {
-		onSend: (text: string) => void;
+		onSend: (text: string, images?: ImageAttachment[]) => void;
 		onStop?: () => void;
 		onRemoveQueued?: (id: string) => void;
 		disabled?: boolean;
@@ -35,12 +38,19 @@
 	} = $props();
 
 	let value = $state('');
+	let images = $state<ImageAttachment[]>([]);
 	let input = $state<RichComposerInput | null>(null);
 	let modelOpen = $state(false);
 	let modelSearch = $state('');
 	let queuePreviewOpen = $state(false);
 	let queuePicker = $state<HTMLDivElement | null>(null);
+	let dragDepth = $state(0);
+	let dropMessage = $state('');
+	let dropProcessing = $state(false);
+	let dropMessageTimer: ReturnType<typeof setTimeout> | null = null;
 	let sendLocked = $derived(turnProcessing && !streaming);
+	let dragActive = $derived(dragDepth > 0 || dropProcessing);
+	let canSubmit = $derived(Boolean(value.trim() || images.length > 0));
 	let filteredModelOptions = $derived.by(() => {
 		const query = modelSearch.trim().toLowerCase();
 		if (!query) return modelStore.options;
@@ -93,12 +103,17 @@
 		return () => document.removeEventListener('pointerdown', onPointerDown);
 	});
 
+	onDestroy(() => {
+		if (dropMessageTimer) clearTimeout(dropMessageTimer);
+	});
+
 	function submit() {
 		const text = value.trim();
-		if (!text || disabled || sendLocked || !modelStore.selected) return;
-		onSend(text);
+		if (!canSubmit || disabled || sendLocked || !modelStore.selected) return;
+		onSend(text, images.length > 0 ? images : undefined);
 		input?.clear();
 		value = '';
+		images = [];
 	}
 
 	function onKeydown(e: KeyboardEvent) {
@@ -139,13 +154,123 @@
 		onRemoveQueued?.(id);
 	}
 
+	function hasDroppedFiles(dataTransfer: DataTransfer | null): boolean {
+		return dataTransfer?.types.includes('Files') ?? false;
+	}
+
+	function setDropMessage(message: string) {
+		dropMessage = message;
+		if (dropMessageTimer) clearTimeout(dropMessageTimer);
+		dropMessageTimer = setTimeout(() => {
+			dropMessage = '';
+			dropMessageTimer = null;
+		}, 4200);
+	}
+
+	async function addImageFiles(files: File[]) {
+		const result = await readImageAttachments(files, images.length);
+		if (result.accepted.length > 0) {
+			images = [...images, ...result.accepted];
+		}
+		if (result.rejected.length > 0) {
+			const first = result.rejected[0];
+			setDropMessage(`${first.name}: ${first.reason}`);
+		} else if (result.accepted.length > 0) {
+			setDropMessage(`Attached ${result.accepted.length} ${result.accepted.length === 1 ? 'image' : 'images'}.`);
+		}
+	}
+
+	function removeImage(id: string | undefined) {
+		images = images.filter((image) => image.id !== id);
+	}
+
+	function onDragEnter(e: DragEvent) {
+		if (!hasDroppedFiles(e.dataTransfer)) return;
+		e.preventDefault();
+		dragDepth += 1;
+	}
+
+	function onDragOver(e: DragEvent) {
+		if (!hasDroppedFiles(e.dataTransfer)) return;
+		e.preventDefault();
+		if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+	}
+
+	function onDragLeave(e: DragEvent) {
+		if (!hasDroppedFiles(e.dataTransfer)) return;
+		e.preventDefault();
+		dragDepth = Math.max(0, dragDepth - 1);
+	}
+
+	async function onDrop(e: DragEvent) {
+		if (!hasDroppedFiles(e.dataTransfer)) return;
+		e.preventDefault();
+		dragDepth = 0;
+		const files = Array.from(e.dataTransfer?.files ?? []);
+		if (files.length === 0) return;
+		const imageFiles = files.filter(isSupportedImageFile);
+		const textFiles = files.filter((file) => !isSupportedImageFile(file));
+
+		dropProcessing = true;
+		try {
+			if (imageFiles.length > 0) {
+				await addImageFiles(imageFiles);
+			}
+			const result = await readDroppedTextFiles(textFiles);
+			if (result.accepted.length > 0) {
+				const formatted = formatDroppedFiles(result.accepted);
+				const prefix = value.trim() ? '\n\n' : '';
+				input?.insertText(`${prefix}${formatted}\n`);
+			}
+
+			if (textFiles.length === 0) {
+				return;
+			}
+			if (result.accepted.length === 0) {
+				const first = result.rejected[0];
+				setDropMessage(first ? `No files added. ${first.name}: ${first.reason}` : 'No files added.');
+			} else if (result.rejected.length > 0) {
+				setDropMessage(
+					`Added ${result.accepted.length} ${result.accepted.length === 1 ? 'file' : 'files'}. ${result.rejected.length} skipped.`
+				);
+			} else {
+				setDropMessage(`Added ${result.accepted.length} ${result.accepted.length === 1 ? 'file' : 'files'}.`);
+			}
+		} catch (err) {
+			setDropMessage(err instanceof Error ? err.message : 'Failed to read dropped files.');
+		} finally {
+			dropProcessing = false;
+		}
+	}
+
 	async function focusInput() {
 		await tick();
 		input?.focus();
 	}
 </script>
 
-<div class="composer" class:hero={variant === 'hero'}>
+<div
+	class="composer"
+	role="group"
+	aria-label="Message composer"
+	class:hero={variant === 'hero'}
+	class:dragging={dragActive}
+	ondragenter={onDragEnter}
+	ondragover={onDragOver}
+	ondragleave={onDragLeave}
+	ondrop={onDrop}
+>
+	{#if dragActive}
+		<div class="drop-overlay" aria-hidden="true">
+			<FileText size={18} stroke-width={1.8} />
+			<span>{dropProcessing ? 'Reading files…' : 'Drop text files to add context'}</span>
+		</div>
+	{/if}
+
+	{#if dropMessage}
+		<div class="drop-message" role="status" transition:fade={{ duration: 120 }}>{dropMessage}</div>
+	{/if}
+
 	{#if queuedCount > 0}
 		<div
 			class="queue-picker"
@@ -208,7 +333,26 @@
 			: variant === 'hero'
 				? 'Type something. Anything.'
 				: 'Type something…'}
+		onfiles={(files) => void addImageFiles(files)}
 	/>
+
+	{#if images.length > 0}
+		<div class="image-attachments" aria-label="Attached images">
+			{#each images as image (image.id)}
+				<div class="image-attachment">
+					<img src={imageDataURL(image)} alt={image.name ?? 'Attached image'} />
+					<button
+						type="button"
+						class="image-remove"
+						aria-label={`Remove ${image.name ?? 'image'}`}
+						onclick={() => removeImage(image.id)}
+					>
+						<X size={12} stroke-width={2} />
+					</button>
+				</div>
+			{/each}
+		</div>
+	{/if}
 
 	<div class="composer-footer">
 		<div class="composer-tools">
@@ -285,7 +429,7 @@
 				<button
 					class="send-button"
 					onclick={submit}
-					disabled={!value.trim() || disabled || sendLocked || !modelStore.selected}
+					disabled={!canSubmit || disabled || sendLocked || !modelStore.selected}
 					aria-label="Send"
 				>
 					<Send size={16} stroke-width={1.8} />
@@ -297,6 +441,7 @@
 
 <style>
 	.composer {
+		position: relative;
 		background: rgba(255, 255, 255, 0.74);
 		border: 1px solid var(--border-soft);
 		border-radius: var(--radius-card);
@@ -314,6 +459,93 @@
 			box-shadow var(--duration-flight) var(--ease-smooth),
 			transform var(--duration-flight) var(--ease-smooth),
 			background var(--duration-flight) var(--ease-smooth);
+	}
+
+	.composer.dragging {
+		border-color: rgba(37, 99, 235, 0.26);
+		background: rgba(248, 251, 255, 0.92);
+		box-shadow:
+			var(--shadow-card),
+			0 0 0 4px rgba(37, 99, 235, 0.08);
+	}
+
+	.drop-overlay {
+		position: absolute;
+		inset: 8px;
+		z-index: 20;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		border: 1px dashed rgba(37, 99, 235, 0.34);
+		border-radius: calc(var(--radius-card) - 6px);
+		background: rgba(255, 255, 255, 0.78);
+		color: #1d4ed8;
+		font-size: 13px;
+		font-weight: 600;
+		pointer-events: none;
+		backdrop-filter: blur(10px);
+		-webkit-backdrop-filter: blur(10px);
+	}
+
+	.drop-message {
+		position: absolute;
+		right: 12px;
+		bottom: calc(100% + 8px);
+		z-index: 25;
+		max-width: min(360px, calc(100vw - 32px));
+		padding: 7px 10px;
+		border: 1px solid var(--border-soft);
+		border-radius: 10px;
+		background: rgba(255, 255, 255, 0.96);
+		box-shadow: var(--shadow-card);
+		color: var(--text-muted);
+		font-size: 12px;
+		line-height: 1.35;
+	}
+
+	.image-attachments {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin-top: -2px;
+	}
+
+	.image-attachment {
+		position: relative;
+		width: 58px;
+		height: 58px;
+		border: 1px solid var(--border-soft);
+		border-radius: 11px;
+		background: rgba(15, 23, 42, 0.04);
+		overflow: hidden;
+	}
+
+	.image-attachment img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+
+	.image-remove {
+		position: absolute;
+		top: 4px;
+		right: 4px;
+		display: grid;
+		place-items: center;
+		width: 18px;
+		height: 18px;
+		padding: 0;
+		border: none;
+		border-radius: 999px;
+		background: rgba(15, 23, 42, 0.72);
+		color: white;
+		cursor: pointer;
+	}
+
+	.image-remove:hover {
+		background: rgba(180, 35, 24, 0.9);
 	}
 
 	.composer.hero {

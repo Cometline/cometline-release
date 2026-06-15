@@ -1,4 +1,5 @@
 import { tick } from 'svelte';
+import type { ImageAttachment } from '$lib/types';
 
 export const FLIGHT_MS = 560;
 export const FLIGHT_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
@@ -97,7 +98,8 @@ export async function waitForSelector(
 export interface FlyUserBubbleParams {
 	root: HTMLElement;
 	text: string;
-	stageUser: (text: string) => void;
+	images?: ImageAttachment[];
+	stageUser: (text: string, images?: ImageAttachment[]) => void;
 	revealStagedUser: () => void;
 	onPrepare?: () => void;
 	/** When true, `onPrepare` was already invoked by the caller. */
@@ -110,7 +112,7 @@ export interface FlyUserBubbleParams {
 	deferHideParticle?: boolean;
 	/** When true, the caller already staged the user bubble. */
 	skipStage?: boolean;
-	onShowParticle: (text: string, style: string) => void;
+	onShowParticle: (text: string, images: ImageAttachment[] | undefined, style: string) => void;
 	onHideParticle: () => void;
 }
 
@@ -119,6 +121,7 @@ export async function flyUserBubble(params: FlyUserBubbleParams): Promise<boolea
 	const {
 		root,
 		text,
+		images,
 		stageUser,
 		revealStagedUser,
 		onPrepare,
@@ -137,19 +140,19 @@ export async function flyUserBubble(params: FlyUserBubbleParams): Promise<boolea
 
 	if (prefersReducedMotion()) {
 		if (!skipOnPrepare) onPrepare?.();
-		if (!skipStage) stageUser(text);
+		if (!skipStage) stageUser(text, images);
 		await tick();
 		scrollThreadToBottom(root);
 		reveal();
 		return true;
 	}
 
-	const textarea = root.querySelector('.composer textarea');
+	const textarea = root.querySelector('.composer .rce-editor');
 	const capturedFrom =
 		textareaFrom ?? (textarea instanceof HTMLElement ? textarea.getBoundingClientRect() : null);
 
 	if (!skipOnPrepare) onPrepare?.();
-	if (!skipStage) stageUser(text);
+	if (!skipStage) stageUser(text, images);
 	await tick();
 	scrollThreadToBottom(root);
 	await afterPaint();
@@ -163,7 +166,7 @@ export async function flyUserBubble(params: FlyUserBubbleParams): Promise<boolea
 	const userTo = userTarget.getBoundingClientRect();
 	const style = translateStyle(textareaUserOrigin(capturedFrom, userTo), userTo);
 
-	onShowParticle(text, style);
+	onShowParticle(text, images, style);
 	await wait(FLIGHT_MS);
 	if (!deferHideParticle) onHideParticle();
 	reveal();

@@ -32,6 +32,15 @@ export interface Workspace {
 
 export interface PostMessageRequest {
 	text: string;
+	images?: ImageAttachment[];
+}
+
+export interface ImageAttachment {
+	id?: string;
+	media_type: string;
+	data: string;
+	name?: string;
+	size?: number;
 }
 
 export type ProviderMethod = 'openai-compatible' | 'openai' | 'anthropic' | 'opencode-go';
@@ -94,7 +103,7 @@ export interface TranscriptResponse {
 }
 
 export type TranscriptItem =
-	| { type: 'user'; text: string }
+	| { type: 'user'; text: string; images?: ImageAttachment[] }
 	| { type: 'assistant'; text: string }
 	| { type: 'reasoning'; text: string }
 	| {
@@ -116,7 +125,7 @@ export type StreamEvent =
 	| { type: 'done' };
 
 export type ChatItem =
-	| { id: string; type: 'user'; text: string; reveal?: boolean }
+	| { id: string; type: 'user'; text: string; images?: ImageAttachment[]; reveal?: boolean }
 	| {
 			id: string;
 			type: 'assistant';

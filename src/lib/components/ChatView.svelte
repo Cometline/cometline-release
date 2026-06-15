@@ -17,6 +17,7 @@
 	import { startChat } from '$lib/actions/start-chat';
 	import { createChatTurnQueue, type QueuedMessage } from '$lib/actions/chat-turn-queue';
 	import { matchesShortcut } from '$lib/keyboard-shortcuts';
+	import type { ImageAttachment } from '$lib/types';
 
 	const THREAD_IN = { duration: 180 };
 
@@ -62,7 +63,7 @@
 		turnProcessing = turnQueue?.processing ?? false;
 	}
 
-	const turnQueue = createChatTurnQueue(async (text) => {
+	const turnQueue = createChatTurnQueue(async (text, images) => {
 		await startChat(
 			{
 				get sessionId() {
@@ -71,21 +72,23 @@
 				get hasVisibleConversation() {
 					return hasVisibleConversation;
 				},
-				send: (t, opts) => chatStore.send(sessionId, t, opts),
-				onUserMessageFlight: (text, { firstTurn }) => {
+				send: (payload, opts) => chatStore.send(sessionId, payload, opts),
+				onUserMessageFlight: (payloadOrText, { firstTurn }) => {
+					const payload =
+						typeof payloadOrText === 'string' ? { text: payloadOrText } : payloadOrText;
 					if (firstTurn) {
 						awaitingFirstAssistant = true;
-						firstTurnFlight?.run(text);
+						firstTurnFlight?.run(payload.text, payload.images);
 						return;
 					}
-					userBubbleFlight?.run(text);
+					userBubbleFlight?.run(payload.text, payload.images);
 				},
 				onFirstTurnComplete: () => {
 					awaitingFirstAssistant = false;
 				},
 				refreshSession
 			},
-			text
+			{ text, images }
 		);
 	}, syncQueueState);
 
@@ -102,7 +105,7 @@
 		// transcript for an existing session.
 		const pending = sessionStore.takePendingMessage(sessionId);
 		if (pending) {
-			submit(pending);
+			submit(pending.text, pending.images);
 		} else {
 			void chatStore.loadTranscript(sessionId);
 		}
@@ -127,9 +130,9 @@
 		}
 	});
 
-	function submit(text: string) {
+	function submit(text: string, images?: ImageAttachment[]) {
 		if (connectionState.status !== 'ready') return;
-		void turnQueue.enqueue(text);
+		void turnQueue.enqueue(text, images);
 	}
 
 	function stop() {
@@ -188,7 +191,7 @@
 	<UserBubbleFlight
 		bind:this={userBubbleFlight}
 		root={chatHome}
-		stageUser={(text) => chatStore.stageUser(text)}
+		stageUser={(text, images) => chatStore.stageUser(text, images)}
 		revealStagedUser={() => chatStore.revealStagedUser()}
 	/>
 
@@ -196,7 +199,7 @@
 		bind:this={firstTurnFlight}
 		root={chatHome}
 		{userBubbleFlight}
-		stageUser={(text) => chatStore.stageUser(text)}
+		stageUser={(text, images) => chatStore.stageUser(text, images)}
 		revealStagedUser={() => chatStore.revealStagedUser()}
 		onActiveChange={(active) => (firstTurnActive = active)}
 		onPrepareFlight={() => {

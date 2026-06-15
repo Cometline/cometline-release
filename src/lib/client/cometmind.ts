@@ -110,8 +110,9 @@ export async function* streamMessage(
 	}
 }
 
-export async function sendMessage(id: string, text: string): Promise<void> {
-	for await (const event of streamMessage(id, { text })) {
+export async function sendMessage(id: string, req: PostMessageRequest | string): Promise<void> {
+	const body = typeof req === 'string' ? { text: req } : req;
+	for await (const event of streamMessage(id, body)) {
 		if (event.type === 'error') {
 			throw new Error(event.message);
 		}

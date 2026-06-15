@@ -11,6 +11,7 @@
 	import { shellStore } from '$lib/stores/shell.svelte';
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { FolderOpen } from '@lucide/svelte';
+import type { ImageAttachment } from '$lib/types';
 
 	let bootMessage = $derived(shellStore.bootMessage);
 
@@ -26,7 +27,7 @@
 		shellStore.openSettings();
 	}
 
-	async function onSend(text: string) {
+	async function onSend(text: string, images?: ImageAttachment[]) {
 		const selectedModel = modelStore.selected;
 		if (!selectedModel) return;
 		const session = await createSession({
@@ -35,7 +36,7 @@
 			provider_id: selectedModel.providerId
 		});
 		sessionStore.appendSession(session);
-		sessionStore.queuePendingMessage(session.id, text);
+		sessionStore.queuePendingMessage(session.id, text, images);
 		await goto(`/session/${session.id}`);
 	}
 </script>

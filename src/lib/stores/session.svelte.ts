@@ -1,9 +1,15 @@
-import type { Session } from '$lib/types';
+import type { ImageAttachment, Session } from '$lib/types';
+
+export interface PendingMessage {
+	sessionId: string;
+	text: string;
+	images?: ImageAttachment[];
+}
 
 function createSessionStore() {
 	let sessions = $state<Session[]>([]);
 	let current = $state<Session | null>(null);
-	let pendingMessage = $state<{ sessionId: string; text: string } | null>(null);
+	let pendingMessage = $state<PendingMessage | null>(null);
 
 	function selectSession(session: Session | null) {
 		current = session;
@@ -28,19 +34,19 @@ function createSessionStore() {
 		if (current?.id === id) current = null;
 	}
 
-	function queuePendingMessage(sessionId: string, text: string) {
-		pendingMessage = { sessionId, text };
+	function queuePendingMessage(sessionId: string, text: string, images?: ImageAttachment[]) {
+		pendingMessage = { sessionId, text, images };
 	}
 
 	function hasPendingMessage(sessionId: string) {
 		return pendingMessage?.sessionId === sessionId;
 	}
 
-	function takePendingMessage(sessionId: string): string | null {
+	function takePendingMessage(sessionId: string): Omit<PendingMessage, 'sessionId'> | null {
 		if (pendingMessage?.sessionId !== sessionId) return null;
-		const text = pendingMessage.text;
+		const message = { text: pendingMessage.text, images: pendingMessage.images };
 		pendingMessage = null;
-		return text;
+		return message;
 	}
 
 	return {

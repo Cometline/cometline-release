@@ -1,5 +1,6 @@
 import { abortSession, getSessionMessages, streamMessage } from '$lib/client/cometmind';
-import type { ChatItem, StreamEvent, TranscriptItem } from '$lib/types';
+import type { ChatItem, ImageAttachment, StreamEvent, TranscriptItem } from '$lib/types';
+import type { ChatTurnPayload } from '$lib/actions/start-chat';
 import { reduceChatState } from '$lib/reducers/chat';
 import { chatDebug, summarizeChatItems, summarizeStreamEvent } from '../debug/chat';
 
@@ -50,7 +51,8 @@ function itemsFromTranscript(transcriptItems: TranscriptItem[]): ChatItem[] {
 }
 
 function itemFromTranscript(item: TranscriptItem, index: number): ChatItem {
-	if (item.type === 'user') return { id: `history-${index}`, type: 'user', text: item.text };
+	if (item.type === 'user')
+		return { id: `history-${index}`, type: 'user', text: item.text, images: item.images };
 	if (item.type === 'assistant')
 		return { id: `history-${index}`, type: 'assistant', text: item.text };
 	if (item.type === 'reasoning')
@@ -154,13 +156,13 @@ function createChatStore() {
 		return loadPromise;
 	}
 
-	function addUser(text: string, reveal = true) {
-		items.push({ id: localID('user'), type: 'user', text, reveal });
+	function addUser(text: string, images?: ImageAttachment[], reveal = true) {
+		items.push({ id: localID('user'), type: 'user', text, images, reveal });
 		notifyItems();
 	}
 
-	function stageUser(text: string) {
-		addUser(text, false);
+	function stageUser(text: string, images?: ImageAttachment[]) {
+		addUser(text, images, false);
 	}
 
 	function revealStagedUser() {
@@ -208,7 +210,14 @@ function createChatStore() {
 		notifyItems();
 	}
 
-	async function send(nextSessionID: string, text: string, opts?: { skipUser?: boolean }) {
+	async function send(
+		nextSessionID: string,
+		payloadOrText: ChatTurnPayload | string,
+		opts?: { skipUser?: boolean }
+	) {
+		const payload = typeof payloadOrText === 'string' ? { text: payloadOrText } : payloadOrText;
+		const text = payload.text;
+		const images = payload.images;
 		if (isStreaming) {
 			chatDebug('store:send-blocked', {
 				sessionID: nextSessionID,
@@ -225,7 +234,7 @@ function createChatStore() {
 		streamAbort?.abort();
 		streamAbort = new AbortController();
 		const signal = streamAbort.signal;
-		if (!opts?.skipUser) addUser(text);
+		if (!opts?.skipUser) addUser(text, images);
 		chatDebug('store:send-start', {
 			sessionID: nextSessionID,
 			run,
@@ -239,7 +248,14 @@ function createChatStore() {
 		};
 		let eventIndex = 0;
 		try {
-			for await (const event of streamMessage(nextSessionID, { text }, signal)) {
+			for await (const event of streamMessage(
+				nextSessionID,
+				{
+					text,
+					images: images?.map((image) => ({ media_type: image.media_type, data: image.data }))
+				},
+				signal
+			)) {
 				if (run !== streamRun) return;
 				eventIndex += 1;
 				const before = summarizeChatItems(items);

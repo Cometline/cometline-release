@@ -14,6 +14,7 @@
 	import { chatStore, type ChatItem } from '$lib/stores/chat.svelte';
 	import { chatDebug, chatDebugEnabled, summarizeChatItem } from '../debug/chat';
 	import AssistantMarkdown from '$lib/components/AssistantMarkdown.svelte';
+	import { imageDataURL } from '$lib/files/images';
 
 	const ASSISTANT_ROW_IN = { y: 10, duration: 220 };
 	const TOOL_ROW_IN = { y: 8, duration: 200 };
@@ -135,7 +136,7 @@
 					return `${item.id}:${item.text.length}:${item.reasoning?.text.length ?? 0}:${item.reasoning?.pending ?? false}:${item.pending ?? false}`;
 				}
 				if (item.type === 'user') {
-					return `${item.id}:${item.text.length}:${item.reveal === false}`;
+					return `${item.id}:${item.text.length}:${item.images?.length ?? 0}:${item.reveal === false}`;
 				}
 				return `${item.id}:${'text' in item ? item.text.length : 0}:${item.type}`;
 			})
@@ -432,7 +433,16 @@
 						class:flight-hidden={item.reveal === false}
 						data-flight-target={item.reveal === false ? 'user' : undefined}
 					>
-						<AssistantMarkdown source={item.text} mode="user" />
+						{#if item.images?.length}
+							<div class="user-images" class:text-following={Boolean(item.text)}>
+								{#each item.images as image, imageIndex (`${item.id}-image-${image.id ?? imageIndex}`)}
+									<img src={imageDataURL(image)} alt={image.name ?? 'Attached image'} />
+								{/each}
+							</div>
+						{/if}
+					{#if item.text?.trim()}
+						<AssistantMarkdown source={item.text.trim()} mode="user" />
+					{/if}
 					</div>
 				</div>
 				{#if showFirstTurnAvatarSlot() && item.id === firstUserId}
@@ -941,6 +951,33 @@
 		border-bottom-right-radius: 6px;
 		box-shadow: 0 8px 20px var(--user-bubble-shadow);
 		max-width: var(--chat-content-column);
+		/* The bubble wraps optional image + text children, so the template
+		 * introduces whitespace-only text nodes between them. Collapse that
+		 * whitespace here; the actual user text keeps its newlines via
+		 * `.markdown.user-text { white-space: pre-wrap }` inside AssistantMarkdown.
+		 * Without this, `pre-wrap` would render the template indentation as
+		 * blank lines and inflate short bubbles (e.g. "hi"). */
+		white-space: normal;
+	}
+
+	.user-images {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+		gap: 8px;
+		max-width: min(360px, 72vw);
+	}
+
+	.user-images.text-following {
+		margin-bottom: 8px;
+	}
+
+	.user-images img {
+		width: 100%;
+		max-height: 220px;
+		object-fit: cover;
+		border-radius: 12px;
+		border: 1px solid rgba(255, 255, 255, 0.35);
+		display: block;
 	}
 
 	.assistant-bubble {

@@ -7,12 +7,14 @@
 		value = $bindable(''),
 		placeholder = '',
 		ariaLabel = 'Message input',
-		onkeydown
+		onkeydown,
+		onfiles
 	}: {
 		value?: string;
 		placeholder?: string;
 		ariaLabel?: string;
 		onkeydown?: (e: KeyboardEvent) => void;
+		onfiles?: (files: File[]) => void;
 	} = $props();
 
 	let editor = $state<HTMLDivElement | null>(null);
@@ -162,6 +164,15 @@
 	}
 
 	function onPaste(e: ClipboardEvent) {
+		const files = Array.from(e.clipboardData?.files ?? []).filter((file) =>
+			file.type.startsWith('image/')
+		);
+		if (files.length > 0) {
+			e.preventDefault();
+			onfiles?.(files);
+			return;
+		}
+
 		// Force plain-text paste so we don't inherit foreign HTML, then linkify
 		// immediately so a pasted URL becomes a chip without needing an extra
 		// keystroke.
@@ -190,6 +201,13 @@
 		openExternalLink(chip.dataset.url);
 	}
 
+	function insertPlainText(text: string) {
+		if (!editor) return;
+		focus();
+		document.execCommand('insertText', false, text);
+		readValue();
+	}
+
 	export function focus() {
 		editor?.focus({ preventScroll: true });
 		// Move caret to end.
@@ -206,6 +224,10 @@
 	export async function focusAsync() {
 		await tick();
 		focus();
+	}
+
+	export function insertText(text: string) {
+		insertPlainText(text);
 	}
 
 	/** Clears the editor (used after send). */
