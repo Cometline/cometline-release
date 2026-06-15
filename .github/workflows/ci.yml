@@ -51,6 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
     concurrency:
       group: release-tag-${{ github.repository }}
       cancel-in-progress: false
@@ -113,3 +114,14 @@ jobs:
           git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git tag -a "$TAG" -m "Release $TAG"
           git push origin "$TAG"
+
+      - name: Trigger release workflow
+        if: steps.tagged.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.next }}"
+          # GITHUB_TOKEN pushes do not emit push events, so release.yml won't
+          # start on its own; dispatch it explicitly on the new tag ref.
+          gh workflow run "Release macOS" --repo "${GITHUB_REPOSITORY}" --ref "$TAG"
