@@ -16,8 +16,11 @@ const (
 	KindReasoningDelta Kind = "reasoning_delta"
 	KindToolCall       Kind = "tool_call"
 	KindToolResult     Kind = "tool_result"
-	KindStepFinish     Kind = "step_finish"
-	KindError          Kind = "error"
+	KindStepFinish         Kind = "step_finish"
+	KindSubagentStarted    Kind = "subagent_started"
+	KindSubagentProgress   Kind = "subagent_progress"
+	KindSubagentFinished   Kind = "subagent_finished"
+	KindError              Kind = "error"
 	KindDone           Kind = "done"
 )
 
@@ -49,6 +52,14 @@ type Event struct {
 	ToolErr string // tool_result: empty if success
 	// step_finish
 	Usage Usage
+	// subagent_* 
+	ChildSessionID string
+	Purpose        string
+	AgentName      string
+	ProgressKind   string
+	ProgressText   string
+	DelegationStatus string
+	Summary        string
 	// error
 	Message string
 	Code    string
@@ -95,6 +106,27 @@ func (e Event) MarshalJSON() ([]byte, error) {
 			Type  string `json:"type"`
 			Usage Usage  `json:"usage"`
 		}{t, e.Usage})
+	case KindSubagentStarted:
+		return json.Marshal(struct {
+			Type           string `json:"type"`
+			ChildSessionID string `json:"child_session_id"`
+			Purpose        string `json:"purpose"`
+			AgentName      string `json:"agent_name"`
+		}{t, e.ChildSessionID, e.Purpose, e.AgentName})
+	case KindSubagentProgress:
+		return json.Marshal(struct {
+			Type           string `json:"type"`
+			ChildSessionID string `json:"child_session_id"`
+			ProgressKind   string `json:"progress_kind"`
+			ProgressText   string `json:"progress_text"`
+		}{t, e.ChildSessionID, e.ProgressKind, e.ProgressText})
+	case KindSubagentFinished:
+		return json.Marshal(struct {
+			Type             string `json:"type"`
+			ChildSessionID   string `json:"child_session_id"`
+			DelegationStatus string `json:"delegation_status"`
+			Summary          string `json:"summary"`
+		}{t, e.ChildSessionID, e.DelegationStatus, e.Summary})
 	case KindError:
 		return json.Marshal(struct {
 			Type    string `json:"type"`
@@ -144,3 +176,33 @@ func Errorf(message, code string) Event {
 
 // Done builds the terminal done event.
 func Done() Event { return Event{Kind: KindDone} }
+
+// SubagentStarted builds a subagent_started event.
+func SubagentStarted(childSessionID, purpose, agentName string) Event {
+	return Event{
+		Kind:           KindSubagentStarted,
+		ChildSessionID: childSessionID,
+		Purpose:        purpose,
+		AgentName:      agentName,
+	}
+}
+
+// SubagentProgress builds a subagent_progress event.
+func SubagentProgress(childSessionID, progressKind, progressText string) Event {
+	return Event{
+		Kind:           KindSubagentProgress,
+		ChildSessionID: childSessionID,
+		ProgressKind:   progressKind,
+		ProgressText:   progressText,
+	}
+}
+
+// SubagentFinished builds a subagent_finished event.
+func SubagentFinished(childSessionID, status, summary string) Event {
+	return Event{
+		Kind:             KindSubagentFinished,
+		ChildSessionID:   childSessionID,
+		DelegationStatus: status,
+		Summary:          summary,
+	}
+}

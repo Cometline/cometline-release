@@ -105,7 +105,7 @@ func (r *Runtime) RunnerFor(sess session.Session, workspacePath string) (*agent.
 	return &agent.Runner{
 		Provider:     p,
 		Sessions:     r.Sessions,
-		Registry:     tools.NewRegistry(workspacePath),
+		Registry:     tools.NewRegistry(workspacePath, tools.RegistryOptions{Sessions: r.Sessions, ACP: r.Config.ACPSettings()}),
 		MaxSteps:     r.Config.MaxSteps,
 		MaxTokens:    r.Config.MaxTokens,
 		SystemPrompt: r.SystemPrompt,

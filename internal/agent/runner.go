@@ -110,7 +110,11 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 				return fmt.Errorf("missing persisted tool call id for %s", tc.ID)
 			}
 			start := time.Now()
-			res, execErr := r.Registry.Execute(ctx, tc.Name, tc.Input)
+			toolCtx := tools.WithToolSession(ctx, turn.ID)
+			toolCtx = tools.WithProgress(toolCtx, func(ev event.Event) {
+				ch <- ev
+			})
+			res, execErr := r.Registry.Execute(toolCtx, tc.Name, tc.Input)
 			dur := time.Since(start).Milliseconds()
 
 			out := res.Output

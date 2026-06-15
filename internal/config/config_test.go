@@ -9,6 +9,8 @@ import (
 func TestLoadCreatesDefaultConfigWithBaseURL(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("COMETMIND_PROVIDER", "")
+	t.Setenv("COMETMIND_BASE_URL", "")
 
 	cfg, err := Load()
 	if err != nil {

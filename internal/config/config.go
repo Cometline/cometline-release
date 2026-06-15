@@ -28,6 +28,31 @@ type ProviderEntry struct {
 	Model   string `mapstructure:"model"`
 }
 
+// ACPConfig controls external coding agent delegation.
+type ACPConfig struct {
+	Command string   `mapstructure:"command"`
+	Args    []string `mapstructure:"args"`
+	Timeout string   `mapstructure:"timeout"`
+}
+
+// DiscordGatewayConfig configures the Discord messaging adapter.
+type DiscordGatewayConfig struct {
+	Enabled         bool     `mapstructure:"enabled"`
+	BotToken        string   `mapstructure:"bot_token"`
+	BotTokenEnv     string   `mapstructure:"bot_token_env"`
+	AllowedUsers    []string `mapstructure:"allowed_users"`
+	AllowedChannels []string `mapstructure:"allowed_channels"`
+	RequireMention  bool     `mapstructure:"require_mention"`
+	WorkspacePath   string   `mapstructure:"workspace_path"`
+	Provider        string   `mapstructure:"provider"`
+	Model           string   `mapstructure:"model"`
+}
+
+// GatewayConfig groups messaging gateway settings.
+type GatewayConfig struct {
+	Discord DiscordGatewayConfig `mapstructure:"discord"`
+}
+
 // Config holds user-visible runtime settings loaded from ~/.cometmind/config.toml and environment.
 type Config struct {
 	Provider         string          `mapstructure:"provider"`
@@ -37,6 +62,8 @@ type Config struct {
 	MaxSteps         int             `mapstructure:"max_steps"`
 	SystemPromptPath string          `mapstructure:"system_prompt_path"`
 	Providers        []ProviderEntry `mapstructure:"providers"`
+	ACP              ACPConfig       `mapstructure:"acp"`
+	Gateway          GatewayConfig   `mapstructure:"gateway"`
 }
 
 // Defaults returns baseline values when the config file is missing keys.

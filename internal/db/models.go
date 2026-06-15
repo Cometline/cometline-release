@@ -8,6 +8,17 @@ import (
 	"database/sql"
 )
 
+type GatewaySession struct {
+	ID                 string `json:"id"`
+	Platform           string `json:"platform"`
+	PlatformUserID     string `json:"platform_user_id"`
+	PlatformChannelID  string `json:"platform_channel_id"`
+	ThreadID           string `json:"thread_id"`
+	CometmindSessionID string `json:"cometmind_session_id"`
+	WorkspaceID        string `json:"workspace_id"`
+	LastActiveAt       int64  `json:"last_active_at"`
+}
+
 type Message struct {
 	ID               string `json:"id"`
 	SessionID        string `json:"session_id"`
@@ -19,15 +30,19 @@ type Message struct {
 }
 
 type Session struct {
-	ID          string `json:"id"`
-	WorkspaceID string `json:"workspace_id"`
-	Title       string `json:"title"`
-	ModelID     string `json:"model_id"`
-	ProviderID  string `json:"provider_id"`
-	Status      string `json:"status"`
-	TokenUsage  string `json:"token_usage"`
-	CreatedAt   int64  `json:"created_at"`
-	UpdatedAt   int64  `json:"updated_at"`
+	ID               string         `json:"id"`
+	WorkspaceID      string         `json:"workspace_id"`
+	Title            string         `json:"title"`
+	ModelID          string         `json:"model_id"`
+	ProviderID       string         `json:"provider_id"`
+	Status           string         `json:"status"`
+	TokenUsage       string         `json:"token_usage"`
+	ParentSessionID  sql.NullString `json:"parent_session_id"`
+	Purpose          string         `json:"purpose"`
+	DelegationStatus string         `json:"delegation_status"`
+	OutputSummary    string         `json:"output_summary"`
+	CreatedAt        int64          `json:"created_at"`
+	UpdatedAt        int64          `json:"updated_at"`
 }
 
 type ToolCall struct {

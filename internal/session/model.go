@@ -12,15 +12,19 @@ type Workspace struct {
 
 // Session is the session-store view of a persisted chat session.
 type Session struct {
-	ID          string
-	WorkspaceID string
-	Title       string
-	ModelID     string
-	ProviderID  string
-	Status      string
-	TokenUsage  string
-	CreatedAt   int64
-	UpdatedAt   int64
+	ID               string
+	WorkspaceID      string
+	Title            string
+	ModelID          string
+	ProviderID       string
+	Status           string
+	TokenUsage       string
+	ParentSessionID  string
+	Purpose          string
+	DelegationStatus string
+	OutputSummary    string
+	CreatedAt        int64
+	UpdatedAt        int64
 }
 
 // Message is the session-store view of one persisted transcript row.
@@ -44,16 +48,24 @@ func workspaceFromDB(w db.Workspace) Workspace {
 }
 
 func sessionFromDB(s db.Session) Session {
+	parent := ""
+	if s.ParentSessionID.Valid {
+		parent = s.ParentSessionID.String
+	}
 	return Session{
-		ID:          s.ID,
-		WorkspaceID: s.WorkspaceID,
-		Title:       s.Title,
-		ModelID:     s.ModelID,
-		ProviderID:  s.ProviderID,
-		Status:      s.Status,
-		TokenUsage:  s.TokenUsage,
-		CreatedAt:   s.CreatedAt,
-		UpdatedAt:   s.UpdatedAt,
+		ID:               s.ID,
+		WorkspaceID:      s.WorkspaceID,
+		Title:            s.Title,
+		ModelID:          s.ModelID,
+		ProviderID:       s.ProviderID,
+		Status:           s.Status,
+		TokenUsage:       s.TokenUsage,
+		ParentSessionID:  parent,
+		Purpose:          s.Purpose,
+		DelegationStatus: s.DelegationStatus,
+		OutputSummary:    s.OutputSummary,
+		CreatedAt:        s.CreatedAt,
+		UpdatedAt:        s.UpdatedAt,
 	}
 }
 

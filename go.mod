@@ -3,6 +3,8 @@ module github.com/cometline/cometmind
 go 1.25.0
 
 require (
+	github.com/bwmarrin/discordgo v0.29.0
+	github.com/coder/acp-go-sdk v0.13.5
 	github.com/cometline/comet-sdk v0.0.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/oklog/ulid/v2 v2.1.0
@@ -29,6 +31,7 @@ require (
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect

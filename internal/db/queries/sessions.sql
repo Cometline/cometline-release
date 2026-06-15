@@ -3,6 +3,36 @@ INSERT INTO sessions (id, workspace_id, title, model_id, provider_id, status)
 VALUES (?, ?, ?, ?, ?, ?)
 RETURNING *;
 
+-- name: CreateChildSession :one
+INSERT INTO sessions (
+    id,
+    workspace_id,
+    title,
+    model_id,
+    provider_id,
+    status,
+    parent_session_id,
+    purpose,
+    delegation_status,
+    output_summary
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: ListChildSessions :many
+SELECT *
+FROM sessions
+WHERE parent_session_id = ?
+ORDER BY created_at ASC;
+
+-- name: UpdateSessionDelegation :exec
+UPDATE sessions
+SET
+    delegation_status = ?,
+    output_summary = ?,
+    updated_at = unixepoch ('now', 'subsec') * 1000
+WHERE id = ?;
+
 -- name: GetSession :one
 SELECT *
 FROM sessions

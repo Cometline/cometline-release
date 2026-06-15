@@ -484,3 +484,68 @@ func (s *Service) assistantBlocks(ctx context.Context, m db.Message) ([]cometsdk
 	}
 	return blocks, nil
 }
+
+// NewChildSession creates a delegated child session linked to a parent.
+func (s *Service) NewChildSession(ctx context.Context, parent Session, purpose string) (Session, error) {
+	title := purpose
+	if len(title) > 80 {
+		title = title[:80]
+	}
+	sess, err := s.q.CreateChildSession(ctx, db.CreateChildSessionParams{
+		ID:               id.New(),
+		WorkspaceID:      parent.WorkspaceID,
+		Title:            title,
+		ModelID:          parent.ModelID,
+		ProviderID:       parent.ProviderID,
+		Status:           "active",
+		ParentSessionID:  sql.NullString{String: parent.ID, Valid: true},
+		Purpose:          purpose,
+		DelegationStatus: "pending",
+		OutputSummary:    "",
+	})
+	if err != nil {
+		return Session{}, err
+	}
+	return sessionFromDB(sess), nil
+}
+
+// ListChildSessions returns delegated sessions for a parent session.
+func (s *Service) ListChildSessions(ctx context.Context, parentSessionID string) ([]Session, error) {
+	rows, err := s.q.ListChildSessions(ctx, sql.NullString{String: parentSessionID, Valid: true})
+	if err != nil {
+		return nil, err
+	}
+	return sessionsFromDB(rows), nil
+}
+
+// UpdateDelegation persists delegation status and summary for a child session.
+func (s *Service) UpdateDelegation(ctx context.Context, sessionID, status, summary string) error {
+	return s.q.UpdateSessionDelegation(ctx, db.UpdateSessionDelegationParams{
+		DelegationStatus: status,
+		OutputSummary:    summary,
+		ID:               sessionID,
+	})
+}
+
+// UpsertGatewaySession maps an external chat surface to a CometMind session.
+func (s *Service) UpsertGatewaySession(ctx context.Context, platform, userID, channelID, threadID, sessionID, workspaceID string) (db.GatewaySession, error) {
+	return s.q.UpsertGatewaySession(ctx, db.UpsertGatewaySessionParams{
+		ID:                 id.New(),
+		Platform:           platform,
+		PlatformUserID:     userID,
+		PlatformChannelID:  channelID,
+		ThreadID:           threadID,
+		CometmindSessionID: sessionID,
+		WorkspaceID:        workspaceID,
+	})
+}
+
+// LookupGatewaySession finds a mapped CometMind session for a platform identity.
+func (s *Service) LookupGatewaySession(ctx context.Context, platform, userID, channelID, threadID string) (db.GatewaySession, error) {
+	return s.q.GetGatewaySession(ctx, db.GetGatewaySessionParams{
+		Platform:          platform,
+		PlatformUserID:    userID,
+		PlatformChannelID: channelID,
+		ThreadID:          threadID,
+	})
+}

@@ -15,9 +15,13 @@ type Registry struct {
 }
 
 // NewRegistry returns read/list/write/run tools scoped to the workspace root on disk.
-func NewRegistry(workspaceRoot string) *Registry {
+func NewRegistry(workspaceRoot string, opts ...RegistryOptions) *Registry {
 	ws := Workspace{Root: workspaceRoot}
 	r := &Registry{workspace: ws, byName: make(map[string]Tool)}
+	var opt RegistryOptions
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
 	add := func(t Tool) {
 		spec := t.Spec()
 		r.byName[spec.Name] = t
@@ -29,6 +33,13 @@ func NewRegistry(workspaceRoot string) *Registry {
 	add(ListDir{Workspace: ws})
 	add(RunCommand{Workspace: ws})
 	add(WebFetch{})
+	if opt.Sessions != nil {
+		add(DelegateCodingTask{
+			Workspace: ws,
+			Sessions:  opt.Sessions,
+			ACP:       opt.ACP,
+		})
+	}
 
 	return r
 }

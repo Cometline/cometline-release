@@ -83,6 +83,7 @@ func New(deps Deps) (*gin.Engine, error) {
 	api.PATCH("/sessions/:id", app.handlePatchSession)
 	api.DELETE("/sessions/:id", app.handleDeleteSession)
 	api.GET("/sessions/:id/messages", app.handleGetMessages)
+	api.GET("/sessions/:id/children", app.handleListChildSessions)
 	api.POST("/sessions/:id/message", app.handlePostMessage)
 	api.POST("/sessions/:id/abort", app.handleAbortSession)
 
@@ -170,16 +171,20 @@ type tokenUsageResource struct {
 }
 
 type sessionResource struct {
-	ID            string             `json:"id"`
-	WorkspaceID   string             `json:"workspace_id"`
-	WorkspacePath string             `json:"workspace_path"`
-	Title         string             `json:"title"`
-	ModelID       string             `json:"model_id"`
-	ProviderID    string             `json:"provider_id"`
-	Status        string             `json:"status"`
-	TokenUsage    tokenUsageResource `json:"token_usage"`
-	CreatedAt     int64              `json:"created_at"`
-	UpdatedAt     int64              `json:"updated_at"`
+	ID               string             `json:"id"`
+	WorkspaceID      string             `json:"workspace_id"`
+	WorkspacePath    string             `json:"workspace_path"`
+	Title            string             `json:"title"`
+	ModelID          string             `json:"model_id"`
+	ProviderID       string             `json:"provider_id"`
+	Status           string             `json:"status"`
+	TokenUsage       tokenUsageResource `json:"token_usage"`
+	ParentSessionID  string             `json:"parent_session_id,omitempty"`
+	Purpose          string             `json:"purpose,omitempty"`
+	DelegationStatus string             `json:"delegation_status,omitempty"`
+	OutputSummary    string             `json:"output_summary,omitempty"`
+	CreatedAt        int64              `json:"created_at"`
+	UpdatedAt        int64              `json:"updated_at"`
 }
 
 type listSessionsResponse struct {
@@ -304,6 +309,31 @@ func (a *App) handleGetSession(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, res)
+}
+
+func (a *App) handleListChildSessions(c *gin.Context) {
+	parentID := c.Param("id")
+	_, wsPath, ok := a.loadSessionWithWorkspace(c, parentID)
+	if !ok {
+		return
+	}
+
+	children, err := a.sessions.ListChildSessions(c.Request.Context(), parentID)
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+
+	items := make([]sessionResource, 0, len(children))
+	for _, child := range children {
+		res, err := sessionResourceFromModel(child, wsPath)
+		if err != nil {
+			writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
+			return
+		}
+		items = append(items, res)
+	}
+	c.JSON(http.StatusOK, listSessionsResponse{Sessions: items})
 }
 
 func (a *App) handlePatchSession(c *gin.Context) {
@@ -652,16 +682,20 @@ func sessionResourceFromModel(sess session.Session, workspacePath string) (sessi
 		return sessionResource{}, err
 	}
 	return sessionResource{
-		ID:            sess.ID,
-		WorkspaceID:   sess.WorkspaceID,
-		WorkspacePath: workspacePath,
-		Title:         sess.Title,
-		ModelID:       sess.ModelID,
-		ProviderID:    sess.ProviderID,
-		Status:        sess.Status,
-		TokenUsage:    usage,
-		CreatedAt:     sess.CreatedAt,
-		UpdatedAt:     sess.UpdatedAt,
+		ID:               sess.ID,
+		WorkspaceID:      sess.WorkspaceID,
+		WorkspacePath:    workspacePath,
+		Title:            sess.Title,
+		ModelID:          sess.ModelID,
+		ProviderID:       sess.ProviderID,
+		Status:           sess.Status,
+		TokenUsage:       usage,
+		ParentSessionID:  sess.ParentSessionID,
+		Purpose:          sess.Purpose,
+		DelegationStatus: sess.DelegationStatus,
+		OutputSummary:    sess.OutputSummary,
+		CreatedAt:        sess.CreatedAt,
+		UpdatedAt:        sess.UpdatedAt,
 	}, nil
 }
 

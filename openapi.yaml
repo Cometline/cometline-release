@@ -200,6 +200,25 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/sessions/{id}/children:
+    get:
+      tags: [Sessions]
+      summary: List delegated child sessions
+      operationId: listChildSessions
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: Child sessions for a parent session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/sessions/{id}/messages:
     get:
       tags: [Sessions]
@@ -247,7 +266,8 @@ paths:
 
         The SSE payloads reuse CometMind-native event names:
         `text_delta`, `reasoning_start`, `reasoning_delta`, `tool_call`,
-        `tool_result`, `step_finish`, `error`, and `done`.
+        `tool_result`, `step_finish`, `subagent_started`, `subagent_progress`,
+        `subagent_finished`, `error`, and `done`.
 
         `tool_call.input` is opaque JSON.
         `tool_result.output` is text.
