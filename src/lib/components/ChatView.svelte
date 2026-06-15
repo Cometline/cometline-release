@@ -119,13 +119,22 @@
 		);
 	}, syncQueueState);
 
-	onMount(() => {
-		// Select this session and sync the model picker to it.
+	function syncSessionFromStore() {
 		const session = sessionStore.sessions.find((item) => item.id === sessionId);
-		if (session) {
+		if (!session) return;
+		if (sessionStore.current?.id !== sessionId) {
 			sessionStore.selectSession(session);
-			modelStore.selectFromSession(session);
 		}
+		modelStore.selectFromSession(session);
+	}
+
+	$effect(() => {
+		sessionStore.sessions;
+		syncSessionFromStore();
+	});
+
+	onMount(() => {
+		syncSessionFromStore();
 
 		// A pending first message (queued by the composer before navigation) takes
 		// priority and is submitted as the first turn; otherwise load the

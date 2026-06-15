@@ -1,4 +1,5 @@
 import { openExternalLink } from '$lib/external-link';
+import { getActiveSessionId } from '$lib/active-session';
 import { shellStore } from '$lib/stores/shell.svelte';
 
 export function isWebPanelUrl(rawUrl: string): boolean {
@@ -20,8 +21,9 @@ export function openLink(rawUrl: string): void {
 			return;
 		}
 		if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-			if (window.electronAPI?.setWebPanelOpen) {
-				shellStore.openWebPanel(String(rawUrl));
+			const sessionId = getActiveSessionId();
+			if (sessionId && window.electronAPI?.setWebPanelOpen) {
+				shellStore.openWebPanel(String(rawUrl), sessionId);
 				return;
 			}
 			openExternalLink(rawUrl);

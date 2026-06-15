@@ -75,6 +75,7 @@
 		deletingID = session.id;
 		try {
 			await deleteSession(session.id);
+			shellStore.clearWebPanelForSession(session.id);
 			const wasCurrent = sessionStore.current?.id === session.id;
 			sessionStore.removeSession(session.id);
 			if (wasCurrent) {

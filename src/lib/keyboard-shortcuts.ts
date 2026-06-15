@@ -7,7 +7,8 @@ export type ShortcutAction =
 	| 'closeSettings'
 	| 'focusSearch'
 	| 'previousSession'
-	| 'nextSession';
+	| 'nextSession'
+	| 'toggleWebPanel';
 
 export interface ShortcutBinding {
 	key: string;
@@ -71,6 +72,11 @@ export const SHORTCUT_DEFINITIONS: KeyboardShortcutDefinition[] = [
 		id: 'nextSession',
 		label: 'Next chat',
 		defaultBinding: { ctrl: true, meta: true, key: 'ArrowDown' }
+	},
+	{
+		id: 'toggleWebPanel',
+		label: 'Toggle web panel',
+		defaultBinding: { command: true, alt: true, key: 'b' }
 	}
 ];
 
@@ -108,6 +114,15 @@ function normalizeSessionNavBinding(
 	return binding;
 }
 
+function normalizeToggleWebPanelBinding(binding: ShortcutBinding | undefined, defaultBinding: ShortcutBinding) {
+	if (!binding) return { ...defaultBinding };
+	// Migrate saved bindings that collide with toggleSidebar (⌘B) or legacy ⌘⇧B.
+	if (binding.key === 'b' && binding.command && binding.alt !== true) {
+		return { ...defaultBinding };
+	}
+	return binding;
+}
+
 export function normalizeKeyboardShortcuts(
 	saved: KeyboardShortcuts | undefined
 ): KeyboardShortcuts {
@@ -125,9 +140,16 @@ export function normalizeKeyboardShortcuts(
 				...(typeof binding.alt === 'boolean' && { alt: binding.alt }),
 				...(typeof binding.shift === 'boolean' && { shift: binding.shift })
 			};
+			if (def.id === 'toggleWebPanel') {
+				next[def.id] = normalizeToggleWebPanelBinding(normalized, def.defaultBinding);
+				continue;
+			}
 			next[def.id] = normalizeSessionNavBinding(def.id, normalized, def.defaultBinding);
 		} else {
-			next[def.id] = normalizeSessionNavBinding(def.id, undefined, def.defaultBinding);
+			next[def.id] =
+				def.id === 'toggleWebPanel'
+					? normalizeToggleWebPanelBinding(undefined, def.defaultBinding)
+					: normalizeSessionNavBinding(def.id, undefined, def.defaultBinding);
 		}
 	}
 	return next;
@@ -197,6 +219,7 @@ export function formatShortcut(binding: ShortcutBinding | undefined): string {
 
 	if (binding.command) {
 		parts.push(isMac ? '⌘' : 'Ctrl');
+		if (binding.alt) parts.push(isMac ? '⌥' : 'Alt');
 	} else {
 		if (binding.ctrl) parts.push(isMac ? '⌃' : 'Ctrl');
 		if (binding.meta) parts.push(isMac ? '⌘' : 'Win');

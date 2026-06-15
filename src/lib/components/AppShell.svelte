@@ -6,6 +6,7 @@
 	import UpdateButton from './UpdateButton.svelte';
 	import WebPanel from './WebPanel.svelte';
 	import { shellStore } from '$lib/stores/shell.svelte';
+	import { sessionStore } from '$lib/stores/session.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
 	import { startNewChat } from '$lib/actions/new-chat';
 	import { navigateAdjacentSession } from '$lib/actions/navigate-adjacent-session';
@@ -21,8 +22,15 @@
 
 	let sidebarRef = $state<{ focusSearch: () => void } | null>(null);
 
+	let activeSessionId = $derived(sessionStore.current?.id ?? null);
+
 	$effect(() => {
 		window.electronAPI?.setSessionNavigationSuspended?.(shellStore.settingsOpen);
+	});
+
+	$effect(() => {
+		activeSessionId;
+		shellStore.onActiveSessionChange();
 	});
 
 	function isCloseWebPanelShortcut(event: KeyboardEvent) {
@@ -36,7 +44,6 @@
 	}
 
 	onMount(() => {
-		// Narrow viewports start with the sidebar closed so chat gets full width.
 		if (narrowViewportQuery().matches) {
 			shellStore.closeSidebar();
 		}
@@ -64,6 +71,11 @@
 			if (matchesShortcut(event, shortcuts.toggleSidebar)) {
 				event.preventDefault();
 				shellStore.toggleSidebar();
+				return;
+			}
+			if (matchesShortcut(event, shortcuts.toggleWebPanel)) {
+				event.preventDefault();
+				shellStore.toggleWebPanel();
 				return;
 			}
 			if (matchesShortcut(event, shortcuts.openSettings)) {
@@ -106,10 +118,11 @@
 			shellStore.closeWebPanel();
 		});
 
-		// macOS hides the traffic lights in fullscreen, so the renderer reclaims
-		// the gutter that normally keeps the search bar clear of them. Pull the
-		// current state on mount in case the initial push fired before this
-		// listener was registered, then subscribe to future changes.
+		const unsubscribeToggleWebPanel = window.electronAPI?.onToggleWebPanel?.(() => {
+			if (shellStore.settingsOpen) return;
+			shellStore.toggleWebPanel();
+		});
+
 		function updateFullScreen(isFullScreen: boolean) {
 			if (import.meta.env.DEV) {
 				console.log('[AppShell] fullscreen state:', isFullScreen);
@@ -119,7 +132,6 @@
 		void window.electronAPI?.getFullScreen?.().then(updateFullScreen);
 		const unsubscribeFullScreen = window.electronAPI?.onFullScreenChange?.(updateFullScreen);
 
-		// Fallback in case the main-process push is missed or delayed.
 		function onDomFullScreenChange() {
 			updateFullScreen(Boolean(document.fullscreenElement));
 		}
@@ -129,6 +141,7 @@
 			window.removeEventListener('keydown', onKeydown, true);
 			unsubscribeNavigate?.();
 			unsubscribeCloseWebPanel?.();
+			unsubscribeToggleWebPanel?.();
 			unsubscribeFullScreen?.();
 			document.removeEventListener('fullscreenchange', onDomFullScreenChange);
 		};
@@ -156,17 +169,25 @@
 			duration: sidebarTransitionDuration()
 		});
 	});
+
+	function handleMainMouseDown() {
+		shellStore.setFocusedPane('chat');
+	}
 </script>
 
 <div
 	class="app-shell"
 	class:sidebar-collapsed={!shellStore.sidebarOpen}
 	class:is-fullscreen={shellStore.fullscreen}
-	class:web-panel-open={shellStore.webPanelOpen}
 >
 	<Sidebar bind:this={sidebarRef} {workspacePath} collapsed={!shellStore.sidebarOpen} />
 	<div class="content-row">
-		<main class="main shadow max-[900px]:shadow-none">
+		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+		<main
+			class="main content-panel-surface max-[900px]:shadow-none"
+			class:pane-focus-active={shellStore.focusedPane === 'chat'}
+			onmousedown={handleMainMouseDown}
+		>
 			{@render children()}
 			<RuntimeOverlay />
 		</main>
@@ -190,8 +211,6 @@
 		--active-sidebar-width: 0px;
 	}
 
-	/* In fullscreen the native traffic lights are hidden, so the search bar can
-	   reclaim the gutter that normally keeps it clear of them. */
 	.app-shell.is-fullscreen {
 		--traffic-light-gutter: 0px;
 	}
@@ -204,7 +223,7 @@
 	}
 
 	.main {
-		flex: 1;
+		flex: 1 1 0;
 		min-width: 0;
 		display: flex;
 		flex-direction: column;
@@ -213,21 +232,30 @@
 		margin: var(--content-panel-inset);
 		margin-left: calc(-1 * var(--content-panel-overlap));
 		overflow: hidden;
-		background: var(--panel-bg);
-		border: 1px solid var(--border-soft);
-		border-radius: var(--radius-window);
-		transition: margin-left var(--duration-fast) var(--ease-smooth);
+		transition:
+			margin-left var(--duration-fast) var(--ease-smooth),
+			border-color var(--duration-fast) var(--ease-smooth),
+			box-shadow var(--duration-fast) var(--ease-smooth);
 	}
 
 	.app-shell.sidebar-collapsed .main {
 		margin-left: var(--content-panel-inset);
 	}
 
-	/* Keep chat full-width; open sidebar becomes a full-window overlay. */
+	@media (prefers-reduced-motion: reduce) {
+		.main {
+			transition: none;
+		}
+	}
+
 	@media (max-width: 900px) {
 		.app-shell {
 			--active-sidebar-width: 0px;
 			background: var(--app-bg);
+		}
+
+		.content-row {
+			display: flex;
 		}
 
 		.main {
@@ -235,6 +263,7 @@
 			border: none;
 			border-radius: 0;
 			background: transparent;
+			box-shadow: none;
 		}
 
 		.app-shell:not(.sidebar-collapsed) :global(.sidebar:not(.collapsed)) {

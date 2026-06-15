@@ -29,6 +29,7 @@
 	--sidebar-width: 250px;
 	--sidebar-auto-collapse-max: 900px;
 	--web-panel-width: 50vw;
+	--web-panel-slot-width: calc(var(--web-panel-width) + var(--content-panel-inset));
 	--titlebar-height: 48px;
 	--traffic-light-gutter: 78px;
 
@@ -116,6 +117,20 @@ body {
 
 * {
 	box-sizing: border-box;
+}
+
+.pane-focus-active {
+	border-color: var(--hero-composer-ring) !important;
+	box-shadow:
+		0 0 0 1px var(--hero-composer-ring),
+		0 0 28px var(--hero-composer-glow-ring);
+}
+
+.content-panel-surface {
+	border: 1px solid var(--border-soft);
+	border-radius: var(--radius-window);
+	background: var(--panel-bg);
+	box-shadow: var(--shadow-card);
 }
 
 /* Pointer cursor for all interactive controls. */

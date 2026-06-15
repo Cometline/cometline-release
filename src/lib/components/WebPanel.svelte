@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { ArrowLeft, ArrowRight, RotateCw, X } from '@lucide/svelte';
 	import { shellStore } from '$lib/stores/shell.svelte';
+	import { getActiveSessionId } from '$lib/active-session';
 	import { isWebPanelUrl, openLink } from '$lib/open-link';
 	import { openExternalLink } from '$lib/external-link';
 
@@ -21,6 +22,12 @@
 	let loading = $state(false);
 	let displayUrl = $state('');
 	let pageTitle = $state('');
+	let webviewSessionId = $state<string | null>(null);
+	let webviewLoadedUrl = $state<string | null>(null);
+
+	const panelOpen = $derived(shellStore.webPanelOpen);
+	const panelUrl = $derived(shellStore.webPanelUrl);
+	const activeSessionId = $derived(getActiveSessionId());
 
 	function updateNavigationState() {
 		const el = webviewEl;
@@ -28,9 +35,9 @@
 		canGoBack = el.canGoBack();
 		canGoForward = el.canGoForward();
 		try {
-			displayUrl = el.getURL() || shellStore.webPanelUrl || '';
+			displayUrl = el.getURL() || panelUrl || '';
 		} catch {
-			displayUrl = shellStore.webPanelUrl || '';
+			displayUrl = panelUrl || '';
 		}
 		try {
 			pageTitle = el.getTitle() || '';
@@ -55,6 +62,10 @@
 
 	function onClose() {
 		shellStore.closeWebPanel();
+	}
+
+	function handlePanelMouseDown() {
+		shellStore.setFocusedPane('web');
 	}
 
 	function onNewWindow(event: Event & { url?: string; preventDefault?: () => void }) {
@@ -86,6 +97,9 @@
 		const onTitleUpdated = (event: Event & { title?: string }) => {
 			pageTitle = event.title ?? '';
 		};
+		const onFocus = () => {
+			shellStore.setFocusedPane('web');
+		};
 
 		el.addEventListener('did-navigate', onNavigate);
 		el.addEventListener('did-navigate-in-page', onNavigate);
@@ -93,6 +107,7 @@
 		el.addEventListener('did-stop-loading', onStopLoading);
 		el.addEventListener('page-title-updated', onTitleUpdated);
 		el.addEventListener('new-window', onNewWindow);
+		el.addEventListener('focus', onFocus);
 
 		return () => {
 			el.removeEventListener('did-navigate', onNavigate);
@@ -101,21 +116,20 @@
 			el.removeEventListener('did-stop-loading', onStopLoading);
 			el.removeEventListener('page-title-updated', onTitleUpdated);
 			el.removeEventListener('new-window', onNewWindow);
+			el.removeEventListener('focus', onFocus);
 		};
 	}
 
 	$effect(() => {
 		const el = webviewEl;
-		const url = shellStore.webPanelOpen ? shellStore.webPanelUrl : null;
-		if (!el || !url) return;
-		let current = '';
-		try {
-			current = el.getURL?.() ?? el.src ?? '';
-		} catch {
-			current = el.src ?? '';
-		}
-		if (current !== url) {
+		const sessionId = activeSessionId;
+		const url = panelUrl;
+		const open = panelOpen;
+		if (!el || !open || !sessionId || !url) return;
+		if (webviewSessionId !== sessionId || webviewLoadedUrl !== url) {
 			el.src = url;
+			webviewSessionId = sessionId;
+			webviewLoadedUrl = url;
 			displayUrl = url;
 		}
 	});
@@ -127,7 +141,7 @@
 	});
 
 	$effect(() => {
-		if (!shellStore.webPanelOpen) {
+		if (!shellStore.hasWebPanelForSession) {
 			loading = false;
 			canGoBack = false;
 			canGoForward = false;
@@ -136,9 +150,17 @@
 	});
 </script>
 
-<div class="web-panel" class:open={shellStore.webPanelOpen} aria-hidden={!shellStore.webPanelOpen}>
-	<div class="web-panel-inner">
-		<header class="web-panel-toolbar">
+<div
+	class="web-panel"
+	class:open={panelOpen}
+	aria-hidden={!panelOpen}
+>
+	<div
+		class="web-panel-inner content-panel-surface"
+		class:pane-focus-active={shellStore.focusedPane === 'web' && panelOpen}
+	>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<header class="web-panel-toolbar" onmousedown={handlePanelMouseDown}>
 			<div class="nav-actions">
 				<button type="button" class="icon-button" disabled={!canGoBack} onclick={onBack} aria-label="Back">
 					<ArrowLeft size={16} />
@@ -166,7 +188,8 @@
 				<X size={16} />
 			</button>
 		</header>
-		<div class="web-panel-content">
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="web-panel-content" onmousedown={handlePanelMouseDown}>
 			<!-- Electron webview tag; inert in plain browser dev without Electron. -->
 			<webview bind:this={webviewEl} class="web-panel-view"></webview>
 		</div>
@@ -175,36 +198,33 @@
 
 <style>
 	.web-panel {
-		flex: 0 0 0;
+		flex: 0 0 auto;
 		width: 0;
 		min-width: 0;
+		height: 100%;
 		overflow: hidden;
+		pointer-events: none;
+		box-sizing: border-box;
 		transition: width var(--duration-fast) var(--ease-smooth);
 	}
 
 	.web-panel.open {
-		flex: 0 0 var(--web-panel-width);
-		width: var(--web-panel-width);
+		width: var(--web-panel-slot-width);
+		pointer-events: auto;
 	}
 
 	.web-panel-inner {
 		width: var(--web-panel-width);
-		height: 100%;
+		height: calc(100% - (2 * var(--content-panel-inset)));
 		display: flex;
 		flex-direction: column;
 		margin: var(--content-panel-inset);
 		margin-left: 0;
-		border: 1px solid var(--border-soft);
-		border-radius: var(--radius-window);
-		background: var(--panel-bg);
-		box-shadow: var(--shadow-card);
-		transform: translateX(100%);
-		transition: transform var(--duration-fast) var(--ease-smooth);
+		box-sizing: border-box;
 		overflow: hidden;
-	}
-
-	.web-panel.open .web-panel-inner {
-		transform: translateX(0);
+		transition:
+			border-color var(--duration-fast) var(--ease-smooth),
+			box-shadow var(--duration-fast) var(--ease-smooth);
 	}
 
 	.web-panel-toolbar {
@@ -301,13 +321,23 @@
 		}
 	}
 
+	@media (prefers-reduced-motion: reduce) {
+		.web-panel {
+			transition: none;
+		}
+
+		.web-panel-inner {
+			transition: none;
+		}
+	}
+
 	@media (max-width: 900px) {
 		.web-panel {
 			position: fixed;
 			inset: 0;
 			z-index: 40;
 			width: 100% !important;
-			flex: none !important;
+			transition: none;
 			pointer-events: none;
 		}
 
@@ -322,6 +352,12 @@
 			border: none;
 			border-radius: 0;
 			box-shadow: none;
+			transform: translateX(100%);
+			transition: transform var(--duration-fast) var(--ease-smooth);
+		}
+
+		.web-panel.open .web-panel-inner {
+			transform: translateX(0);
 		}
 	}
 </style>

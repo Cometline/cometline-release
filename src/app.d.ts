@@ -31,7 +31,8 @@ declare global {
 		| 'closeSettings'
 		| 'focusSearch'
 		| 'previousSession'
-		| 'nextSession';
+		| 'nextSession'
+		| 'toggleWebPanel';
 
 	interface ShortcutBinding {
 		key: string;
@@ -93,6 +94,7 @@ declare global {
 			setSessionNavigationSuspended?: (suspended: boolean) => void;
 			setWebPanelOpen?: (open: boolean) => void;
 			onCloseWebPanel?: (callback: () => void) => () => void;
+			onToggleWebPanel?: (callback: () => void) => () => void;
 			onNavigateSession?: (callback: (direction: 'prev' | 'next') => void) => () => void;
 		};
 	}

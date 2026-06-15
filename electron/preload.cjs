@@ -36,6 +36,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 		ipcRenderer.on('cometline:close-web-panel', handler);
 		return () => ipcRenderer.removeListener('cometline:close-web-panel', handler);
 	},
+	onToggleWebPanel: (callback) => {
+		const handler = () => callback();
+		ipcRenderer.on('cometline:toggle-web-panel', handler);
+		return () => ipcRenderer.removeListener('cometline:toggle-web-panel', handler);
+	},
 	onNavigateSession: (callback) => {
 		const handler = (_event, direction) => {
 			if (direction === 'prev' || direction === 'next') callback(direction);

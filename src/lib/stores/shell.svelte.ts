@@ -1,3 +1,8 @@
+import { getActiveSessionId } from '$lib/active-session';
+
+export type SessionWebPanel = { url: string; visible: boolean };
+export type FocusedPane = 'chat' | 'web';
+
 function createShellStore() {
 	let sidebarOpen = $state(true);
 	let settingsOpen = $state(false);
@@ -5,11 +10,26 @@ function createShellStore() {
 	let workspacePath = $state('/');
 	let bootMessage = $state('');
 	let fullscreen = $state(false);
-	let webPanelOpen = $state(false);
-	let webPanelUrl = $state<string | null>(null);
+	let webPanelsBySession = $state<Record<string, SessionWebPanel>>({});
+	let focusedPane = $state<FocusedPane>('chat');
+
+	function activeSessionId(): string | null {
+		return getActiveSessionId();
+	}
+
+	function panelForActiveSession(): SessionWebPanel | null {
+		const id = activeSessionId();
+		if (!id) return null;
+		return webPanelsBySession[id] ?? null;
+	}
 
 	function syncWebPanelOpen(open: boolean) {
 		window.electronAPI?.setWebPanelOpen?.(open);
+	}
+
+	function syncWebPanelOpenForActiveSession() {
+		const panel = panelForActiveSession();
+		syncWebPanelOpen(Boolean(panel?.visible));
 	}
 
 	return {
@@ -31,11 +51,18 @@ function createShellStore() {
 		get bootMessage() {
 			return bootMessage;
 		},
+		get focusedPane() {
+			return focusedPane;
+		},
 		get webPanelOpen() {
-			return webPanelOpen;
+			const panel = panelForActiveSession();
+			return Boolean(panel?.visible);
 		},
 		get webPanelUrl() {
-			return webPanelUrl;
+			return panelForActiveSession()?.url ?? null;
+		},
+		get hasWebPanelForSession() {
+			return panelForActiveSession() !== null;
 		},
 		setWorkspacePath(path: string) {
 			workspacePath = path;
@@ -67,18 +94,52 @@ function createShellStore() {
 		centerComposer() {
 			composerPhase = 'centered';
 		},
-		openWebPanel(url: string) {
-			webPanelUrl = url;
-			if (!webPanelOpen) {
-				webPanelOpen = true;
-				syncWebPanelOpen(true);
-			}
+		setFocusedPane(pane: FocusedPane) {
+			focusedPane = pane;
+		},
+		onActiveSessionChange() {
+			focusedPane = 'chat';
+			syncWebPanelOpenForActiveSession();
+		},
+		openWebPanel(url: string, sessionId: string) {
+			webPanelsBySession = {
+				...webPanelsBySession,
+				[sessionId]: { url, visible: true }
+			};
+			focusedPane = 'web';
+			syncWebPanelOpen(true);
+		},
+		toggleWebPanel() {
+			const sessionId = activeSessionId();
+			if (!sessionId) return;
+			const panel = webPanelsBySession[sessionId];
+			if (!panel) return;
+			const visible = !panel.visible;
+			webPanelsBySession = {
+				...webPanelsBySession,
+				[sessionId]: { ...panel, visible }
+			};
+			focusedPane = visible ? 'web' : 'chat';
+			syncWebPanelOpen(visible);
 		},
 		closeWebPanel() {
-			if (!webPanelOpen) return;
-			webPanelOpen = false;
-			webPanelUrl = null;
+			const sessionId = activeSessionId();
+			if (!sessionId || !webPanelsBySession[sessionId]) return;
+			const next = { ...webPanelsBySession };
+			delete next[sessionId];
+			webPanelsBySession = next;
+			focusedPane = 'chat';
 			syncWebPanelOpen(false);
+		},
+		clearWebPanelForSession(sessionId: string) {
+			if (!webPanelsBySession[sessionId]) return;
+			const next = { ...webPanelsBySession };
+			delete next[sessionId];
+			webPanelsBySession = next;
+			if (activeSessionId() === sessionId) {
+				focusedPane = 'chat';
+				syncWebPanelOpen(false);
+			}
 		}
 	};
 }

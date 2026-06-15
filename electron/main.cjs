@@ -39,7 +39,8 @@ function defaultShortcuts() {
 		closeSettings: { key: 'Escape' },
 		focusSearch: { command: true, key: 'f' },
 		previousSession: { ctrl: true, meta: true, key: 'ArrowUp' },
-		nextSession: { ctrl: true, meta: true, key: 'ArrowDown' }
+		nextSession: { ctrl: true, meta: true, key: 'ArrowDown' },
+		toggleWebPanel: { command: true, alt: true, key: 'b' }
 	};
 }
 
@@ -413,6 +414,14 @@ function normalizeSessionNavBinding(id, binding, defaultBinding) {
 	return binding;
 }
 
+function normalizeToggleWebPanelBinding(binding, defaultBinding) {
+	if (!binding) return { ...defaultBinding };
+	if (binding.key === 'b' && binding.command && binding.alt !== true) {
+		return { ...defaultBinding };
+	}
+	return binding;
+}
+
 function normalizeShortcuts(shortcuts) {
 	const defaults = defaultShortcuts();
 	if (!shortcuts || typeof shortcuts !== 'object') return defaults;
@@ -428,9 +437,16 @@ function normalizeShortcuts(shortcuts) {
 				...(typeof saved.alt === 'boolean' && { alt: saved.alt }),
 				...(typeof saved.shift === 'boolean' && { shift: saved.shift })
 			};
+			if (id === 'toggleWebPanel') {
+				next[id] = normalizeToggleWebPanelBinding(normalized, defaults[id]);
+				continue;
+			}
 			next[id] = normalizeSessionNavBinding(id, normalized, defaults[id]);
 		} else {
-			next[id] = normalizeSessionNavBinding(id, undefined, defaults[id]);
+			next[id] =
+				id === 'toggleWebPanel'
+					? normalizeToggleWebPanelBinding(undefined, defaults[id])
+					: normalizeSessionNavBinding(id, undefined, defaults[id]);
 		}
 	}
 	return next;
@@ -463,21 +479,42 @@ let shortcutCaptureActive = false;
 let sessionNavigationSuspended = false;
 let webPanelOpen = false;
 
+function sendCloseWebPanel() {
+	if (mainWindow && !mainWindow.isDestroyed()) {
+		mainWindow.webContents.send('cometline:close-web-panel');
+	}
+}
+
+function sendToggleWebPanel() {
+	if (mainWindow && !mainWindow.isDestroyed()) {
+		mainWindow.webContents.send('cometline:toggle-web-panel');
+	}
+}
+
+function isDarwinCloseWindowShortcut(input) {
+	return (
+		process.platform === 'darwin' &&
+		input.type === 'keyDown' &&
+		input.meta &&
+		!input.control &&
+		!input.alt &&
+		!input.shift &&
+		input.key?.toLowerCase() === 'w'
+	);
+}
+
+function handleDarwinCloseWindowShortcut(event, input) {
+	if (!isDarwinCloseWindowShortcut(input)) return false;
+	event.preventDefault();
+	if (webPanelOpen) {
+		sendCloseWebPanel();
+	}
+	return true;
+}
+
 function attachMainWindowShortcuts(webContents) {
 	webContents.on('before-input-event', (event, input) => {
-		if (
-			process.platform === 'darwin' &&
-			input.type === 'keyDown' &&
-			input.meta &&
-			!input.control &&
-			!input.alt &&
-			!input.shift &&
-			input.key?.toLowerCase() === 'w'
-		) {
-			event.preventDefault();
-			if (webPanelOpen) {
-				webContents.send('cometline:close-web-panel');
-			}
+		if (handleDarwinCloseWindowShortcut(event, input)) {
 			return;
 		}
 
@@ -492,6 +529,26 @@ function attachMainWindowShortcuts(webContents) {
 			event.preventDefault();
 			webContents.send('cometline:navigate-session', 'next');
 		}
+	});
+}
+
+function handleWebPanelGuestShortcuts(event, input) {
+	if (handleDarwinCloseWindowShortcut(event, input)) {
+		return true;
+	}
+	if (shortcutCaptureActive || sessionNavigationSuspended) return false;
+	const shortcuts = readProviderSettings().shortcuts ?? defaultShortcuts();
+	if (matchesInputShortcut(input, shortcuts.toggleWebPanel)) {
+		event.preventDefault();
+		sendToggleWebPanel();
+		return true;
+	}
+	return false;
+}
+
+function attachWebviewPanelShortcuts(webContents) {
+	webContents.on('before-input-event', (event, input) => {
+		handleWebPanelGuestShortcuts(event, input);
 	});
 }
 
@@ -948,6 +1005,9 @@ async function createWindow() {
 		}
 	});
 	attachMainWindowShortcuts(mainWindow.webContents);
+	mainWindow.webContents.on('did-attach-webview', (_event, webContents) => {
+		attachWebviewPanelShortcuts(webContents);
+	});
 
 	if (app.isPackaged) {
 		await mainWindow.loadURL(`${APP_ORIGIN}/`);
