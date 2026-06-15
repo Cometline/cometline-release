@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	cometsdk "github.com/cometline/comet-sdk"
 	"github.com/cometline/comet-sdk/internal/providerbase"
@@ -50,22 +51,18 @@ func (p *provider) Stream(ctx context.Context, req *cometsdk.Request) (<-chan co
 
 	p.log.DebugContext(ctx, "stream.start", "model", req.Model)
 
-	attempt := 0
-	var httpResp *http.Response
+	httpResp, err := p.streamWithRetry(ctx, req, false)
 
-	err := retry.Do(ctx, p.cfg.MaxRetries, func() error {
-		attempt++
-		if attempt > 1 {
-			p.log.DebugContext(ctx, "stream.retry", "attempt", attempt, "model", req.Model)
-		}
-		r, err := p.doRequest(ctx, req)
-		if err != nil {
-			p.log.DebugContext(ctx, "stream.request_error", "attempt", attempt, "error", err)
-			return err
-		}
-		httpResp = r
-		return nil
-	}, providerbase.IsRetryable)
+	// Reactive image fallback: if the request carried image content and the
+	// endpoint rejected it (some OpenAI-compatible models such as DeepSeek
+	// don't accept "image_url" parts and return an HTTP 400), retry once with
+	// image blocks downgraded to a text placeholder. This avoids maintaining a
+	// per-model vision-capability list — we only react when the provider itself
+	// tells us it can't read the image.
+	if err != nil && requestHasImage(req) && isImageUnsupportedError(err) {
+		p.log.DebugContext(ctx, "stream.image_fallback", "error", err, "model", req.Model)
+		httpResp, err = p.streamWithRetry(ctx, req, true)
+	}
 
 	if err != nil {
 		p.log.DebugContext(ctx, "stream.failed", "error", err)
@@ -76,8 +73,32 @@ func (p *provider) Stream(ctx context.Context, req *cometsdk.Request) (<-chan co
 	return ch, nil
 }
 
-func (p *provider) doRequest(ctx context.Context, req *cometsdk.Request) (*http.Response, error) {
-	body, err := toOpenAIRequest(req)
+// streamWithRetry runs the request through the standard retry policy. When
+// disableImageContent is true, image content blocks are downgraded to a text
+// placeholder before sending.
+func (p *provider) streamWithRetry(ctx context.Context, req *cometsdk.Request, disableImageContent bool) (*http.Response, error) {
+	attempt := 0
+	var httpResp *http.Response
+
+	err := retry.Do(ctx, p.cfg.MaxRetries, func() error {
+		attempt++
+		if attempt > 1 {
+			p.log.DebugContext(ctx, "stream.retry", "attempt", attempt, "model", req.Model)
+		}
+		r, err := p.doRequest(ctx, req, disableImageContent)
+		if err != nil {
+			p.log.DebugContext(ctx, "stream.request_error", "attempt", attempt, "error", err)
+			return err
+		}
+		httpResp = r
+		return nil
+	}, providerbase.IsRetryable)
+
+	return httpResp, err
+}
+
+func (p *provider) doRequest(ctx context.Context, req *cometsdk.Request, disableImageContent bool) (*http.Response, error) {
+	body, err := toOpenAIRequest(req, disableImageContent)
 	if err != nil {
 		return nil, fmt.Errorf("openai: marshal request: %w", err)
 	}
@@ -112,4 +133,46 @@ func (p *provider) doRequest(ctx context.Context, req *cometsdk.Request) (*http.
 	}
 
 	return resp, nil
+}
+
+// requestHasImage reports whether any user message in req carries an image
+// content block. The reactive fallback only triggers when there is actually an
+// image to downgrade.
+func requestHasImage(req *cometsdk.Request) bool {
+	for _, m := range req.Messages {
+		for _, b := range m.Content {
+			if _, ok := b.(cometsdk.ImageBlock); ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// isImageUnsupportedError reports whether err is a 4xx ServerError whose message
+// indicates the endpoint rejected image content. OpenAI-compatible gateways
+// phrase this differently (e.g. DeepSeek returns "unknown variant `image_url`,
+// expected `text`"), so we match on the salient substrings rather than an exact
+// message.
+func isImageUnsupportedError(err error) bool {
+	se, ok := err.(*cometsdk.ServerError)
+	if !ok {
+		return false
+	}
+	// Only client-side (4xx) rejections are downgrade candidates; 5xx is a
+	// transient server fault that the normal retry policy already handles.
+	if se.StatusCode < 400 || se.StatusCode >= 500 {
+		return false
+	}
+	msg := strings.ToLower(se.Message)
+	if strings.Contains(msg, "image_url") {
+		return true
+	}
+	// Generic phrasings used by various gateways when a non-vision model is
+	// handed image content.
+	return strings.Contains(msg, "image") &&
+		(strings.Contains(msg, "unsupported") ||
+			strings.Contains(msg, "not support") ||
+			strings.Contains(msg, "invalid") ||
+			strings.Contains(msg, "unknown variant"))
 }

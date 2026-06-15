@@ -17,7 +17,7 @@ func TestConvertRequest_SystemPromptPrepended(t *testing.T) {
 		},
 	}
 
-	data, err := toOpenAIRequest(req)
+	data, err := toOpenAIRequest(req, false)
 	require.NoError(t, err)
 
 	var out openAIRequest
@@ -43,7 +43,7 @@ func TestConvertRequest_ToolResultRole(t *testing.T) {
 		},
 	}
 
-	data, err := toOpenAIRequest(req)
+	data, err := toOpenAIRequest(req, false)
 	require.NoError(t, err)
 
 	var out openAIRequest
@@ -55,6 +55,72 @@ func TestConvertRequest_ToolResultRole(t *testing.T) {
 	require.Equal(t, "call_01", out.Messages[0].ToolCallID)
 	require.Equal(t, "tool", out.Messages[1].Role)
 	require.Equal(t, "call_02", out.Messages[1].ToolCallID)
+}
+
+func TestConvertRequest_UserImageBlock(t *testing.T) {
+	req := &cometsdk.Request{
+		Model: "gpt-4o",
+		Messages: []cometsdk.Message{
+			{
+				Role: cometsdk.RoleUser,
+				Content: []cometsdk.Block{
+					cometsdk.TextBlock{Text: "What is in this image?"},
+					cometsdk.ImageBlock{MediaType: "image/png", Data: "aGVsbG8="},
+				},
+			},
+		},
+	}
+
+	data, err := toOpenAIRequest(req, false)
+	require.NoError(t, err)
+
+	var out openAIRequest
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.Len(t, out.Messages, 1)
+	parts, ok := out.Messages[0].Content.([]any)
+	require.True(t, ok)
+	require.Len(t, parts, 2)
+	image, ok := parts[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "image_url", image["type"])
+	imageURL, ok := image["image_url"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "data:image/png;base64,aGVsbG8=", imageURL["url"])
+}
+
+func TestConvertRequest_UserImageBlockDowngradedWhenDisabled(t *testing.T) {
+	req := &cometsdk.Request{
+		Model: "deepseek-chat",
+		Messages: []cometsdk.Message{
+			{
+				Role: cometsdk.RoleUser,
+				Content: []cometsdk.Block{
+					cometsdk.TextBlock{Text: "What is in this image?"},
+					cometsdk.ImageBlock{MediaType: "image/png", Data: "aGVsbG8="},
+				},
+			},
+		},
+	}
+
+	data, err := toOpenAIRequest(req, true)
+	require.NoError(t, err)
+
+	var out openAIRequest
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.Len(t, out.Messages, 1)
+	parts, ok := out.Messages[0].Content.([]any)
+	require.True(t, ok)
+	require.Len(t, parts, 2)
+
+	// The image part is downgraded to a text placeholder — no image_url is sent.
+	downgraded, ok := parts[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "text", downgraded["type"])
+	require.NotEmpty(t, downgraded["text"])
+	require.Nil(t, downgraded["image_url"])
+
+	// And the raw JSON must not contain an image_url variant.
+	require.NotContains(t, string(data), "image_url")
 }
 
 func TestConvertRequest_AssistantToolCallsOnlyUsesNullContent(t *testing.T) {
@@ -74,7 +140,7 @@ func TestConvertRequest_AssistantToolCallsOnlyUsesNullContent(t *testing.T) {
 		},
 	}
 
-	data, err := toOpenAIRequest(req)
+	data, err := toOpenAIRequest(req, false)
 	require.NoError(t, err)
 
 	var out map[string]any
@@ -99,7 +165,7 @@ func TestConvertRequest_StreamOptionsIncludeUsage(t *testing.T) {
 		Model:    "gpt-4o",
 		Messages: []cometsdk.Message{{Role: cometsdk.RoleUser, Content: []cometsdk.Block{cometsdk.TextBlock{Text: "Hi"}}}},
 	}
-	data, err := toOpenAIRequest(req)
+	data, err := toOpenAIRequest(req, false)
 	require.NoError(t, err)
 
 	var out openAIRequest
@@ -235,7 +301,7 @@ func TestConvertRequest_OptionsPassthrough(t *testing.T) {
 		},
 	}
 
-	data, err := toOpenAIRequest(req)
+	data, err := toOpenAIRequest(req, false)
 	require.NoError(t, err)
 
 	var out map[string]any
@@ -266,7 +332,7 @@ func TestConvertRequest_OptionsDoNotOverrideSDKFields(t *testing.T) {
 		},
 	}
 
-	data, err := toOpenAIRequest(req)
+	data, err := toOpenAIRequest(req, false)
 	require.NoError(t, err)
 
 	var out map[string]any
@@ -285,7 +351,7 @@ func TestConvertRequest_OptionsNil(t *testing.T) {
 		},
 	}
 
-	data, err := toOpenAIRequest(req)
+	data, err := toOpenAIRequest(req, false)
 	require.NoError(t, err)
 
 	var out map[string]any
@@ -307,7 +373,7 @@ func TestConvertRequest_OptionsWrongType(t *testing.T) {
 		},
 	}
 
-	_, err := toOpenAIRequest(req)
+	_, err := toOpenAIRequest(req, false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "map[string]any")
 }

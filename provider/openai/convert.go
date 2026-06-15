@@ -34,8 +34,13 @@ type openAIMessage struct {
 }
 
 type openAIContentPart struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+	Type     string          `json:"type"`
+	Text     string          `json:"text,omitempty"`
+	ImageURL *openAIImageURL `json:"image_url,omitempty"`
+}
+
+type openAIImageURL struct {
+	URL string `json:"url"`
 }
 
 type openAIToolCall struct {
@@ -66,8 +71,8 @@ type openAIToolDef struct {
 // frequency_penalty, seed, etc. without requiring changes to this package.
 // SDK-managed fields (model, messages, stream, stream_options) take precedence
 // and cannot be overridden via Options.
-func toOpenAIRequest(req *cometsdk.Request) ([]byte, error) {
-	msgs, err := convertMessages(req.System, req.Messages)
+func toOpenAIRequest(req *cometsdk.Request, disableImageContent bool) ([]byte, error) {
+	msgs, err := convertMessages(req.System, req.Messages, disableImageContent)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +103,7 @@ func toOpenAIRequest(req *cometsdk.Request) ([]byte, error) {
 }
 
 // convertMessages prepends a system message if provided, then converts all messages.
-func convertMessages(system string, msgs []cometsdk.Message) ([]openAIMessage, error) {
+func convertMessages(system string, msgs []cometsdk.Message, disableImageContent bool) ([]openAIMessage, error) {
 	var out []openAIMessage
 
 	if system != "" {
@@ -106,7 +111,7 @@ func convertMessages(system string, msgs []cometsdk.Message) ([]openAIMessage, e
 	}
 
 	for _, m := range msgs {
-		converted, err := convertMessage(m)
+		converted, err := convertMessage(m, disableImageContent)
 		if err != nil {
 			return nil, err
 		}
@@ -117,10 +122,10 @@ func convertMessages(system string, msgs []cometsdk.Message) ([]openAIMessage, e
 
 // convertMessage converts a single SDK message to one or more OpenAI messages.
 // Reasoning content is placed in the reasoning_content field of the same message.
-func convertMessage(m cometsdk.Message) ([]openAIMessage, error) {
+func convertMessage(m cometsdk.Message, disableImageContent bool) ([]openAIMessage, error) {
 	switch m.Role {
 	case cometsdk.RoleUser:
-		parts, err := contentParts(m.Content)
+		parts, err := contentParts(m.Content, disableImageContent)
 		if err != nil {
 			return nil, err
 		}
@@ -204,7 +209,14 @@ func convertMessage(m cometsdk.Message) ([]openAIMessage, error) {
 	}
 }
 
-func contentParts(blocks []cometsdk.Block) (any, error) {
+// imagePlaceholderText is substituted for an image block when the target model
+// cannot accept image input. The provider downgrades to this on a reactive
+// retry after the endpoint rejects image content (see the image fallback in
+// Stream); it keeps the turn structurally valid so replayed history does not
+// break the conversation.
+const imagePlaceholderText = "[image omitted: this model does not support image input]"
+
+func contentParts(blocks []cometsdk.Block, disableImageContent bool) (any, error) {
 	if len(blocks) == 1 {
 		if tb, ok := blocks[0].(cometsdk.TextBlock); ok {
 			return tb.Text, nil
@@ -212,11 +224,24 @@ func contentParts(blocks []cometsdk.Block) (any, error) {
 	}
 	parts := make([]openAIContentPart, 0, len(blocks))
 	for _, b := range blocks {
-		tb, ok := b.(cometsdk.TextBlock)
-		if !ok {
+		switch v := b.(type) {
+		case cometsdk.TextBlock:
+			parts = append(parts, openAIContentPart{Type: "text", Text: v.Text})
+		case cometsdk.ImageBlock:
+			if disableImageContent {
+				// Downgrade to a text placeholder so non-vision models (e.g.
+				// DeepSeek) don't reject the request with HTTP 400 on the
+				// "image_url" content part.
+				parts = append(parts, openAIContentPart{Type: "text", Text: imagePlaceholderText})
+				continue
+			}
+			parts = append(parts, openAIContentPart{
+				Type:     "image_url",
+				ImageURL: &openAIImageURL{URL: fmt.Sprintf("data:%s;base64,%s", v.MediaType, v.Data)},
+			})
+		default:
 			return nil, fmt.Errorf("openai: unsupported block type %T in user message", b)
 		}
-		parts = append(parts, openAIContentPart{Type: "text", Text: tb.Text})
 	}
 	return parts, nil
 }

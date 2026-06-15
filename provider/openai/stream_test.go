@@ -2,9 +2,11 @@ package openai
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -209,4 +211,86 @@ func TestStream_RateLimitRetry(t *testing.T) {
 		}
 	}
 	require.True(t, done)
+}
+
+// TestStream_ImageFallbackOnUnsupported simulates a non-vision OpenAI-compatible
+// model (e.g. DeepSeek): the first request carries an "image_url" content part
+// and is rejected with HTTP 400, and the provider must retry once with the image
+// downgraded to text — which then succeeds.
+func TestStream_ImageFallbackOnUnsupported(t *testing.T) {
+	fixtureData, err := os.ReadFile("fixtures/text_response.sse")
+	require.NoError(t, err)
+
+	var sawImageURL []bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		hasImageURL := strings.Contains(string(body), "image_url")
+		sawImageURL = append(sawImageURL, hasImageURL)
+		if hasImageURL {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"error":{"message":"Failed to deserialize the JSON body into the target type: messages[0]: unknown variant ` + "`image_url`" + `, expected ` + "`text`" + `"}}`)) //nolint:errcheck
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.Write(fixtureData) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	p := NewOpenAIProvider("test-key",
+		cometsdk.WithBaseURL(srv.URL),
+		cometsdk.WithMaxRetries(1),
+	)
+	req := &cometsdk.Request{
+		Model: "deepseek-chat",
+		Messages: []cometsdk.Message{{
+			Role: cometsdk.RoleUser,
+			Content: []cometsdk.Block{
+				cometsdk.TextBlock{Text: "What is this?"},
+				cometsdk.ImageBlock{MediaType: "image/png", Data: "aGVsbG8="},
+			},
+		}},
+	}
+
+	ch, err := p.Stream(context.Background(), req)
+	require.NoError(t, err)
+
+	events := collectEvents(t, ch)
+
+	// First attempt sent image_url, second (fallback) did not.
+	require.Equal(t, []bool{true, false}, sawImageURL)
+
+	var done bool
+	for _, e := range events {
+		if _, ok := e.(cometsdk.DoneEvent); ok {
+			done = true
+		}
+	}
+	require.True(t, done)
+}
+
+// TestStream_NoImageFallbackWithoutImage ensures a 400 that is unrelated to
+// images is NOT retried with the image-downgrade path (it just fails).
+func TestStream_NoImageFallbackWithoutImage(t *testing.T) {
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":{"message":"some unrelated bad request"}}`)) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	p := NewOpenAIProvider("test-key",
+		cometsdk.WithBaseURL(srv.URL),
+		cometsdk.WithMaxRetries(1),
+	)
+	req := &cometsdk.Request{
+		Model:    "deepseek-chat",
+		Messages: []cometsdk.Message{{Role: cometsdk.RoleUser, Content: []cometsdk.Block{cometsdk.TextBlock{Text: "Hi"}}}},
+	}
+
+	_, err := p.Stream(context.Background(), req)
+	require.Error(t, err)
+	// Only the initial attempt; no image-downgrade retry (there was no image).
+	require.Equal(t, 1, attempts)
 }

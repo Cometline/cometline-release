@@ -99,6 +99,35 @@ func TestConvertRequest_EmptyContentFiltered(t *testing.T) {
 	require.Equal(t, "Hi", out.Messages[0].Content[0].Text)
 }
 
+func TestConvertRequest_UserImageBlock(t *testing.T) {
+	req := &cometsdk.Request{
+		Model: "claude-sonnet-4-5",
+		Messages: []cometsdk.Message{
+			{
+				Role: cometsdk.RoleUser,
+				Content: []cometsdk.Block{
+					cometsdk.TextBlock{Text: "What is in this image?"},
+					cometsdk.ImageBlock{MediaType: "image/png", Data: "aGVsbG8="},
+				},
+			},
+		},
+	}
+
+	data, err := toAnthropicRequest(req)
+	require.NoError(t, err)
+
+	var out anthropicRequest
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.Len(t, out.Messages, 1)
+	require.Len(t, out.Messages[0].Content, 2)
+	image := out.Messages[0].Content[1]
+	require.Equal(t, "image", image.Type)
+	require.NotNil(t, image.Source)
+	require.Equal(t, "base64", image.Source.Type)
+	require.Equal(t, "image/png", image.Source.MediaType)
+	require.Equal(t, "aGVsbG8=", image.Source.Data)
+}
+
 func TestConvertRequest_ToolCallIDSanitised(t *testing.T) {
 	// Tool call IDs with invalid chars should be sanitised.
 	req := &cometsdk.Request{

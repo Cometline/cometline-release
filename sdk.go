@@ -58,8 +58,8 @@ type Request struct {
 
 // Message is a single turn in the conversation.
 type Message struct {
-	Role           Role      // RoleUser | RoleAssistant | RoleToolResult
-	Content        []Block   // one or more content blocks
+	Role             Role    // RoleUser | RoleAssistant | RoleToolResult
+	Content          []Block // one or more content blocks
 	ReasoningContent []Block // reasoning content (e.g. chain-of-thought); may be nil
 }
 
@@ -83,6 +83,15 @@ type TextBlock struct {
 }
 
 func (TextBlock) isBlock() {}
+
+// ImageBlock is an inline base64-encoded image content block. MediaType should
+// be a provider-supported image MIME type such as image/png or image/jpeg.
+type ImageBlock struct {
+	MediaType string
+	Data      string
+}
+
+func (ImageBlock) isBlock() {}
 
 // ReasoningBlock represents a reasoning / chain-of-thought content block.
 // It is structurally identical to TextBlock but carries a distinct type

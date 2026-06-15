@@ -29,6 +29,7 @@ type anthropicMessage struct {
 type anthropicBlock struct {
 	Type      string          `json:"type"`
 	Text      string          `json:"text,omitempty"`
+	Source    *anthropicImage `json:"source,omitempty"`
 	ID        string          `json:"id,omitempty"`
 	Name      string          `json:"name,omitempty"`
 	Input     json.RawMessage `json:"input,omitempty"`
@@ -36,6 +37,12 @@ type anthropicBlock struct {
 	Content   string          `json:"content,omitempty"`
 	IsError   bool            `json:"is_error,omitempty"`
 	Reasoning string          `json:"reasoning,omitempty"`
+}
+
+type anthropicImage struct {
+	Type      string `json:"type"`
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"`
 }
 
 type anthropicTool struct {
@@ -150,6 +157,16 @@ func convertBlocks(blocks []cometsdk.Block) ([]anthropicBlock, error) {
 		switch v := b.(type) {
 		case cometsdk.TextBlock:
 			out = append(out, anthropicBlock{Type: "text", Text: v.Text})
+
+		case cometsdk.ImageBlock:
+			out = append(out, anthropicBlock{
+				Type: "image",
+				Source: &anthropicImage{
+					Type:      "base64",
+					MediaType: v.MediaType,
+					Data:      v.Data,
+				},
+			})
 
 		case cometsdk.ReasoningBlock:
 			out = append(out, anthropicBlock{Type: "reasoning", Reasoning: v.Text})
