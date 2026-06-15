@@ -261,6 +261,16 @@ function resolveCometMindBinary() {
 	return path.join(__dirname, '..', '..', 'cometmind', 'cometmind');
 }
 
+function resolveSystemPromptPath() {
+	if (process.env.COMETMIND_SYSTEM_PROMPT_PATH) {
+		return path.resolve(process.env.COMETMIND_SYSTEM_PROMPT_PATH);
+	}
+	if (app.isPackaged) {
+		return path.join(process.resourcesPath, 'SOUL.md');
+	}
+	return path.join(__dirname, '..', 'SOUL.md');
+}
+
 function getLogPath() {
 	const dir = path.join(os.homedir(), '.cometmind');
 	if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -521,6 +531,7 @@ model = ${JSON.stringify(active.enabledModels[0] || active.selectedModel || acti
 base_url = ${JSON.stringify(active.baseURL)}
 max_tokens = 8192
 max_steps = 50
+system_prompt_path = ${JSON.stringify(resolveSystemPromptPath())}
 
 ${providerEntries}`;
 
@@ -545,7 +556,8 @@ function providerEnv() {
 	const env = {
 		...process.env,
 		COMETMIND_PROVIDER: active.id,
-		COMETMIND_MODEL: active.enabledModels[0] || active.selectedModel || active.models[0] || ''
+		COMETMIND_MODEL: active.enabledModels[0] || active.selectedModel || active.models[0] || '',
+		COMETMIND_SYSTEM_PROMPT_PATH: resolveSystemPromptPath()
 	};
 	if (active.baseURL) env.COMETMIND_BASE_URL = active.baseURL;
 	if (active.apiKey) env.COMETMIND_API_KEY = active.apiKey;

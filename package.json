@@ -92,6 +92,10 @@
 				"to": "cometmind"
 			},
 			{
+				"from": "SOUL.md",
+				"to": "SOUL.md"
+			},
+			{
 				"from": "buildResources/icon.png",
 				"to": "icon.png"
 			}
