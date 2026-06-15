@@ -28,6 +28,7 @@ func NewRegistry(workspaceRoot string) *Registry {
 	add(WriteFile{Workspace: ws})
 	add(ListDir{Workspace: ws})
 	add(RunCommand{Workspace: ws})
+	add(WebFetch{})
 
 	return r
 }

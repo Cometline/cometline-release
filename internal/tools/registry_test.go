@@ -19,10 +19,10 @@ func TestNewRegistryCapturesWorkspaceAndExposesSpecs(t *testing.T) {
 	}
 
 	specs := r.CometSDK()
-	if len(specs) != 4 {
-		t.Fatalf("CometSDK() returned %d specs, want 4", len(specs))
+	if len(specs) != 5 {
+		t.Fatalf("CometSDK() returned %d specs, want 5", len(specs))
 	}
-	wantNames := []string{"read_file", "write_file", "list_dir", "run_command"}
+	wantNames := []string{"read_file", "write_file", "list_dir", "run_command", "web_fetch"}
 	for i, name := range wantNames {
 		if specs[i].Name != name {
 			t.Errorf("spec[%d].Name = %q, want %q", i, specs[i].Name, name)
