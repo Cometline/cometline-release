@@ -14,6 +14,20 @@ import (
 	"github.com/cometline/cometmind/internal/id"
 )
 
+const contentEnvelopePrefix = "cometmind:content:v1\n"
+
+// ContentBlock is the persisted/API representation of user multimodal content.
+type ContentBlock struct {
+	Type      string `json:"type"`
+	Text      string `json:"text,omitempty"`
+	MediaType string `json:"media_type,omitempty"`
+	Data      string `json:"data,omitempty"`
+}
+
+type contentEnvelope struct {
+	Blocks []ContentBlock `json:"blocks"`
+}
+
 // toolResultPayload is stored in messages.content for role=tool_result.
 type toolResultPayload struct {
 	ToolCallID string `json:"tool_call_id"`
@@ -135,17 +149,76 @@ func (s *Service) SetTitleIfEmpty(ctx context.Context, sessionID, title string) 
 
 // AppendUserMessage persists a user turn.
 func (s *Service) AppendUserMessage(ctx context.Context, sessionID, text string) (Message, error) {
+	return s.AppendUserMessageContent(ctx, sessionID, []ContentBlock{{Type: "text", Text: text}})
+}
+
+// AppendUserMessageContent persists a user turn with text and optional image blocks.
+func (s *Service) AppendUserMessageContent(ctx context.Context, sessionID string, blocks []ContentBlock) (Message, error) {
+	content, err := marshalMessageContent(blocks)
+	if err != nil {
+		return Message{}, err
+	}
 	msg, err := s.q.CreateMessage(ctx, db.CreateMessageParams{
 		ID:         id.New(),
 		SessionID:  sessionID,
 		Role:       "user",
-		Content:    text,
+		Content:    content,
 		TokenCount: 0,
 	})
 	if err != nil {
 		return Message{}, err
 	}
 	return messageFromDB(msg), nil
+}
+
+func marshalMessageContent(blocks []ContentBlock) (string, error) {
+	if len(blocks) == 1 && blocks[0].Type == "text" {
+		return blocks[0].Text, nil
+	}
+	raw, err := json.Marshal(contentEnvelope{Blocks: blocks})
+	if err != nil {
+		return "", err
+	}
+	return contentEnvelopePrefix + string(raw), nil
+}
+
+// DecodeMessageContent returns content blocks from a persisted message. Plain
+// legacy content is treated as a single text block.
+func DecodeMessageContent(raw string) ([]ContentBlock, error) {
+	if !strings.HasPrefix(raw, contentEnvelopePrefix) {
+		return []ContentBlock{{Type: "text", Text: raw}}, nil
+	}
+	var env contentEnvelope
+	if err := json.Unmarshal([]byte(strings.TrimPrefix(raw, contentEnvelopePrefix)), &env); err != nil {
+		return nil, err
+	}
+	return env.Blocks, nil
+}
+
+func sdkBlocksFromContent(blocks []ContentBlock) []cometsdk.Block {
+	out := make([]cometsdk.Block, 0, len(blocks))
+	for _, b := range blocks {
+		switch b.Type {
+		case "text":
+			if b.Text != "" {
+				out = append(out, cometsdk.TextBlock{Text: b.Text})
+			}
+		case "image":
+			out = append(out, cometsdk.ImageBlock{MediaType: b.MediaType, Data: b.Data})
+		}
+	}
+	return out
+}
+
+// PlainTextFromContent extracts display/title text from decoded content blocks.
+func PlainTextFromContent(blocks []ContentBlock) string {
+	var b strings.Builder
+	for _, block := range blocks {
+		if block.Type == "text" {
+			b.WriteString(block.Text)
+		}
+	}
+	return b.String()
 }
 
 // AppendUserMessageAndMaybeTitle persists a user turn and, if the session
@@ -322,9 +395,13 @@ func (s *Service) BuildSDKMessages(ctx context.Context, sessionID string) ([]com
 	for _, m := range rows {
 		switch m.Role {
 		case "user":
+			blocks, err := DecodeMessageContent(m.Content)
+			if err != nil {
+				return nil, fmt.Errorf("decode user content %s: %w", m.ID, err)
+			}
 			out = append(out, cometsdk.Message{
 				Role:    cometsdk.RoleUser,
-				Content: []cometsdk.Block{cometsdk.TextBlock{Text: m.Content}},
+				Content: sdkBlocksFromContent(blocks),
 			})
 		case "assistant":
 			blocks, err := s.assistantBlocks(ctx, m)

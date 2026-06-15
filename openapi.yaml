@@ -214,9 +214,9 @@ paths:
   /api/v1/sessions/{id}/message:
     post:
       tags: [Sessions]
-      summary: Send one text message and stream events over SSE
+      summary: Send one message and stream events over SSE
       description: |
-        Accepts text-only input for v1 and responds with `text/event-stream`.
+        Accepts text and optional base64 image attachments, then responds with `text/event-stream`.
 
         The SSE payloads reuse CometMind-native event names:
         `text_delta`, `reasoning_start`, `reasoning_delta`, `tool_call`,
@@ -235,6 +235,9 @@ paths:
               $ref: '#/components/schemas/PostMessageRequest'
             example:
               text: Inspect the server package and summarize the next change.
+              images:
+                - media_type: image/png
+                  data: iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB...
       responses:
         '200':
           description: SSE event stream
@@ -391,12 +394,33 @@ components:
     PostMessageRequest:
       type: object
       additionalProperties: false
-      required: [text]
       properties:
         text:
           type: string
-          minLength: 1
-          description: Text-only user input for v1.
+          description: User input text. Required when images is empty.
+        images:
+          type: array
+          maxItems: 6
+          description: Optional base64 image attachments. Supported media types are image/png, image/jpeg, image/gif, and image/webp.
+          items:
+            $ref: '#/components/schemas/ImageAttachment'
+
+    ImageAttachment:
+      type: object
+      additionalProperties: false
+      required: [media_type, data]
+      properties:
+        media_type:
+          type: string
+          enum: [image/png, image/jpeg, image/gif, image/webp]
+        data:
+          type: string
+          contentEncoding: base64
+          description: Raw base64 payload without a data URL prefix. Each decoded image must be at most 4 MB.
+        name:
+          type: string
+        size:
+          type: integer
 
     Session:
       type: object
@@ -470,6 +494,10 @@ components:
           enum: [user, reasoning, assistant, tool]
         text:
           type: string
+        images:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImageAttachment'
         tool_name:
           type: string
         tool_input:

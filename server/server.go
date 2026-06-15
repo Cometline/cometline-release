@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,18 @@ import (
 	"github.com/cometline/cometmind/internal/session"
 	"github.com/gin-gonic/gin"
 )
+
+const (
+	maxMessageImages     = 6
+	maxMessageImageBytes = 4 * 1024 * 1024
+)
+
+var supportedImageMediaTypes = map[string]bool{
+	"image/png":  true,
+	"image/jpeg": true,
+	"image/gif":  true,
+	"image/webp": true,
+}
 
 type Runner interface {
 	Run(context.Context, session.AgentTurn, chan<- event.Event) error
@@ -121,7 +134,13 @@ type createSessionRequest struct {
 }
 
 type postMessageRequest struct {
-	Text string `json:"text"`
+	Text   string              `json:"text"`
+	Images []messageImageInput `json:"images,omitempty"`
+}
+
+type messageImageInput struct {
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"`
 }
 
 type healthResponse struct {
@@ -162,12 +181,13 @@ type listSessionsResponse struct {
 }
 
 type transcriptItem struct {
-	Type       string `json:"type"`
-	Text       string `json:"text,omitempty"`
-	ToolName   string `json:"tool_name,omitempty"`
-	ToolInput  any    `json:"tool_input,omitempty"`
-	ToolOutput string `json:"tool_output,omitempty"`
-	ToolError  bool   `json:"tool_error,omitempty"`
+	Type       string              `json:"type"`
+	Text       string              `json:"text,omitempty"`
+	Images     []messageImageInput `json:"images,omitempty"`
+	ToolName   string              `json:"tool_name,omitempty"`
+	ToolInput  any                 `json:"tool_input,omitempty"`
+	ToolOutput string              `json:"tool_output,omitempty"`
+	ToolError  bool                `json:"tool_error,omitempty"`
 }
 
 type transcriptResponse struct {
@@ -325,8 +345,13 @@ func (a *App) handlePostMessage(c *gin.Context) {
 		return
 	}
 	req.Text = strings.TrimSpace(req.Text)
-	if req.Text == "" {
-		writeError(c, http.StatusBadRequest, "bad_request", "text is required")
+	blocks, err := contentBlocksFromRequest(req)
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "bad_request", err.Error())
+		return
+	}
+	if len(blocks) == 0 {
+		writeError(c, http.StatusBadRequest, "bad_request", "text or image is required")
 		return
 	}
 
@@ -348,11 +373,14 @@ func (a *App) handlePostMessage(c *gin.Context) {
 	}
 	defer finish()
 
-	if _, err := a.sessions.AppendUserMessage(c.Request.Context(), sess.ID, req.Text); err != nil {
+	if _, err := a.sessions.AppendUserMessageContent(c.Request.Context(), sess.ID, blocks); err != nil {
 		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
-	title := req.Text
+	title := session.PlainTextFromContent(blocks)
+	if title == "" {
+		title = "Image"
+	}
 	if len(title) > 80 {
 		title = title[:80] + "…"
 	}
@@ -387,6 +415,35 @@ func (a *App) handlePostMessage(c *gin.Context) {
 	}
 
 	_ = <-errCh
+}
+
+func contentBlocksFromRequest(req postMessageRequest) ([]session.ContentBlock, error) {
+	if len(req.Images) > maxMessageImages {
+		return nil, fmt.Errorf("at most %d images are allowed", maxMessageImages)
+	}
+	blocks := make([]session.ContentBlock, 0, 1+len(req.Images))
+	if req.Text != "" {
+		blocks = append(blocks, session.ContentBlock{Type: "text", Text: req.Text})
+	}
+	for i, img := range req.Images {
+		mediaType := strings.ToLower(strings.TrimSpace(img.MediaType))
+		if !supportedImageMediaTypes[mediaType] {
+			return nil, fmt.Errorf("image %d has unsupported media_type", i+1)
+		}
+		data := strings.TrimSpace(img.Data)
+		decoded, err := base64.StdEncoding.DecodeString(data)
+		if err != nil {
+			return nil, fmt.Errorf("image %d data must be valid base64", i+1)
+		}
+		if len(decoded) == 0 {
+			return nil, fmt.Errorf("image %d is empty", i+1)
+		}
+		if len(decoded) > maxMessageImageBytes {
+			return nil, fmt.Errorf("image %d is larger than %d MB", i+1, maxMessageImageBytes/(1024*1024))
+		}
+		blocks = append(blocks, session.ContentBlock{Type: "image", MediaType: mediaType, Data: data})
+	}
+	return blocks, nil
 }
 
 func (a *App) handleAbortSession(c *gin.Context) {
@@ -584,7 +641,11 @@ func decodeTokenUsage(raw string) (tokenUsageResource, error) {
 func transcriptItemFromModel(item session.TranscriptEntry) transcriptItem {
 	switch item.Kind {
 	case session.TranscriptKindUser:
-		return transcriptItem{Type: "user", Text: item.Text}
+		out := transcriptItem{Type: "user", Text: item.Text}
+		for _, block := range item.Images {
+			out.Images = append(out.Images, messageImageInput{MediaType: block.MediaType, Data: block.Data})
+		}
+		return out
 	case session.TranscriptKindReasoning:
 		return transcriptItem{Type: "reasoning", Text: item.Text}
 	case session.TranscriptKindAssistant:

@@ -22,7 +22,8 @@ const (
 type TranscriptEntry struct {
 	Kind TranscriptKind
 
-	Text string // user / assistant / reasoning body
+	Text   string         // user / assistant / reasoning body
+	Images []ContentBlock // user image attachments (decoded from content envelope)
 
 	ToolName    string
 	ToolInput   string // JSON arguments
@@ -53,9 +54,24 @@ func (s *Service) LoadTranscript(ctx context.Context, sessionID string) ([]Trans
 	for _, m := range rows {
 		switch m.Role {
 		case "user":
+			blocks, err := DecodeMessageContent(m.Content)
+			if err != nil {
+				out = append(out, TranscriptEntry{
+					Kind: TranscriptKindUser,
+					Text: m.Content,
+				})
+				continue
+			}
+			var images []ContentBlock
+			for _, block := range blocks {
+				if block.Type == "image" {
+					images = append(images, block)
+				}
+			}
 			out = append(out, TranscriptEntry{
-				Kind: TranscriptKindUser,
-				Text: m.Content,
+				Kind:   TranscriptKindUser,
+				Text:   PlainTextFromContent(blocks),
+				Images: images,
 			})
 		case "assistant":
 			blocks, err := unmarshalReasoningContent(m.ReasoningContent)
