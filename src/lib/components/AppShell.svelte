@@ -4,6 +4,7 @@
 	import RuntimeOverlay from './RuntimeOverlay.svelte';
 	import SettingsModal from './SettingsModal.svelte';
 	import UpdateButton from './UpdateButton.svelte';
+	import WebPanel from './WebPanel.svelte';
 	import { shellStore } from '$lib/stores/shell.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
 	import { startNewChat } from '$lib/actions/new-chat';
@@ -24,6 +25,16 @@
 		window.electronAPI?.setSessionNavigationSuspended?.(shellStore.settingsOpen);
 	});
 
+	function isCloseWebPanelShortcut(event: KeyboardEvent) {
+		return (
+			event.metaKey &&
+			!event.ctrlKey &&
+			!event.altKey &&
+			!event.shiftKey &&
+			event.key.toLowerCase() === 'w'
+		);
+	}
+
 	onMount(() => {
 		// Narrow viewports start with the sidebar closed so chat gets full width.
 		if (narrowViewportQuery().matches) {
@@ -33,6 +44,18 @@
 		function onKeydown(event: KeyboardEvent) {
 			const shortcuts = settingsStore.settings.shortcuts;
 
+			if (isCloseWebPanelShortcut(event)) {
+				event.preventDefault();
+				if (shellStore.webPanelOpen) {
+					shellStore.closeWebPanel();
+				}
+				return;
+			}
+			if (shellStore.webPanelOpen && event.key === 'Escape' && !shellStore.settingsOpen) {
+				event.preventDefault();
+				shellStore.closeWebPanel();
+				return;
+			}
 			if (matchesShortcut(event, shortcuts.closeSettings) && shellStore.settingsOpen) {
 				event.preventDefault();
 				shellStore.closeSettings();
@@ -79,6 +102,10 @@
 			navigateAdjacentSession(direction);
 		});
 
+		const unsubscribeCloseWebPanel = window.electronAPI?.onCloseWebPanel?.(() => {
+			shellStore.closeWebPanel();
+		});
+
 		// macOS hides the traffic lights in fullscreen, so the renderer reclaims
 		// the gutter that normally keeps the search bar clear of them. Pull the
 		// current state on mount in case the initial push fired before this
@@ -101,6 +128,7 @@
 		return () => {
 			window.removeEventListener('keydown', onKeydown, true);
 			unsubscribeNavigate?.();
+			unsubscribeCloseWebPanel?.();
 			unsubscribeFullScreen?.();
 			document.removeEventListener('fullscreenchange', onDomFullScreenChange);
 		};
@@ -134,12 +162,16 @@
 	class="app-shell"
 	class:sidebar-collapsed={!shellStore.sidebarOpen}
 	class:is-fullscreen={shellStore.fullscreen}
+	class:web-panel-open={shellStore.webPanelOpen}
 >
 	<Sidebar bind:this={sidebarRef} {workspacePath} collapsed={!shellStore.sidebarOpen} />
-	<main class="main shadow max-[900px]:shadow-none">
-		{@render children()}
-		<RuntimeOverlay />
-	</main>
+	<div class="content-row">
+		<main class="main shadow max-[900px]:shadow-none">
+			{@render children()}
+			<RuntimeOverlay />
+		</main>
+		<WebPanel />
+	</div>
 	<SettingsModal />
 	<UpdateButton />
 </div>
@@ -162,6 +194,13 @@
 	   reclaim the gutter that normally keeps it clear of them. */
 	.app-shell.is-fullscreen {
 		--traffic-light-gutter: 0px;
+	}
+
+	.content-row {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		position: relative;
 	}
 
 	.main {

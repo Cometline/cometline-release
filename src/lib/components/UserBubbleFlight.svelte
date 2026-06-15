@@ -1,5 +1,9 @@
 <script lang="ts">
-	import { flyUserBubble, type FlyUserBubbleParams } from '$lib/first-turn-flight';
+	import {
+		flyUserBubble,
+		type FlyUserBubbleParams,
+		type UserBubbleFlightOrigin
+	} from '$lib/first-turn-flight';
 import { imageDataURL } from '$lib/files/images';
 import AssistantMarkdown from '$lib/components/AssistantMarkdown.svelte';
 import type { ImageAttachment } from '$lib/types';
@@ -11,6 +15,7 @@ import type { ImageAttachment } from '$lib/types';
 		deferReveal?: boolean;
 		deferHideParticle?: boolean;
 		skipStage?: boolean;
+		origin?: UserBubbleFlightOrigin;
 	}
 
 	interface Props {
@@ -62,6 +67,7 @@ import type { ImageAttachment } from '$lib/types';
 			deferReveal: opts.deferReveal,
 			deferHideParticle: opts.deferHideParticle,
 			skipStage: opts.skipStage,
+			origin: opts.origin,
 			onShowParticle: showParticle,
 			onHideParticle: hideParticle
 		};

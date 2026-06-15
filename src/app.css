@@ -28,6 +28,7 @@
 	/* Layout */
 	--sidebar-width: 250px;
 	--sidebar-auto-collapse-max: 900px;
+	--web-panel-width: 50vw;
 	--titlebar-height: 48px;
 	--traffic-light-gutter: 78px;
 

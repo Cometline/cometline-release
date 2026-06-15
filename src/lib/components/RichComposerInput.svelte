@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { faviconUrl, domainFromUrl, isHttpUrl } from '$lib/markdown/embed';
-	import { openExternalLink } from '$lib/external-link';
+	import { openLink } from '$lib/open-link';
 
 	let {
 		value = $bindable(''),
@@ -212,7 +212,7 @@
 		if (!(chip instanceof HTMLElement) || !chip.dataset.url) return;
 		// A plain click on a chip opens its link.
 		e.preventDefault();
-		openExternalLink(chip.dataset.url);
+		openLink(chip.dataset.url);
 	}
 
 	function insertPlainText(text: string) {

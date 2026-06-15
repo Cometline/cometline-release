@@ -106,7 +106,9 @@
 						firstTurnFlight?.run(payload.text, payload.images);
 						return;
 					}
-					userBubbleFlight?.run(payload.text, payload.images);
+					userBubbleFlight?.run(payload.text, payload.images, {
+						origin: 'above-composer'
+					});
 				},
 				onFirstTurnComplete: () => {
 					awaitingFirstAssistant = false;

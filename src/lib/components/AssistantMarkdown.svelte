@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { renderMarkdown, renderUserText } from '$lib/markdown/render';
-	import { openExternalLink } from '$lib/external-link';
+	import { openLink } from '$lib/open-link';
 
 	let {
 		source = '',
@@ -85,7 +85,7 @@
 		const href = anchor.getAttribute('data-external-link');
 		if (!href) return;
 		event.preventDefault();
-		openExternalLink(href);
+		openLink(href);
 	}
 </script>
 

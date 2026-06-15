@@ -461,9 +461,26 @@ function matchesInputShortcut(input, binding) {
 
 let shortcutCaptureActive = false;
 let sessionNavigationSuspended = false;
+let webPanelOpen = false;
 
-function attachSessionNavigationShortcuts(webContents) {
+function attachMainWindowShortcuts(webContents) {
 	webContents.on('before-input-event', (event, input) => {
+		if (
+			process.platform === 'darwin' &&
+			input.type === 'keyDown' &&
+			input.meta &&
+			!input.control &&
+			!input.alt &&
+			!input.shift &&
+			input.key?.toLowerCase() === 'w'
+		) {
+			event.preventDefault();
+			if (webPanelOpen) {
+				webContents.send('cometline:close-web-panel');
+			}
+			return;
+		}
+
 		if (shortcutCaptureActive || sessionNavigationSuspended) return;
 		const shortcuts = readProviderSettings().shortcuts ?? defaultShortcuts();
 		if (matchesInputShortcut(input, shortcuts.previousSession)) {
@@ -908,7 +925,8 @@ async function createWindow() {
 			preload: path.join(__dirname, 'preload.cjs'),
 			contextIsolation: true,
 			nodeIntegration: false,
-			allowRunningInsecureContent: false
+			allowRunningInsecureContent: false,
+			webviewTag: true
 		}
 	});
 	setWindowButtonPosition(WINDOW_BUTTON_OPEN_POSITION);
@@ -929,7 +947,7 @@ async function createWindow() {
 			if (isExternallyOpenableUrl(url)) void shell.openExternal(url);
 		}
 	});
-	attachSessionNavigationShortcuts(mainWindow.webContents);
+	attachMainWindowShortcuts(mainWindow.webContents);
 
 	if (app.isPackaged) {
 		await mainWindow.loadURL(`${APP_ORIGIN}/`);
@@ -1144,6 +1162,10 @@ ipcMain.on('cometline:shortcut-capture-active', (_event, active) => {
 
 ipcMain.on('cometline:session-navigation-suspended', (_event, suspended) => {
 	sessionNavigationSuspended = Boolean(suspended);
+});
+
+ipcMain.on('cometline:web-panel-open', (_event, open) => {
+	webPanelOpen = Boolean(open);
 });
 
 ipcMain.on('cometline:set-sidebar-open', (_event, payload) => {

@@ -47,12 +47,27 @@ export function translateStyle(from: DOMRect, to: DOMRect): string {
 	].join(';');
 }
 
+export type UserBubbleFlightOrigin = 'textarea' | 'above-composer';
+
 /** Origin rect for the user bubble — starts at the composer textarea. */
 export function textareaUserOrigin(textarea: DOMRect, target: DOMRect): DOMRect {
 	const width = target.width;
 	const height = target.height;
 	const left = Math.max(textarea.left, textarea.right - width);
 	const top = textarea.top + (textarea.height - height) / 2;
+	return new DOMRect(left, top, width, height);
+}
+
+/** Origin rect for docked follow-up turns — starts just above the composer shell. */
+export function dockUserOrigin(
+	composerWrapper: DOMRect,
+	target: DOMRect,
+	gap = 12
+): DOMRect {
+	const width = target.width;
+	const height = target.height;
+	const left = Math.max(composerWrapper.left, composerWrapper.right - width);
+	const top = composerWrapper.top - gap - height;
 	return new DOMRect(left, top, width, height);
 }
 
@@ -112,6 +127,8 @@ export interface FlyUserBubbleParams {
 	deferHideParticle?: boolean;
 	/** When true, the caller already staged the user bubble. */
 	skipStage?: boolean;
+	/** First turn uses the textarea; follow-up turns launch above the docked composer. */
+	origin?: UserBubbleFlightOrigin;
 	onShowParticle: (text: string, images: ImageAttachment[] | undefined, style: string) => void;
 	onHideParticle: () => void;
 }
@@ -130,6 +147,7 @@ export async function flyUserBubble(params: FlyUserBubbleParams): Promise<boolea
 		deferReveal,
 		deferHideParticle,
 		skipStage,
+		origin = 'textarea',
 		onShowParticle,
 		onHideParticle
 	} = params;
@@ -147,10 +165,6 @@ export async function flyUserBubble(params: FlyUserBubbleParams): Promise<boolea
 		return true;
 	}
 
-	const textarea = root.querySelector('.composer .rce-editor');
-	const capturedFrom =
-		textareaFrom ?? (textarea instanceof HTMLElement ? textarea.getBoundingClientRect() : null);
-
 	if (!skipOnPrepare) onPrepare?.();
 	if (!skipStage) stageUser(text, images);
 	await tick();
@@ -158,13 +172,34 @@ export async function flyUserBubble(params: FlyUserBubbleParams): Promise<boolea
 	await afterPaint();
 
 	const userTarget = await waitForSelector(root, '[data-flight-target="user"]');
-	if (!(userTarget instanceof HTMLElement) || !capturedFrom) {
+	if (!(userTarget instanceof HTMLElement)) {
 		reveal();
 		return false;
 	}
 
 	const userTo = userTarget.getBoundingClientRect();
-	const style = translateStyle(textareaUserOrigin(capturedFrom, userTo), userTo);
+	let fromRect: DOMRect | null = null;
+
+	if (origin === 'above-composer') {
+		const composerWrapper = root.querySelector('.composer-wrapper');
+		if (composerWrapper instanceof HTMLElement) {
+			fromRect = dockUserOrigin(composerWrapper.getBoundingClientRect(), userTo);
+		}
+	} else {
+		const textarea = root.querySelector('.composer .rce-editor');
+		const capturedFrom =
+			textareaFrom ?? (textarea instanceof HTMLElement ? textarea.getBoundingClientRect() : null);
+		if (capturedFrom) {
+			fromRect = textareaUserOrigin(capturedFrom, userTo);
+		}
+	}
+
+	if (!fromRect) {
+		reveal();
+		return false;
+	}
+
+	const style = translateStyle(fromRect, userTo);
 
 	onShowParticle(text, images, style);
 	await wait(FLIGHT_MS);

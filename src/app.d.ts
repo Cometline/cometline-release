@@ -91,9 +91,21 @@ declare global {
 			onUpdateState?: (callback: (state: UpdateState) => void) => () => void;
 			setShortcutCaptureActive?: (active: boolean) => void;
 			setSessionNavigationSuspended?: (suspended: boolean) => void;
+			setWebPanelOpen?: (open: boolean) => void;
+			onCloseWebPanel?: (callback: () => void) => () => void;
 			onNavigateSession?: (callback: (direction: 'prev' | 'next') => void) => () => void;
 		};
 	}
 }
 
 export {};
+
+declare namespace svelteHTML {
+	interface IntrinsicElements {
+		webview: import('svelte/elements').HTMLAttributes<HTMLElement> & {
+			src?: string;
+			sandbox?: string;
+			partition?: string;
+		};
+	}
+}

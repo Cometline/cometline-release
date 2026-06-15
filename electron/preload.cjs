@@ -30,6 +30,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
 		ipcRenderer.send('cometline:shortcut-capture-active', Boolean(active)),
 	setSessionNavigationSuspended: (suspended) =>
 		ipcRenderer.send('cometline:session-navigation-suspended', Boolean(suspended)),
+	setWebPanelOpen: (open) => ipcRenderer.send('cometline:web-panel-open', Boolean(open)),
+	onCloseWebPanel: (callback) => {
+		const handler = () => callback();
+		ipcRenderer.on('cometline:close-web-panel', handler);
+		return () => ipcRenderer.removeListener('cometline:close-web-panel', handler);
+	},
 	onNavigateSession: (callback) => {
 		const handler = (_event, direction) => {
 			if (direction === 'prev' || direction === 'next') callback(direction);

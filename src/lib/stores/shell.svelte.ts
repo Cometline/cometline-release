@@ -5,6 +5,12 @@ function createShellStore() {
 	let workspacePath = $state('/');
 	let bootMessage = $state('');
 	let fullscreen = $state(false);
+	let webPanelOpen = $state(false);
+	let webPanelUrl = $state<string | null>(null);
+
+	function syncWebPanelOpen(open: boolean) {
+		window.electronAPI?.setWebPanelOpen?.(open);
+	}
 
 	return {
 		get sidebarOpen() {
@@ -24,6 +30,12 @@ function createShellStore() {
 		},
 		get bootMessage() {
 			return bootMessage;
+		},
+		get webPanelOpen() {
+			return webPanelOpen;
+		},
+		get webPanelUrl() {
+			return webPanelUrl;
 		},
 		setWorkspacePath(path: string) {
 			workspacePath = path;
@@ -54,6 +66,19 @@ function createShellStore() {
 		},
 		centerComposer() {
 			composerPhase = 'centered';
+		},
+		openWebPanel(url: string) {
+			webPanelUrl = url;
+			if (!webPanelOpen) {
+				webPanelOpen = true;
+				syncWebPanelOpen(true);
+			}
+		},
+		closeWebPanel() {
+			if (!webPanelOpen) return;
+			webPanelOpen = false;
+			webPanelUrl = null;
+			syncWebPanelOpen(false);
 		}
 	};
 }

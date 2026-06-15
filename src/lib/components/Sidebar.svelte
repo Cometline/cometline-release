@@ -99,29 +99,34 @@
 <aside class="sidebar" class:collapsed aria-hidden={collapsed} data-workspace-path={workspacePath}>
 	<div class="sidebar-content">
 		<div class="sidebar-titlebar-row">
-			<label
-				class="search-field no-drag flex h-7 min-w-0 items-center gap-1.5 rounded-lg border border-border-soft bg-white/70 px-2.5 text-text-soft focus-within:border-slate-900/15 focus-within:bg-white/95 focus-within:text-text-muted"
-			>
-				<Search size={14} stroke-width={2} aria-hidden="true" />
-				<input
-					type="search"
-					class="min-w-0 flex-1 border-0 bg-transparent p-0 text-xs text-text-main outline-none placeholder:text-text-soft"
-					placeholder="Search chats"
-					bind:value={searchQuery}
-					bind:this={searchInput}
-					spellcheck="false"
-					autocomplete="off"
-					aria-label="Search chats by title"
-				/>
-			</label>
-			<button
-				class="no-drag grid h-7 w-7 shrink-0 place-items-center rounded-md border-0 bg-transparent text-text-muted hover:bg-black/4 hover:text-text-main active:bg-black/7"
-				onclick={newChat}
-				aria-label="New chat"
-				title="New chat"
-			>
-				<SquarePen size={16} stroke-width={1.8} />
-			</button>
+			<div class="search-field-wrap no-drag">
+				<div
+					class="search-composite flex h-7 min-w-0 items-stretch overflow-hidden rounded-lg border border-border-soft bg-white/70 text-text-soft focus-within:border-slate-900/15 focus-within:bg-white/95 focus-within:text-text-muted"
+				>
+					<label class="search-field flex min-w-0 flex-1 items-center gap-2 px-2.5">
+						<Search size={14} stroke-width={2} aria-hidden="true" class="shrink-0" />
+						<input
+							type="search"
+							class="min-w-0 flex-1 border-0 bg-transparent p-0 text-xs text-text-main outline-none placeholder:text-text-soft"
+							placeholder="Search chats"
+							bind:value={searchQuery}
+							bind:this={searchInput}
+							spellcheck="false"
+							autocomplete="off"
+							aria-label="Search chats by title"
+						/>
+					</label>
+					<div class="search-divider" aria-hidden="true"></div>
+					<button
+						class="new-chat-button grid w-7 shrink-0 place-items-center border-0 bg-transparent text-text-muted hover:text-text-main"
+						onclick={newChat}
+						aria-label="New chat"
+						title="New chat"
+					>
+						<SquarePen size={16} stroke-width={1.8} />
+					</button>
+				</div>
+			</div>
 		</div>
 
 		<div class="session-list">
@@ -225,17 +230,45 @@
 		height: var(--titlebar-height);
 		width: 100%;
 		flex-shrink: 0;
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
+		display: flex;
 		align-items: center;
-		gap: 8px;
 		padding: 10px 8px;
+		padding-left: calc(8px + var(--traffic-light-gutter));
+		transition: padding-left var(--duration-fast) var(--ease-smooth);
 		-webkit-app-region: drag;
 	}
 
-	.search-field {
-		margin-left: var(--traffic-light-gutter);
-		transition: margin-left var(--duration-fast) var(--ease-smooth);
+	.search-field-wrap {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.search-composite {
+		width: 100%;
+	}
+
+	.search-field input {
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.search-field input::-webkit-search-decoration,
+	.search-field input::-webkit-search-cancel-button {
+		-webkit-appearance: none;
+		appearance: none;
+	}
+
+	.search-divider {
+		width: 2px;
+		align-self: center;
+		height: 16px;
+		background: var(--border-soft);
+		flex-shrink: 0;
+		border-radius: 1px;
+	}
+
+	.new-chat-button {
+		border-radius: 0;
 	}
 
 	.sidebar-footer button {
