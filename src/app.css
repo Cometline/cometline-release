@@ -22,6 +22,7 @@
 	--shadow-card: 0 8px 28px rgba(15, 23, 42, 0.08);
 	--content-panel-inset: 6px;
 	--content-panel-overlap: 4px;
+	--content-panel-border-width: 2px;
 	--radius-window: 18px;
 	--radius-card: 16px;
 
@@ -127,7 +128,7 @@ body {
 }
 
 .content-panel-surface {
-	border: 1px solid var(--border-soft);
+	border: var(--content-panel-border-width) solid var(--border-soft);
 	border-radius: var(--radius-window);
 	background: var(--panel-bg);
 	box-shadow: var(--shadow-card);
