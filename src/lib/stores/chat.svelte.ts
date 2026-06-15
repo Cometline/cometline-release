@@ -1,5 +1,5 @@
-import { abortSession, getSessionMessages, streamMessage } from '$lib/client/cometmind';
-import type { ChatItem, ImageAttachment, StreamEvent, TranscriptItem } from '$lib/types';
+import { abortSession, getSessionMessages, listChildSessions, streamMessage } from '$lib/client/cometmind';
+import type { ChatItem, ImageAttachment, Session, StreamEvent, TranscriptItem } from '$lib/types';
 import type { ChatTurnPayload } from '$lib/actions/start-chat';
 import { reduceChatState } from '$lib/reducers/chat';
 import { chatDebug, summarizeChatItems, summarizeStreamEvent } from '../debug/chat';
@@ -11,6 +11,64 @@ let nextLocalID = 0;
 function localID(prefix: string) {
 	nextLocalID += 1;
 	return `${prefix}-${Date.now()}-${nextLocalID}`;
+}
+
+function mapDelegationStatus(
+	status: string | undefined
+): Extract<ChatItem, { type: 'subagent' }>['status'] {
+	switch (status) {
+		case 'completed':
+			return 'completed';
+		case 'cancelled':
+			return 'cancelled';
+		case 'failed':
+			return 'failed';
+		case 'running':
+			return 'running';
+		default:
+			return 'pending';
+	}
+}
+
+function subagentFromChild(child: Session, agentName = 'opencode'): Extract<ChatItem, { type: 'subagent' }> {
+	return {
+		id: `subagent-${child.id}`,
+		type: 'subagent',
+		childSessionId: child.id,
+		purpose: child.purpose ?? child.title ?? 'Delegated coding task',
+		agentName,
+		status: mapDelegationStatus(child.delegation_status),
+		progress: [],
+		summary: child.output_summary,
+		pending: child.delegation_status === 'running'
+	};
+}
+
+function mergeSubagents(items: ChatItem[], children: Session[]): ChatItem[] {
+	if (children.length === 0) return items;
+	const used = new Set<string>();
+	const out: ChatItem[] = [];
+
+	for (const item of items) {
+		if (item.type === 'tool' && item.toolName === 'delegate_coding_task') {
+			const match = children.find(
+				(child) => !used.has(child.id) && item.output?.includes(child.id)
+			);
+			if (match) {
+				used.add(match.id);
+				out.push(subagentFromChild(match));
+				continue;
+			}
+		}
+		out.push(item);
+	}
+
+	for (const child of children) {
+		if (!used.has(child.id)) {
+			out.push(subagentFromChild(child));
+		}
+	}
+	return out;
 }
 
 function itemsFromTranscript(transcriptItems: TranscriptItem[]): ChatItem[] {
@@ -129,12 +187,15 @@ function createChatStore() {
 		loadPromiseSession = nextSessionID;
 		loadPromise = (async () => {
 			try {
-				const transcript = await getSessionMessages(nextSessionID);
+				const [transcript, children] = await Promise.all([
+					getSessionMessages(nextSessionID),
+					listChildSessions(nextSessionID).catch(() => ({ sessions: [] as Session[] }))
+				]);
 				if (run !== loadRun) return;
 				if (isStreaming && sessionID === nextSessionID) return;
 				// First-turn flight may stage a user message while this fetch was in flight.
 				if (sessionID === nextSessionID && items.length > 0) return;
-				items = itemsFromTranscript(transcript.items);
+				items = mergeSubagents(itemsFromTranscript(transcript.items), children.sessions);
 				chatDebug('store:load-transcript', {
 					sessionID: nextSessionID,
 					rawItems: transcript.items,

@@ -94,7 +94,101 @@ function defaultProviderSettings() {
 		],
 		activeProviderId: 'opencode-go',
 		appearance: defaultAppearance(),
-		shortcuts: defaultShortcuts()
+		shortcuts: defaultShortcuts(),
+		app: defaultAppSettings(),
+		cometmind: defaultCometMindSettings()
+	};
+}
+
+function defaultAppSettings() {
+	return {
+		openAtLogin: false
+	};
+}
+
+function normalizeAppSettings(app) {
+	const defaults = defaultAppSettings();
+	return {
+		openAtLogin:
+			typeof app?.openAtLogin === 'boolean' ? app.openAtLogin : defaults.openAtLogin
+	};
+}
+
+function defaultCometMindSettings(workspacePath = '') {
+	return {
+		acp: {
+			command: 'opencode',
+			args: ['acp'],
+			timeout: '30m'
+		},
+		gateway: {
+			discord: {
+				enabled: false,
+				botToken: '',
+				botTokenEnv: 'DISCORD_BOT_TOKEN',
+				providerId: '',
+				modelId: '',
+				allowedUsers: [],
+				allowedChannels: [],
+				requireMention: true,
+				workspacePath
+			}
+		}
+	};
+}
+
+function looksLikeDiscordBotToken(value) {
+	const parts = String(value).split('.');
+	if (parts.length !== 3) return false;
+	return parts[0].length >= 18 && parts[1].length >= 4 && parts[2].length >= 20;
+}
+
+function migrateDiscordTokenFields(discord) {
+	const defaults = defaultCometMindSettings().gateway.discord;
+	let botToken = String(discord?.botToken ?? '').trim();
+	let botTokenEnv = String(discord?.botTokenEnv ?? defaults.botTokenEnv).trim() || defaults.botTokenEnv;
+	if (!botToken && looksLikeDiscordBotToken(botTokenEnv)) {
+		botToken = botTokenEnv;
+		botTokenEnv = defaults.botTokenEnv;
+	}
+	return { botToken, botTokenEnv };
+}
+
+function normalizeCometMindSettings(input, workspacePath = '') {
+	const defaults = defaultCometMindSettings(workspacePath);
+	const acp = input?.acp ?? {};
+	const discord = input?.gateway?.discord ?? {};
+	const args = Array.isArray(acp.args)
+		? acp.args.map((a) => String(a).trim()).filter(Boolean)
+		: defaults.acp.args;
+	const cleanList = (values) =>
+		Array.isArray(values) ? values.map((v) => String(v).trim()).filter(Boolean) : [];
+	const { botToken, botTokenEnv } = migrateDiscordTokenFields(discord);
+	return {
+		acp: {
+			command: String(acp.command ?? defaults.acp.command).trim() || defaults.acp.command,
+			args: args.length > 0 ? args : defaults.acp.args,
+			timeout: String(acp.timeout ?? defaults.acp.timeout).trim() || defaults.acp.timeout
+		},
+		gateway: {
+			discord: {
+				enabled:
+					typeof discord.enabled === 'boolean' ? discord.enabled : defaults.gateway.discord.enabled,
+				botToken,
+				botTokenEnv,
+				providerId: String(discord.providerId ?? defaults.gateway.discord.providerId).trim(),
+				modelId: String(discord.modelId ?? defaults.gateway.discord.modelId).trim(),
+				allowedUsers: cleanList(discord.allowedUsers),
+				allowedChannels: cleanList(discord.allowedChannels),
+				requireMention:
+					typeof discord.requireMention === 'boolean'
+						? discord.requireMention
+						: defaults.gateway.discord.requireMention,
+				workspacePath:
+					String(discord.workspacePath ?? defaults.gateway.discord.workspacePath).trim() ||
+					defaults.gateway.discord.workspacePath
+			}
+		}
 	};
 }
 
@@ -139,6 +233,7 @@ protocol.registerSchemesAsPrivileged([
 
 let mainWindow = null;
 let cometMindProcess = null;
+let cometMindGatewayProcess = null;
 let stoppingForQuit = false;
 let stoppedForQuit = false;
 let relaunchForUpdate = false;
@@ -595,6 +690,11 @@ function readProviderSettings() {
 	base.providers = normalizeProviders(base.providers);
 	base.appearance = normalizeAppearance(saved.appearance ?? base.appearance);
 	base.shortcuts = normalizeShortcuts(saved.shortcuts ?? base.shortcuts);
+	base.cometmind = normalizeCometMindSettings(
+		saved.cometmind ?? base.cometmind,
+		readStoredWorkspacePath() || getDefaultWorkspacePath()
+	);
+	base.app = normalizeAppSettings(saved.app ?? base.app);
 	if (!base.activeProviderId || !base.providers.find((p) => p.id === base.activeProviderId)) {
 		base.activeProviderId =
 			base.providers.find((p) => p.enabled && p.enabledModels.length > 0)?.id ??
@@ -637,7 +737,12 @@ function writeProviderSettings(settings) {
 		providers: nextProviders,
 		activeProviderId: nextActive,
 		appearance: normalizeAppearance(settings.appearance ?? current.appearance),
-		shortcuts: normalizeShortcuts(settings.shortcuts ?? current.shortcuts)
+		shortcuts: normalizeShortcuts(settings.shortcuts ?? current.shortcuts),
+		cometmind: normalizeCometMindSettings(
+			settings.cometmind ?? current.cometmind,
+			readStoredWorkspacePath() || getDefaultWorkspacePath()
+		),
+		app: normalizeAppSettings(settings.app ?? current.app)
 	};
 	const settingsPath = getSettingsPath();
 	fs.writeFileSync(settingsPath, JSON.stringify(next, null, 2));
@@ -679,7 +784,23 @@ max_tokens = 8192
 max_steps = 50
 system_prompt_path = ${JSON.stringify(resolveSystemPromptPath())}
 
-${providerEntries}`;
+${providerEntries}
+[acp]
+command = ${JSON.stringify(settings.cometmind?.acp?.command ?? 'opencode')}
+args = ${JSON.stringify(settings.cometmind?.acp?.args ?? ['acp'])}
+timeout = ${JSON.stringify(settings.cometmind?.acp?.timeout ?? '30m')}
+
+[gateway.discord]
+enabled = ${settings.cometmind?.gateway?.discord?.enabled ?? false}
+bot_token = ${JSON.stringify(settings.cometmind?.gateway?.discord?.botToken ?? '')}
+bot_token_env = ${JSON.stringify(settings.cometmind?.gateway?.discord?.botTokenEnv ?? 'DISCORD_BOT_TOKEN')}
+allowed_users = ${JSON.stringify(settings.cometmind?.gateway?.discord?.allowedUsers ?? [])}
+allowed_channels = ${JSON.stringify(settings.cometmind?.gateway?.discord?.allowedChannels ?? [])}
+require_mention = ${settings.cometmind?.gateway?.discord?.requireMention ?? true}
+workspace_path = ${JSON.stringify(settings.cometmind?.gateway?.discord?.workspacePath ?? '')}
+provider = ${JSON.stringify(settings.cometmind?.gateway?.discord?.providerId ?? '')}
+model = ${JSON.stringify(settings.cometmind?.gateway?.discord?.modelId ?? '')}
+`;
 
 	const configPath = getConfigPath();
 	fs.writeFileSync(configPath, content);
@@ -805,6 +926,105 @@ function startCometMind() {
 		logStream.end();
 		cometMindProcess = null;
 	});
+}
+
+function getGatewayLogPath() {
+	return getLogPath().replace(/\.log$/, '-gateway.log');
+}
+
+function applyOpenAtLoginSetting(openAtLogin) {
+	if (process.platform !== 'darwin' && process.platform !== 'win32') return;
+	try {
+		app.setLoginItemSettings({
+			openAtLogin: Boolean(openAtLogin),
+			openAsHidden: false
+		});
+	} catch (err) {
+		console.error('setLoginItemSettings failed:', err);
+	}
+}
+
+function startDiscordGateway() {
+	if (cometMindGatewayProcess) return;
+
+	const settings = readProviderSettings();
+	const discord = settings.cometmind?.gateway?.discord ?? {};
+	if (!String(discord.botToken ?? '').trim() && !process.env.DISCORD_BOT_TOKEN) {
+		console.error('Discord gateway: bot token is not configured');
+		return;
+	}
+
+	const binary = resolveCometMindBinary();
+	const logPath = getGatewayLogPath();
+	const logStream = fs.createWriteStream(logPath, { flags: 'a' });
+
+	if (!fs.existsSync(binary)) {
+		console.error(`CometMind binary not found: ${binary}`);
+		return;
+	}
+
+	cometMindGatewayProcess = spawn(binary, ['gateway', 'run', '--platform', 'discord'], {
+		stdio: ['ignore', 'pipe', 'pipe'],
+		env: providerEnv()
+	});
+
+	cometMindGatewayProcess.stdout.on('data', (data) => logStream.write(data));
+	cometMindGatewayProcess.stderr.on('data', (data) => logStream.write(data));
+
+	cometMindGatewayProcess.on('exit', (code) => {
+		console.log(`Discord gateway exited with code ${code}`);
+		logStream.end();
+		cometMindGatewayProcess = null;
+	});
+
+	cometMindGatewayProcess.on('error', (err) => {
+		console.error('Discord gateway spawn error:', err);
+		logStream.end();
+		cometMindGatewayProcess = null;
+	});
+}
+
+function stopDiscordGateway() {
+	const proc = cometMindGatewayProcess;
+	if (!proc) return Promise.resolve();
+	cometMindGatewayProcess = null;
+
+	return new Promise((resolve) => {
+		let settled = false;
+		let forceTimer = null;
+		const finish = () => {
+			if (settled) return;
+			settled = true;
+			if (forceTimer) clearTimeout(forceTimer);
+			resolve();
+		};
+
+		proc.once('exit', finish);
+		forceTimer = setTimeout(() => {
+			try {
+				proc.kill('SIGKILL');
+			} catch {
+				// ignore
+			}
+			finish();
+		}, 6000);
+
+		try {
+			proc.kill('SIGTERM');
+		} catch {
+			finish();
+		}
+	});
+}
+
+async function syncDiscordGatewayFromSettings(settings) {
+	const enabled = Boolean(settings?.cometmind?.gateway?.discord?.enabled);
+	if (enabled) {
+		await stopDiscordGateway();
+		startDiscordGateway();
+	} else {
+		await stopDiscordGateway();
+	}
 }
 
 function stopCometMind() {
@@ -1148,10 +1368,15 @@ app.whenReady().then(async () => {
 	// Ensure CometMind config exists before starting so the active provider is
 	// available even on first launch.
 	writeCometMindConfig(readProviderSettings());
+	const startupSettings = readProviderSettings();
+	applyOpenAtLoginSetting(startupSettings.app?.openAtLogin);
 	startCometMind();
 	const healthy = await waitForHealth();
 	if (!healthy) {
 		console.error('CometMind failed to become healthy');
+	}
+	if (startupSettings.cometmind?.gateway?.discord?.enabled) {
+		startDiscordGateway();
 	}
 	await createWindow();
 	configureAutoUpdater();
@@ -1193,6 +1418,7 @@ app.on('before-quit', async (event) => {
 		clearInterval(updateCheckTimer);
 		updateCheckTimer = null;
 	}
+	await stopDiscordGateway();
 	await stopCometMind();
 	stoppedForQuit = true;
 	app.quit();
@@ -1204,6 +1430,13 @@ app.on('before-quit', async (event) => {
 // lock. The Go-side --watch-parent watchdog is the real safety net for hard
 // kills where no JS runs at all.
 process.on('exit', () => {
+	if (cometMindGatewayProcess) {
+		try {
+			cometMindGatewayProcess.kill('SIGTERM');
+		} catch {
+			// ignore
+		}
+	}
 	if (cometMindProcess) {
 		try {
 			cometMindProcess.kill('SIGTERM');
@@ -1260,7 +1493,51 @@ ipcMain.handle('cometline:save-provider-settings', async (_event, settings, opti
 		startCometMind();
 		void waitForHealth();
 	}
+	await syncDiscordGatewayFromSettings(saved);
+	applyOpenAtLoginSetting(saved.app?.openAtLogin);
 	return saved;
+});
+
+ipcMain.handle('cometline:get-discord-gateway-status', () => {
+	const settings = readProviderSettings();
+	return {
+		running: Boolean(cometMindGatewayProcess),
+		enabled: Boolean(settings.cometmind?.gateway?.discord?.enabled)
+	};
+});
+
+ipcMain.handle('cometline:set-discord-gateway-enabled', async (_event, enabled) => {
+	const settings = readProviderSettings();
+	settings.cometmind.gateway.discord.enabled = Boolean(enabled);
+	const saved = writeProviderSettings(settings);
+	await syncDiscordGatewayFromSettings(saved);
+	return {
+		running: Boolean(cometMindGatewayProcess),
+		enabled: Boolean(saved.cometmind?.gateway?.discord?.enabled)
+	};
+});
+
+ipcMain.handle('cometline:get-open-at-login', () => {
+	const settings = readProviderSettings();
+	try {
+		const login = app.getLoginItemSettings();
+		return {
+			openAtLogin: Boolean(login.openAtLogin ?? settings.app?.openAtLogin)
+		};
+	} catch {
+		return { openAtLogin: Boolean(settings.app?.openAtLogin) };
+	}
+});
+
+ipcMain.handle('cometline:set-open-at-login', (_event, openAtLogin) => {
+	const settings = readProviderSettings();
+	settings.app = normalizeAppSettings({
+		...settings.app,
+		openAtLogin: Boolean(openAtLogin)
+	});
+	const saved = writeProviderSettings(settings);
+	applyOpenAtLoginSetting(saved.app.openAtLogin);
+	return { openAtLogin: saved.app.openAtLogin };
 });
 
 // Opens a markdown link in the user's default browser. Only http(s)/mailto are
@@ -1304,6 +1581,7 @@ ipcMain.handle('cometline:install-update', async () => {
 	relaunchForUpdate = true;
 	stoppingForQuit = true;
 	// Stop the sidecar gracefully before the updater takes over the quit flow.
+	await stopDiscordGateway();
 	await stopCometMind();
 	// isSilent=true, isForceRunAfter=true so the updater relaunches the app.
 	setImmediate(() => autoUpdater.quitAndInstall(true, true));

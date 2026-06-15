@@ -1,5 +1,10 @@
 import type { ProviderConfig, ProviderSettings } from '$lib/types';
 import {
+	cloneCometMindSettings,
+	defaultCometMindSettings,
+	normalizeCometMindSettings
+} from '$lib/cometmind-settings';
+import {
 	DEFAULT_HERO_COMPOSER_APPEARANCE,
 	normalizeHeroComposerAppearance
 } from '$lib/hero-composer-appearance';
@@ -147,6 +152,10 @@ function defaultAppearance() {
 	};
 }
 
+function defaultAppSettings(): AppSettings {
+	return { openAtLogin: false };
+}
+
 function defaultSettings(): ProviderSettings {
 	const providers = DEFAULT_PROVIDERS.map(cloneProvider);
 	const active =
@@ -156,7 +165,9 @@ function defaultSettings(): ProviderSettings {
 		providers,
 		activeProviderId: active.id,
 		appearance: defaultAppearance(),
-		shortcuts: defaultKeyboardShortcuts()
+		shortcuts: defaultKeyboardShortcuts(),
+		app: defaultAppSettings(),
+		cometmind: defaultCometMindSettings()
 	};
 }
 
@@ -166,7 +177,9 @@ function fallbackSettings() {
 		providers: defaults.providers.map(cloneProvider),
 		activeProviderId: defaults.activeProviderId,
 		appearance: defaultAppearance(),
-		shortcuts: defaultKeyboardShortcuts()
+		shortcuts: defaultKeyboardShortcuts(),
+		app: defaultAppSettings(),
+		cometmind: defaultCometMindSettings()
 	};
 }
 
@@ -199,7 +212,14 @@ function normalizeSettings(next: Partial<ProviderSettings>): ProviderSettings {
 		providers,
 		activeProviderId,
 		appearance,
-		shortcuts: normalizeKeyboardShortcuts(next.shortcuts)
+		shortcuts: normalizeKeyboardShortcuts(next.shortcuts),
+		app: {
+			openAtLogin:
+				typeof next.app?.openAtLogin === 'boolean'
+					? next.app.openAtLogin
+					: defaultAppSettings().openAtLogin
+		},
+		cometmind: normalizeCometMindSettings(next.cometmind)
 	};
 }
 

@@ -50,6 +50,7 @@
 	const SCROLL_PIN_THRESHOLD = 96;
 	let expandedToolOutput = $state(new Set<string>());
 	let expandedThinking = $state(new Set<string>());
+	let subagentFold = $state(new Map<string, boolean>());
 	let copiedId = $state<string | null>(null);
 	let copyResetTimer: ReturnType<typeof setTimeout> | null = null;
 	let now = $state(Date.now());
@@ -121,6 +122,26 @@
 
 	function toggleThinking(id: string) {
 		expandedThinking = toggleExpanded(expandedThinking, id);
+	}
+
+	function subagentExpanded(id: string, pending: boolean) {
+		const override = subagentFold.get(id);
+		if (override !== undefined) return override;
+		return pending;
+	}
+
+	function toggleSubagent(id: string, pending: boolean) {
+		const next = new Map(subagentFold);
+		next.set(id, !subagentExpanded(id, pending));
+		subagentFold = next;
+	}
+
+	function subagentProgressLabel(item: Extract<ChatItem, { type: 'subagent' }>) {
+		const toolCount = item.progress.filter((entry) => entry.kind === 'tool').length;
+		if (toolCount > 0) {
+			return `OpenCode · ${item.agentName} · ${toolCount} tool${toolCount === 1 ? '' : 's'}`;
+		}
+		return `OpenCode · ${item.agentName}`;
 	}
 
 	async function copyMessage(id: string, text: string) {
@@ -651,6 +672,64 @@
 								</div>
 							{/if}
 						</div>
+					</div>
+				</div>
+			{:else if item.type === 'subagent'}
+				<div class="row event-row subagent-row" in:fly={rowIntro(TOOL_ROW_IN)}>
+					<div class="fold-panel subagent-panel" class:pending={item.pending}>
+						<button
+							type="button"
+							class="fold-toggle subagent-toggle"
+							aria-expanded={subagentExpanded(item.id, item.pending === true)}
+							onclick={() => toggleSubagent(item.id, item.pending === true)}
+						>
+							<Terminal size={13} />
+							<span>{subagentProgressLabel(item)}</span>
+							{#if item.pending}
+								<LoaderCircle size={12} class="spin" />
+							{:else}
+								<CircleCheck size={12} />
+							{/if}
+							<ChevronDown
+								size={13}
+								class={subagentExpanded(item.id, item.pending === true) ? 'expanded' : ''}
+							/>
+						</button>
+						{#if subagentExpanded(item.id, item.pending === true)}
+							<div class="fold-body subagent-body" transition:slide={FOLD_IN}>
+								<p class="subagent-purpose">{item.purpose}</p>
+								{#if item.progress.length > 0}
+									<div class="subagent-progress">
+										{#each item.progress as entry, entryIndex (`${item.id}-progress-${entry.kind}-${entryIndex}`)}
+											{#if entry.kind === 'tool'}
+												<div class="subagent-tool" class:pending={entry.status === 'pending' || entry.status === 'in_progress'}>
+													<div class="subagent-tool-header">
+														<Terminal size={12} />
+														<span class="subagent-tool-name">{entry.title}</span>
+														{#if entry.status}
+															<span class="subagent-tool-status">{entry.status}</span>
+														{/if}
+													</div>
+												</div>
+											{:else if entry.text.trim()}
+												<p
+													class="subagent-stream"
+													class:subagent-thought={entry.channel === 'thought'}
+													class:subagent-plan={entry.channel === 'plan'}
+												>
+													{entry.text}
+												</p>
+											{/if}
+										{/each}
+									</div>
+								{/if}
+								{#if item.summary}
+									<div class="subagent-summary">
+										<p>{item.summary}</p>
+									</div>
+								{/if}
+							</div>
+						{/if}
 					</div>
 				</div>
 			{:else if item.type === 'status'}
@@ -1204,6 +1283,101 @@
 	.error-card {
 		background: rgba(255, 245, 245, 0.82);
 		border-color: rgba(244, 63, 94, 0.18);
+	}
+
+	.subagent-row {
+		max-width: var(--chat-assistant-column);
+	}
+
+	.subagent-panel.pending .subagent-toggle {
+		border-color: rgba(59, 130, 246, 0.22);
+	}
+
+	.subagent-body {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.subagent-purpose {
+		margin: 0;
+		font-size: 12px;
+		line-height: 1.45;
+		color: var(--text-main);
+	}
+
+	.subagent-progress {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.subagent-stream,
+	.subagent-summary p {
+		margin: 0;
+		font-size: 11px;
+		line-height: 1.5;
+		white-space: pre-wrap;
+		word-break: break-word;
+		color: var(--text-muted);
+	}
+
+	.subagent-thought {
+		font-style: italic;
+	}
+
+	.subagent-plan {
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	}
+
+	.subagent-tool {
+		border: 1px solid var(--border-soft);
+		border-radius: 10px;
+		background: rgba(255, 255, 255, 0.55);
+		padding: 8px 10px;
+	}
+
+	.subagent-tool.pending {
+		border-color: rgba(59, 130, 246, 0.18);
+	}
+
+	.subagent-tool-header {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 11px;
+		color: var(--text-main);
+	}
+
+	.subagent-tool-header :global(svg) {
+		flex-shrink: 0;
+		color: var(--text-muted);
+	}
+
+	.subagent-tool-name {
+		font-weight: 600;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.subagent-tool-status {
+		margin-left: auto;
+		font-size: 10px;
+		font-weight: 600;
+		color: var(--text-muted);
+		text-transform: lowercase;
+	}
+
+	.subagent-summary {
+		padding-top: 8px;
+		border-top: 1px solid var(--border-soft);
+	}
+
+	.subagent-summary p {
+		max-height: 220px;
+		overflow: auto;
 	}
 
 	.typing {

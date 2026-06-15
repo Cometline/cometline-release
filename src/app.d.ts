@@ -47,11 +47,42 @@ declare global {
 		[action: string]: ShortcutBinding;
 	}
 
+	interface AppSettings {
+		openAtLogin: boolean;
+	}
+
 	interface ProviderSettings {
 		providers: ProviderConfig[];
 		activeProviderId: string;
 		appearance: AppearanceSettings;
 		shortcuts: KeyboardShortcuts;
+		app: AppSettings;
+		cometmind: CometMindSettings;
+	}
+
+	interface CometMindACPSettings {
+		command: string;
+		args: string[];
+		timeout: string;
+	}
+
+	interface CometMindDiscordGatewaySettings {
+		enabled: boolean;
+		botToken: string;
+		botTokenEnv: string;
+		providerId: string;
+		modelId: string;
+		allowedUsers: string[];
+		allowedChannels: string[];
+		requireMention: boolean;
+		workspacePath: string;
+	}
+
+	interface CometMindSettings {
+		acp: CometMindACPSettings;
+		gateway: {
+			discord: CometMindDiscordGatewaySettings;
+		};
 	}
 
 	interface SidebarChromeState {
@@ -74,6 +105,12 @@ declare global {
 			restartCometMind?: () => void;
 			openExternal?: (url: string) => Promise<boolean>;
 			getProviderSettings?: () => Promise<ProviderSettings>;
+			getDiscordGatewayStatus?: () => Promise<{ running: boolean; enabled: boolean }>;
+			setDiscordGatewayEnabled?: (
+				enabled: boolean
+			) => Promise<{ running: boolean; enabled: boolean }>;
+			getOpenAtLogin?: () => Promise<{ openAtLogin: boolean }>;
+			setOpenAtLogin?: (enabled: boolean) => Promise<{ openAtLogin: boolean }>;
 			fetchProviderModels?: (config: ProviderConfig) => Promise<string[]>;
 			saveProviderSettings?: (
 				settings: ProviderSettings,

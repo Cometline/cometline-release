@@ -57,6 +57,10 @@ export function updateSession(id: string, req: UpdateSessionRequest): Promise<Se
 	});
 }
 
+export function listChildSessions(id: string): Promise<SessionListResponse> {
+	return api<SessionListResponse>(`/api/v1/sessions/${id}/children`);
+}
+
 export function getSessionMessages(id: string): Promise<TranscriptResponse> {
 	return api<TranscriptResponse>(`/api/v1/sessions/${id}/messages`);
 }

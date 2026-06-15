@@ -1,4 +1,4 @@
-import type { ChatItem, StreamEvent } from '$lib/types';
+import type { ChatItem, StreamEvent, SubagentProgressEntry } from '$lib/types';
 import {
 	chatDebug,
 	summarizeChatItem,
@@ -100,6 +100,50 @@ function settleTurn(ctx: {
 		ctx.assistant.pending = false;
 		if (ctx.assistant.reasoning) ctx.assistant.reasoning.pending = false;
 	}
+}
+
+function appendSubagentProgress(
+	progress: SubagentProgressEntry[],
+	progressKind: string,
+	progressText: string
+): SubagentProgressEntry[] {
+	const text = progressText.trim();
+	if (!text) return progress;
+
+	const next = progress.map((entry) =>
+		entry.kind === 'stream' ? { ...entry } : { ...entry }
+	);
+	const kind = progressKind || 'message';
+
+	if (kind === 'tool_call' || kind === 'tool_call_update') {
+		const match = text.match(/^(.+?)(?:\s+\(([^)]+)\))?$/);
+		const title = (match?.[1] ?? text).trim();
+		const status = (match?.[2] ?? '').trim();
+		const index = next.findIndex((entry) => entry.kind === 'tool' && entry.title === title);
+		if (index >= 0) {
+			const existing = next[index];
+			if (existing.kind === 'tool') {
+				next[index] = {
+					kind: 'tool',
+					title: existing.title,
+					status: status || existing.status
+				};
+			}
+		} else {
+			next.push({ kind: 'tool', title, status });
+		}
+		return next;
+	}
+
+	const channel =
+		kind === 'thought' ? 'thought' : kind === 'plan' ? 'plan' : ('message' as const);
+	const last = next[next.length - 1];
+	if (last?.kind === 'stream' && last.channel === channel) {
+		last.text += progressText;
+	} else {
+		next.push({ kind: 'stream', channel, text: progressText });
+	}
+	return next;
 }
 
 function applyEvent(
@@ -267,6 +311,61 @@ function applyEvent(
 		return;
 	}
 
+	if (event.type === 'subagent_started') {
+		const id = localID('subagent', draft.nextId++).id;
+		items.push({
+			id,
+			type: 'subagent',
+			childSessionId: event.child_session_id,
+			purpose: event.purpose,
+			agentName: event.agent_name,
+			status: 'running',
+			progress: [],
+			pending: true
+		});
+		return;
+	}
+
+	if (event.type === 'subagent_progress') {
+		const card = items.find(
+			(item) => item.type === 'subagent' && item.childSessionId === event.child_session_id
+		) as Extract<ChatItem, { type: 'subagent' }> | undefined;
+		if (card && event.progress_text) {
+			const index = items.indexOf(card);
+			items[index] = {
+				...card,
+				progress: appendSubagentProgress(
+					card.progress,
+					event.progress_kind,
+					event.progress_text
+				)
+			};
+		}
+		return;
+	}
+
+	if (event.type === 'subagent_finished') {
+		const card = items.find(
+			(item) => item.type === 'subagent' && item.childSessionId === event.child_session_id
+		) as Extract<ChatItem, { type: 'subagent' }> | undefined;
+		if (card) {
+			const index = items.indexOf(card);
+			const status =
+				event.delegation_status === 'completed'
+					? 'completed'
+					: event.delegation_status === 'cancelled'
+						? 'cancelled'
+						: 'failed';
+			items[index] = {
+				...card,
+				status,
+				summary: event.summary,
+				pending: false
+			};
+		}
+		return;
+	}
+
 	if (event.type === 'error') {
 		settleTurn({ assistant: assistant.current, reasoning: reasoning.current });
 		clearEmptyAssistant();
@@ -312,6 +411,14 @@ function cloneItem(item: ChatItem): ChatItem {
 			reasoning: item.reasoning
 				? { text: item.reasoning.text, pending: item.reasoning.pending }
 				: undefined
+		};
+	}
+	if (item.type === 'subagent') {
+		return {
+			...item,
+			progress: item.progress.map((entry) =>
+				entry.kind === 'stream' ? { ...entry } : { ...entry }
+			)
 		};
 	}
 	return { ...item };

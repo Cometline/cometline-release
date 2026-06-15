@@ -7,6 +7,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 	selectWorkspacePath: () => ipcRenderer.invoke('cometline:select-workspace-path'),
 	setWorkspacePath: (workspacePath) => ipcRenderer.invoke('cometline:set-workspace-path', workspacePath),
 	getProviderSettings: () => ipcRenderer.invoke('cometline:get-provider-settings'),
+	getDiscordGatewayStatus: () => ipcRenderer.invoke('cometline:get-discord-gateway-status'),
+	setDiscordGatewayEnabled: (enabled) =>
+		ipcRenderer.invoke('cometline:set-discord-gateway-enabled', enabled),
+	getOpenAtLogin: () => ipcRenderer.invoke('cometline:get-open-at-login'),
+	setOpenAtLogin: (enabled) => ipcRenderer.invoke('cometline:set-open-at-login', enabled),
 	fetchProviderModels: (config) => ipcRenderer.invoke('cometline:fetch-provider-models', config),
 	saveProviderSettings: (settings, options) =>
 		ipcRenderer.invoke('cometline:save-provider-settings', settings, options),

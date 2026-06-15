@@ -7,6 +7,10 @@ export interface Session {
 	provider_id: string;
 	status: 'active' | 'archived';
 	token_usage: TokenUsage;
+	parent_session_id?: string;
+	purpose?: string;
+	delegation_status?: string;
+	output_summary?: string;
 	created_at: number;
 	updated_at: number;
 }
@@ -94,11 +98,19 @@ export interface ShortcutBinding {
 
 export type KeyboardShortcuts = Partial<Record<ShortcutAction, ShortcutBinding>>;
 
+import type { CometMindSettings } from '$lib/cometmind-settings';
+
+export interface AppSettings {
+	openAtLogin: boolean;
+}
+
 export interface ProviderSettings {
 	providers: ProviderConfig[];
 	activeProviderId: string;
 	appearance: AppearanceSettings;
 	shortcuts: KeyboardShortcuts;
+	app: AppSettings;
+	cometmind: CometMindSettings;
 }
 
 export interface SessionListResponse {
@@ -122,6 +134,10 @@ export type TranscriptItem =
 			tool_error: boolean;
 	  };
 
+export type SubagentProgressEntry =
+	| { kind: 'stream'; channel: 'message' | 'thought' | 'plan'; text: string }
+	| { kind: 'tool'; title: string; status: string };
+
 export type StreamEvent =
 	| { type: 'text_delta'; delta: string }
 	| { type: 'reasoning_start' }
@@ -129,6 +145,19 @@ export type StreamEvent =
 	| { type: 'tool_call'; id: string; tool: string; input: unknown }
 	| { type: 'tool_result'; id: string; tool: string; output: string; error?: string }
 	| { type: 'step_finish'; usage?: TokenUsage }
+	| { type: 'subagent_started'; child_session_id: string; purpose: string; agent_name: string }
+	| {
+			type: 'subagent_progress';
+			child_session_id: string;
+			progress_kind: string;
+			progress_text: string;
+	  }
+	| {
+			type: 'subagent_finished';
+			child_session_id: string;
+			delegation_status: string;
+			summary: string;
+	  }
 	| { type: 'error'; message: string; code?: string }
 	| { type: 'done' };
 
@@ -154,4 +183,15 @@ export type ChatItem =
 			durationMs?: number;
 	  }
 	| { id: string; type: 'status'; text: string; usage?: TokenUsage }
-	| { id: string; type: 'error'; text: string };
+	| { id: string; type: 'error'; text: string }
+	| {
+			id: string;
+			type: 'subagent';
+			childSessionId: string;
+			purpose: string;
+			agentName: string;
+			status: 'running' | 'completed' | 'failed' | 'cancelled' | 'pending';
+			progress: SubagentProgressEntry[];
+			summary?: string;
+			pending?: boolean;
+	  };

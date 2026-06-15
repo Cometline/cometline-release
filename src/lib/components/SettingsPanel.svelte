@@ -9,9 +9,11 @@
 		LoaderCircle,
 		Palette,
 		Plus,
+		Power,
 		RefreshCw,
 		Settings,
 		Trash2,
+		Workflow,
 		X
 	} from '@lucide/svelte';
 	import type {
@@ -24,10 +26,13 @@
 	import { shellStore } from '$lib/stores/shell.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
 	import SettingsAppearancePanel from '$lib/components/SettingsAppearancePanel.svelte';
+	import SettingsGeneralPanel from '$lib/components/SettingsGeneralPanel.svelte';
+	import SettingsCometMindPanel from '$lib/components/SettingsCometMindPanel.svelte';
 	import SettingsShortcutsPanel from '$lib/components/SettingsShortcutsPanel.svelte';
+	import { cloneCometMindSettings, normalizeCometMindSettings } from '$lib/cometmind-settings';
 	import { onMount } from 'svelte';
 
-	type SettingsSection = 'providers' | 'appearance' | 'shortcuts' | 'about';
+	type SettingsSection = 'providers' | 'cometmind' | 'general' | 'appearance' | 'shortcuts' | 'about';
 
 	const METHOD_LABELS: Record<ProviderMethod, string> = {
 		'openai-compatible': 'OpenAI-compatible',
@@ -82,7 +87,9 @@
 			appearance: {
 				heroComposer: { ...settings.appearance.heroComposer }
 			},
-			shortcuts: cloneShortcuts(settings)
+			shortcuts: cloneShortcuts(settings),
+			app: { openAtLogin: settings.app?.openAtLogin ?? false },
+			cometmind: cloneCometMindSettings(normalizeCometMindSettings(settings.cometmind))
 		};
 	}
 
@@ -97,6 +104,8 @@
 	let updateState = $state<UpdateState>({ status: 'idle' });
 	let checkingUpdates = $state(false);
 	let installingUpdate = $state(false);
+	let cometmindPanelKey = $state(0);
+	let cometmindPanel = $state<SettingsCometMindPanel | undefined>();
 
 	let selectedProvider = $derived(
 		draft.providers.find((p) => p.id === selectedProviderId) ?? draft.providers[0]
@@ -151,6 +160,14 @@
 		});
 		void api.getUpdateState?.().then((current) => {
 			if (current) updateState = current;
+		});
+		void api.getOpenAtLogin?.().then((current) => {
+			if (current) {
+				draft = {
+					...draft,
+					app: { ...draft.app, openAtLogin: current.openAtLogin }
+				};
+			}
 		});
 
 		const unsubscribe = api.onUpdateState?.((next) => {
@@ -250,13 +267,31 @@
 				return 'Shortcuts saved.';
 			case 'appearance':
 				return 'Appearance saved.';
+			case 'cometmind':
+				return restartCometMind
+					? 'CometMind runtime saved. Sidecar is restarting.'
+					: 'CometMind runtime saved.';
+			case 'general':
+				return 'General settings saved.';
 			default:
 				return 'Saved settings.';
 		}
 	}
 
+	function cometmindNeedsRestart(next: ProviderSettings) {
+		return (
+			JSON.stringify(settingsStore.settings.cometmind) !== JSON.stringify(next.cometmind)
+		);
+	}
+
+	async function setOpenAtLogin(enabled: boolean) {
+		draft = { ...draft, app: { ...draft.app, openAtLogin: enabled } };
+		await window.electronAPI?.setOpenAtLogin?.(enabled);
+	}
+
 	async function save() {
 		status = '';
+		cometmindPanel?.syncFields();
 		const preservedSection = activeSection;
 		const preservedProviderId = selectedProviderId;
 		const preservedModelSearch = modelSearch;
@@ -272,11 +307,15 @@
 			appearance: {
 				heroComposer: { ...draft.appearance.heroComposer }
 			},
-			shortcuts: cloneShortcuts(draft)
+			shortcuts: cloneShortcuts(draft),
+			app: { ...draft.app },
+			cometmind: cloneCometMindSettings(draft.cometmind)
 		};
-		const restartCometMind = providersNeedRestart(payload);
+		const restartCometMind =
+			providersNeedRestart(payload) || cometmindNeedsRestart(payload);
 		const saved = await settingsStore.save(payload, { restartCometMind });
 		draft = cloneSettings(saved);
+		cometmindPanelKey += 1;
 		activeSection = preservedSection;
 		selectedProviderId = draft.providers.some((provider) => provider.id === preservedProviderId)
 			? preservedProviderId
@@ -360,6 +399,23 @@
 		selectedProviderId = nextProviders[0]?.id ?? '';
 	}
 
+	async function pickGatewayWorkspace() {
+		const picked = await window.electronAPI?.selectWorkspacePath?.();
+		if (!picked) return;
+		draft = {
+			...draft,
+			cometmind: {
+				...draft.cometmind,
+				gateway: {
+					discord: {
+						...draft.cometmind.gateway.discord,
+						workspacePath: picked
+					}
+				}
+			}
+		};
+	}
+
 	function methodNeedsFetch(method: ProviderMethod) {
 		return method !== 'opencode-go';
 	}
@@ -384,8 +440,14 @@
 						composer.
 					{:else if activeSection === 'appearance'}
 						Customize hero composer glow and border colors for new-chat screens.
-					{:else}
+					{:else if activeSection === 'cometmind'}
+						Configure OpenCode subagents and the Discord gateway in ~/.cometmind/config.toml.
+					{:else if activeSection === 'general'}
+						Startup and system preferences for the Cometline app.
+					{:else if activeSection === 'shortcuts'}
 						Customize keyboard shortcuts used across Cometline.
+					{:else}
+						About Cometline and workspace.
 					{/if}
 				</p>
 			</div>
@@ -410,6 +472,28 @@
 				>
 					<Settings size={15} />
 					<span>Providers</span>
+				</button>
+				<button
+					class="settings-nav-item"
+					class:selected={activeSection === 'cometmind'}
+					onclick={() => {
+						activeSection = 'cometmind';
+						status = '';
+					}}
+				>
+					<Workflow size={15} />
+					<span>CometMind</span>
+				</button>
+				<button
+					class="settings-nav-item"
+					class:selected={activeSection === 'general'}
+					onclick={() => {
+						activeSection = 'general';
+						status = '';
+					}}
+				>
+					<Power size={15} />
+					<span>General</span>
 				</button>
 				<button
 					class="settings-nav-item"
@@ -645,6 +729,20 @@
 					</div>
 				{:else if activeSection === 'appearance'}
 					<SettingsAppearancePanel bind:appearance={draft.appearance.heroComposer} />
+				{:else if activeSection === 'general'}
+					<SettingsGeneralPanel
+						bind:openAtLogin={draft.app.openAtLogin}
+						onOpenAtLoginChange={setOpenAtLogin}
+					/>
+				{:else if activeSection === 'cometmind'}
+					{#key cometmindPanelKey}
+						<SettingsCometMindPanel
+							bind:this={cometmindPanel}
+							bind:cometmind={draft.cometmind}
+							providers={draft.providers}
+							onPickWorkspace={pickGatewayWorkspace}
+						/>
+					{/key}
 				{:else if activeSection === 'shortcuts'}
 					<SettingsShortcutsPanel shortcuts={draft.shortcuts} onChange={updateShortcut} />
 				{:else}
@@ -717,7 +815,17 @@
 		{/if}
 
 		<footer>
-			<p>{enabledModelCount} model{enabledModelCount === 1 ? '' : 's'} enabled</p>
+			<p>
+				{#if activeSection === 'providers'}
+					{enabledModelCount} model{enabledModelCount === 1 ? '' : 's'} enabled
+				{:else if activeSection === 'cometmind'}
+					Runs Discord gateway while Cometline is open when enabled
+				{:else if activeSection === 'general'}
+					&nbsp;
+				{:else}
+					&nbsp;
+				{/if}
+			</p>
 			<button class="secondary" onclick={shellStore.closeSettings}>Cancel</button>
 			<button
 				class="primary"
