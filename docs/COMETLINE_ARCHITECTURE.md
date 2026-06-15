@@ -19,7 +19,7 @@ comet-sdk
 cometmind
   Local agent runtime.
   Owns agent loop, SQLite persistence, workspace/session APIs, tool registry,
-  provider factory, local HTTP/SSE server, CLI, and TUI.
+  provider factory, local HTTP/SSE server, and CLI.
 
 cometline
   Desktop shell and UI.
