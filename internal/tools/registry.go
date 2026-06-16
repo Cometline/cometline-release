@@ -33,6 +33,10 @@ func NewRegistry(workspaceRoot string, opts ...RegistryOptions) *Registry {
 	add(ListDir{Workspace: ws})
 	add(RunCommand{Workspace: ws})
 	add(WebFetch{})
+	if opt.Skills != nil {
+		add(LoadSkill{Skills: opt.Skills})
+		add(ReadSkillFile{Skills: opt.Skills})
+	}
 	if opt.Sessions != nil {
 		add(DelegateCodingTask{
 			Workspace: ws,

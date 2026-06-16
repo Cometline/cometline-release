@@ -36,6 +36,15 @@ type ACPConfig struct {
 	Interactive bool     `mapstructure:"interactive"`
 }
 
+// SkillsConfig controls local Agent Skills discovery.
+type SkillsConfig struct {
+	Enabled           bool     `mapstructure:"enabled"`
+	Roots             []string `mapstructure:"roots"`
+	IncludeOpenCode   bool     `mapstructure:"include_opencode"`
+	IncludeClaude     bool     `mapstructure:"include_claude"`
+	MirrorToCometMind bool     `mapstructure:"mirror_to_cometmind"`
+}
+
 // DiscordGatewayConfig configures the Discord messaging adapter.
 type DiscordGatewayConfig struct {
 	Enabled         bool     `mapstructure:"enabled"`
@@ -64,6 +73,7 @@ type Config struct {
 	SystemPromptPath string          `mapstructure:"system_prompt_path"`
 	Providers        []ProviderEntry `mapstructure:"providers"`
 	ACP              ACPConfig       `mapstructure:"acp"`
+	Skills           SkillsConfig    `mapstructure:"skills"`
 	Gateway          GatewayConfig   `mapstructure:"gateway"`
 }
 
@@ -75,6 +85,7 @@ func Defaults() *Config {
 		MaxTokens: 8192,
 		MaxSteps:  50,
 		ACP:       ACPConfig{Interactive: true},
+		Skills:    SkillsConfig{Enabled: true, IncludeOpenCode: true, IncludeClaude: true},
 	}
 }
 
@@ -102,6 +113,11 @@ func Load() (*Config, error) {
 	v.SetDefault("max_tokens", def.MaxTokens)
 	v.SetDefault("max_steps", def.MaxSteps)
 	v.SetDefault("system_prompt_path", def.SystemPromptPath)
+	v.SetDefault("skills.enabled", def.Skills.Enabled)
+	v.SetDefault("skills.roots", def.Skills.Roots)
+	v.SetDefault("skills.include_opencode", def.Skills.IncludeOpenCode)
+	v.SetDefault("skills.include_claude", def.Skills.IncludeClaude)
+	v.SetDefault("skills.mirror_to_cometmind", def.Skills.MirrorToCometMind)
 
 	if _, err := os.Stat(cfgPath); errors.Is(err, os.ErrNotExist) {
 		if err := writeDefaultFile(cfgPath, def); err != nil {
@@ -119,6 +135,15 @@ func Load() (*Config, error) {
 	}
 	if !v.IsSet("acp.interactive") {
 		c.ACP.Interactive = def.ACP.Interactive
+	}
+	if !v.IsSet("skills.enabled") {
+		c.Skills.Enabled = def.Skills.Enabled
+	}
+	if !v.IsSet("skills.include_opencode") {
+		c.Skills.IncludeOpenCode = def.Skills.IncludeOpenCode
+	}
+	if !v.IsSet("skills.include_claude") {
+		c.Skills.IncludeClaude = def.Skills.IncludeClaude
 	}
 	if c.Provider == "" {
 		c.Provider = def.Provider

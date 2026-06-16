@@ -69,12 +69,46 @@ Localhost-only HTTP + SSE surface, versioned under `/api/v1` (default `http://12
 | `GET /api/v1/sessions/{id}/messages` | Transcript-style messages (user/reasoning/assistant/tool) |
 | `POST /api/v1/sessions/{id}/message` | Send text, returns `text/event-stream` (SSE) |
 | `POST /api/v1/sessions/{id}/abort` | Abort an in-flight run (202, or 409 if none running) |
+| `GET /api/v1/skills` | List discovered Agent Skills for the configured roots and optional `workspace_path` |
+| `GET /api/v1/skills/{name}` | Read one skill's `SKILL.md` |
+| `POST /api/v1/skills/sync` | Symlink discovered skills into `~/.cometmind/skills` |
 
 SSE event names: `text_delta`, `reasoning_start`, `reasoning_delta`, `tool_call`, `tool_result`, `step_finish`, `error`, `done`.
 
 ## Configuration
 
 Config lives at `~/.cometmind/config.toml`, overridable via `COMETMIND_*` environment variables. The SQLite database is stored at `~/.cometmind/cometmind.db`.
+
+### Agent Skills
+
+CometMind can read Agent Skills installed by `npx skills add`. It loads a compact skill index into the system prompt and exposes read-only `load_skill` and `read_skill_file` tools so the model loads full instructions only when relevant.
+
+Default roots:
+
+- `~/.cometmind/skills`
+- `<workspace>/.agents/skills`
+- `<workspace>/.claude/skills`
+- `~/.config/opencode/skills`
+- `~/.claude/skills`
+
+Example install and inspect flow:
+
+```bash
+npx skills add vercel-labs/agent-skills -g -a opencode -a claude-code
+go run . skills list
+go run . skills sync
+```
+
+Config:
+
+```toml
+[skills]
+enabled = true
+roots = []
+include_opencode = true
+include_claude = true
+mirror_to_cometmind = false
+```
 
 ## Build & run
 

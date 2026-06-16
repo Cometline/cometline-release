@@ -123,8 +123,8 @@ Goal: add procedural memory similar to Hermes skills.
 
 Day-by-day:
 
-1. Define `SKILL.md` format and local skill directory layout under the CometMind data directory.
-2. Add skill discovery, metadata indexing, and read-only skill loading.
+1. Define `SKILL.md` format and local skill directory layout under the CometMind data directory. (Read-only first slice done.)
+2. Add skill discovery, metadata indexing, and read-only skill loading. (Done for CometMind/OpenCode/Claude roots.)
 3. Add skill selection by explicit slash command and by model-visible skill index.
 4. Add permission gates for skill-managed files and scripts.
 5. Add staged skill creation/update flow; do not allow silent skill rewrites at first.

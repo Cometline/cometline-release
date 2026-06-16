@@ -19,6 +19,7 @@ import (
 	"github.com/cometline/cometmind/internal/paths"
 	"github.com/cometline/cometmind/internal/provider"
 	"github.com/cometline/cometmind/internal/session"
+	"github.com/cometline/cometmind/internal/skills"
 	"github.com/cometline/cometmind/internal/store"
 	"github.com/cometline/cometmind/internal/tools"
 )
@@ -111,13 +112,20 @@ func (r *Runtime) RunnerFor(sess session.Session, workspacePath string) (*agent.
 	if err != nil {
 		return nil, err
 	}
+	skillRegistry := r.SkillsForWorkspace(workspacePath)
 
 	return &agent.Runner{
 		Provider:     p,
 		Sessions:     r.Sessions,
-		Registry:     tools.NewRegistry(workspacePath, tools.RegistryOptions{Sessions: r.Sessions, ACP: r.Config.ACPSettings(), ACPMgr: r.ACPManager()}),
+		Registry:     tools.NewRegistry(workspacePath, tools.RegistryOptions{Sessions: r.Sessions, ACP: r.Config.ACPSettings(), ACPMgr: r.ACPManager(), Skills: &skillRegistry}),
 		MaxSteps:     r.Config.MaxSteps,
 		MaxTokens:    r.Config.MaxTokens,
 		SystemPrompt: r.SystemPrompt,
+		SkillIndex:   skillRegistry.PromptIndex(),
 	}, nil
+}
+
+// SkillsForWorkspace discovers Agent Skills visible to one workspace.
+func (r *Runtime) SkillsForWorkspace(workspacePath string) skills.Registry {
+	return skills.Discover(workspacePath, r.Config.SkillSettings())
 }

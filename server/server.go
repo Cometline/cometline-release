@@ -15,6 +15,7 @@ import (
 	"github.com/cometline/cometmind/internal/config"
 	"github.com/cometline/cometmind/internal/event"
 	"github.com/cometline/cometmind/internal/session"
+	skillpkg "github.com/cometline/cometmind/internal/skills"
 	"github.com/gin-gonic/gin"
 )
 
@@ -91,6 +92,9 @@ func New(deps Deps) (*gin.Engine, error) {
 	api.POST("/sessions/:id/message", app.handlePostMessage)
 	api.POST("/sessions/:id/respond", app.handleRespondToChildSession)
 	api.POST("/sessions/:id/abort", app.handleAbortSession)
+	api.GET("/skills", app.handleListSkills)
+	api.POST("/skills/sync", app.handleSyncSkills)
+	api.GET("/skills/:name", app.handleGetSkill)
 
 	return r, nil
 }
@@ -217,8 +221,81 @@ type statusResponse struct {
 	Status string `json:"status"`
 }
 
+type skillResource struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Path        string `json:"path"`
+	Source      string `json:"source"`
+	Internal    bool   `json:"internal"`
+}
+
+type listSkillsResponse struct {
+	Skills []skillResource `json:"skills"`
+	Errors []string        `json:"errors,omitempty"`
+}
+
+type skillDetailResponse struct {
+	Skill   skillResource `json:"skill"`
+	Content string        `json:"content"`
+}
+
+type syncSkillsResponse struct {
+	Created []string `json:"created"`
+	Skipped []string `json:"skipped"`
+	Errors  []string `json:"errors,omitempty"`
+}
+
 func (a *App) handleHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, healthResponse{Status: "ok"})
+}
+
+func (a *App) handleListSkills(c *gin.Context) {
+	reg := a.skillsForRequest(c)
+	items := make([]skillResource, 0, len(reg.Skills))
+	for _, skill := range reg.Skills {
+		items = append(items, skillResourceFromModel(skill))
+	}
+	c.JSON(http.StatusOK, listSkillsResponse{Skills: items, Errors: reg.Errors})
+}
+
+func (a *App) handleGetSkill(c *gin.Context) {
+	reg := a.skillsForRequest(c)
+	skill, content, err := reg.SkillMarkdown(c.Param("name"))
+	if err != nil {
+		writeError(c, http.StatusNotFound, "skill_not_found", err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, skillDetailResponse{Skill: skillResourceFromModel(skill), Content: content})
+}
+
+func (a *App) handleSyncSkills(c *gin.Context) {
+	reg := a.skillsForRequest(c)
+	created, skipped, err := reg.SyncMirror(filepath.Join("~", ".cometmind", "skills"))
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, "sync_failed", err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, syncSkillsResponse{Created: created, Skipped: skipped, Errors: reg.Errors})
+}
+
+func (a *App) skillsForRequest(c *gin.Context) skillpkg.Registry {
+	workspacePath := strings.TrimSpace(c.Query("workspace_path"))
+	if workspacePath == "" && strings.TrimSpace(c.Query("workspace_id")) != "" {
+		if path, err := a.sessions.WorkspacePath(c.Request.Context(), strings.TrimSpace(c.Query("workspace_id"))); err == nil {
+			workspacePath = path
+		}
+	}
+	return skillpkg.Discover(workspacePath, a.config.SkillSettings())
+}
+
+func skillResourceFromModel(skill skillpkg.Skill) skillResource {
+	return skillResource{
+		Name:        skill.Name,
+		Description: skill.Description,
+		Path:        skill.Path,
+		Source:      skill.Source,
+		Internal:    skill.Internal,
+	}
 }
 
 func (a *App) handleCreateWorkspace(c *gin.Context) {

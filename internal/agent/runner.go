@@ -34,6 +34,7 @@ type Runner struct {
 	MaxSteps     int
 	MaxTokens    int
 	SystemPrompt string
+	SkillIndex   string
 }
 
 // Run streams CometMind-native events on ch until the turn completes or ctx is cancelled.
@@ -58,7 +59,7 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 			return err
 		}
 
-		req := BuildRequest(turn.ModelID, r.SystemPrompt, msgs, r.Registry.CometSDK(), r.MaxTokens)
+		req := BuildRequest(turn.ModelID, r.systemPrompt(), msgs, r.Registry.CometSDK(), r.MaxTokens)
 		stream := llm.StreamMessage(ctx, r.Provider, req)
 
 		for ev := range stream.Events() {
@@ -146,6 +147,17 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 
 	ch <- event.Errorf("max steps exceeded", "max_steps")
 	return fmt.Errorf("max steps exceeded")
+}
+
+func (r *Runner) systemPrompt() string {
+	base := strings.TrimSpace(r.SystemPrompt)
+	if base == "" {
+		base = DefaultSystemPrompt
+	}
+	if strings.TrimSpace(r.SkillIndex) == "" {
+		return base
+	}
+	return base + r.SkillIndex
 }
 
 func int64PtrFromIntPtr(v *int) *int64 {

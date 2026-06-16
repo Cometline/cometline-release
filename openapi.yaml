@@ -13,6 +13,7 @@ servers:
 tags:
   - name: Health
   - name: Sessions
+  - name: Skills
 paths:
   /api/v1/health:
     get:
@@ -402,6 +403,77 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/skills:
+    get:
+      tags: [Skills]
+      summary: List discovered Agent Skills
+      operationId: listSkills
+      parameters:
+        - name: workspace_path
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional workspace path used to include project-local skill roots.
+      responses:
+        '200':
+          description: Discovered skill index
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListSkillsResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/skills/sync:
+    post:
+      tags: [Skills]
+      summary: Symlink discovered skills into ~/.cometmind/skills
+      operationId: syncSkills
+      parameters:
+        - name: workspace_path
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncSkillsResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/skills/{name}:
+    get:
+      tags: [Skills]
+      summary: Read one Agent Skill
+      operationId: getSkill
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: workspace_path
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Skill detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillDetailResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
 components:
   parameters:
     SessionId:
@@ -644,6 +716,64 @@ components:
       properties:
         status:
           type: string
+
+    Skill:
+      type: object
+      additionalProperties: false
+      required: [name, description, path, source, internal]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        path:
+          type: string
+        source:
+          type: string
+        internal:
+          type: boolean
+
+    ListSkillsResponse:
+      type: object
+      additionalProperties: false
+      required: [skills]
+      properties:
+        skills:
+          type: array
+          items:
+            $ref: '#/components/schemas/Skill'
+        errors:
+          type: array
+          items:
+            type: string
+
+    SkillDetailResponse:
+      type: object
+      additionalProperties: false
+      required: [skill, content]
+      properties:
+        skill:
+          $ref: '#/components/schemas/Skill'
+        content:
+          type: string
+
+    SyncSkillsResponse:
+      type: object
+      additionalProperties: false
+      required: [created, skipped]
+      properties:
+        created:
+          type: array
+          items:
+            type: string
+        skipped:
+          type: array
+          items:
+            type: string
+        errors:
+          type: array
+          items:
+            type: string
 
     RespondToChildRequest:
       type: object
