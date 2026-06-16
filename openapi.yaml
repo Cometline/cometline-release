@@ -13,6 +13,7 @@ servers:
 tags:
   - name: Health
   - name: Workspaces
+  - name: Files
   - name: Sessions
   - name: Skills
   - name: Memory
@@ -68,6 +69,56 @@ paths:
                 $ref: '#/components/schemas/Workspace'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/workspaces/files:
+    get:
+      tags: [Files]
+      summary: List files in a workspace
+      description: |
+        Returns workspace-relative file paths for the requested workspace.
+        Hidden files and directories, common build/output directories, and
+        entries matched by `.gitignore` at the workspace root are skipped.
+      operationId: listWorkspaceFiles
+      parameters:
+        - name: workspace_id
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Registered workspace identifier.
+        - name: workspace_path
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Absolute workspace path for an already-registered workspace.
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional substring filter on the relative file path.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            maximum: 500
+          description: Maximum number of results to return.
+      responses:
+        '200':
+          description: Workspace file list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceFileList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -882,6 +933,17 @@ components:
           items:
             $ref: '#/components/schemas/Workspace'
 
+    WorkspaceFileList:
+      type: object
+      additionalProperties: false
+      required: [files]
+      properties:
+        files:
+          type: array
+          items:
+            type: string
+          description: Workspace-relative file paths.
+
     PostMessageRequest:
       type: object
       additionalProperties: false
@@ -895,6 +957,12 @@ components:
           description: Optional base64 image attachments. Supported media types are image/png, image/jpeg, image/gif, and image/webp.
           items:
             $ref: '#/components/schemas/ImageAttachment'
+        file_paths:
+          type: array
+          maxItems: 8
+          description: Workspace-relative file paths to include as context. Each file must be a readable text file at most 256 KB.
+          items:
+            type: string
 
     ImageAttachment:
       type: object

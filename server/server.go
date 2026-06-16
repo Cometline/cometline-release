@@ -18,12 +18,16 @@ import (
 	"github.com/cometline/cometmind/internal/memory"
 	"github.com/cometline/cometmind/internal/session"
 	skillpkg "github.com/cometline/cometmind/internal/skills"
+	"github.com/cometline/cometmind/internal/tools/sandbox"
+	workspacefiles "github.com/cometline/cometmind/internal/workspace/files"
 	"github.com/gin-gonic/gin"
 )
 
 const (
 	maxMessageImages     = 6
 	maxMessageImageBytes = 4 * 1024 * 1024
+	maxMessageFilePaths  = 8
+	maxMessageFileBytes  = 256 * 1024
 )
 
 var supportedImageMediaTypes = map[string]bool{
@@ -88,6 +92,7 @@ func New(deps Deps) (*gin.Engine, error) {
 	api.GET("/health", app.handleHealth)
 	api.GET("/workspaces", app.handleListWorkspaces)
 	api.POST("/workspaces", app.handleCreateWorkspace)
+	api.GET("/workspaces/files", app.handleListWorkspaceFiles)
 	api.POST("/sessions", app.handleCreateSession)
 	api.GET("/sessions", app.handleListSessions)
 	api.GET("/sessions/:id", app.handleGetSession)
@@ -175,9 +180,14 @@ type listWorkspacesResponse struct {
 	Workspaces []workspaceResource `json:"workspaces"`
 }
 
+type workspaceFileListResponse struct {
+	Files []string `json:"files"`
+}
+
 type postMessageRequest struct {
-	Text   string              `json:"text"`
-	Images []messageImageInput `json:"images,omitempty"`
+	Text      string              `json:"text"`
+	Images    []messageImageInput `json:"images,omitempty"`
+	FilePaths []string            `json:"file_paths,omitempty"`
 }
 
 type messageImageInput struct {
@@ -416,6 +426,31 @@ func (a *App) handleListWorkspaces(c *gin.Context) {
 	c.JSON(http.StatusOK, listWorkspacesResponse{Workspaces: items})
 }
 
+func (a *App) handleListWorkspaceFiles(c *gin.Context) {
+	ws, ok := a.resolveCreateWorkspace(c, c.Query("workspace_id"), c.Query("workspace_path"))
+	if !ok {
+		return
+	}
+
+	limit := 0
+	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
+		if _, err := fmt.Sscanf(raw, "%d", &limit); err != nil {
+			writeError(c, http.StatusBadRequest, "bad_request", "limit must be an integer")
+			return
+		}
+	}
+
+	files, err := workspacefiles.ListFiles(c.Request.Context(), ws.Path, workspacefiles.ListOptions{
+		Query: strings.TrimSpace(c.Query("q")),
+		Limit: limit,
+	})
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, workspaceFileListResponse{Files: files})
+}
+
 func (a *App) handleCreateSession(c *gin.Context) {
 	var req createSessionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -645,18 +680,19 @@ func (a *App) handlePostMessage(c *gin.Context) {
 		return
 	}
 	req.Text = strings.TrimSpace(req.Text)
-	blocks, err := contentBlocksFromRequest(req)
+
+	sess, wsPath, ok := a.loadSessionWithWorkspace(c, c.Param("id"))
+	if !ok {
+		return
+	}
+
+	blocks, err := contentBlocksFromRequest(req, wsPath)
 	if err != nil {
 		writeError(c, http.StatusBadRequest, "bad_request", err.Error())
 		return
 	}
 	if len(blocks) == 0 {
 		writeError(c, http.StatusBadRequest, "bad_request", "text or image is required")
-		return
-	}
-
-	sess, wsPath, ok := a.loadSessionWithWorkspace(c, c.Param("id"))
-	if !ok {
 		return
 	}
 
@@ -717,13 +753,59 @@ func (a *App) handlePostMessage(c *gin.Context) {
 	_ = <-errCh
 }
 
-func contentBlocksFromRequest(req postMessageRequest) ([]session.ContentBlock, error) {
+func contentBlocksFromRequest(req postMessageRequest, workspacePath string) ([]session.ContentBlock, error) {
 	if len(req.Images) > maxMessageImages {
 		return nil, fmt.Errorf("at most %d images are allowed", maxMessageImages)
 	}
+	if len(req.FilePaths) > maxMessageFilePaths {
+		return nil, fmt.Errorf("at most %d file paths are allowed", maxMessageFilePaths)
+	}
+
+	var fileAppend strings.Builder
+	seen := make(map[string]bool, len(req.FilePaths))
+	for _, rel := range req.FilePaths {
+		rel = strings.TrimSpace(rel)
+		if rel == "" {
+			continue
+		}
+		if seen[rel] {
+			continue
+		}
+		seen[rel] = true
+
+		abs, err := sandbox.ResolveWorkspacePath(workspacePath, rel)
+		if err != nil {
+			fileAppend.WriteString(fmt.Sprintf("\n\n<!-- Could not include %s: %s -->", rel, err.Error()))
+			continue
+		}
+		info, err := os.Stat(abs)
+		if err != nil {
+			fileAppend.WriteString(fmt.Sprintf("\n\n<!-- Could not include %s: %s -->", rel, err.Error()))
+			continue
+		}
+		if info.IsDir() {
+			fileAppend.WriteString(fmt.Sprintf("\n\n<!-- Could not include %s: path is a directory -->", rel))
+			continue
+		}
+		if info.Size() > maxMessageFileBytes {
+			fileAppend.WriteString(fmt.Sprintf("\n\n<!-- Could not include %s: file is larger than %d KB -->", rel, maxMessageFileBytes/1024))
+			continue
+		}
+		data, err := os.ReadFile(abs)
+		if err != nil {
+			fileAppend.WriteString(fmt.Sprintf("\n\n<!-- Could not include %s: %s -->", rel, err.Error()))
+			continue
+		}
+		fileAppend.WriteString(fmt.Sprintf("\n\n[File: %s]\n```\n%s\n```", rel, string(data)))
+	}
+
 	blocks := make([]session.ContentBlock, 0, 1+len(req.Images))
-	if req.Text != "" {
-		blocks = append(blocks, session.ContentBlock{Type: "text", Text: req.Text})
+	text := req.Text
+	if fileAppend.Len() > 0 {
+		text += fileAppend.String()
+	}
+	if text != "" {
+		blocks = append(blocks, session.ContentBlock{Type: "text", Text: text})
 	}
 	for i, img := range req.Images {
 		mediaType := strings.ToLower(strings.TrimSpace(img.MediaType))

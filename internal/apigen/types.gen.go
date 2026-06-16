@@ -323,6 +323,9 @@ type PermissionOption struct {
 
 // PostMessageRequest defines model for PostMessageRequest.
 type PostMessageRequest struct {
+	// FilePaths Workspace-relative file paths to include as context. Each file must be a readable text file at most 256 KB.
+	FilePaths *[]string `json:"file_paths,omitempty"`
+
 	// Images Optional base64 image attachments. Supported media types are image/png, image/jpeg, image/gif, and image/webp.
 	Images *[]ImageAttachment `json:"images,omitempty"`
 
@@ -552,6 +555,12 @@ type Workspace struct {
 	Path string `json:"path"`
 }
 
+// WorkspaceFileList defines model for WorkspaceFileList.
+type WorkspaceFileList struct {
+	// Files Workspace-relative file paths.
+	Files []string `json:"files"`
+}
+
 // WorkspaceListResponse defines model for WorkspaceListResponse.
 type WorkspaceListResponse struct {
 	Workspaces []Workspace `json:"workspaces"`
@@ -605,6 +614,21 @@ type GetSkillParams struct {
 // ExportSkillParams defines parameters for ExportSkill.
 type ExportSkillParams struct {
 	WorkspacePath *string `form:"workspace_path,omitempty" json:"workspace_path,omitempty"`
+}
+
+// ListWorkspaceFilesParams defines parameters for ListWorkspaceFiles.
+type ListWorkspaceFilesParams struct {
+	// WorkspaceId Registered workspace identifier.
+	WorkspaceId *string `form:"workspace_id,omitempty" json:"workspace_id,omitempty"`
+
+	// WorkspacePath Absolute workspace path for an already-registered workspace.
+	WorkspacePath *string `form:"workspace_path,omitempty" json:"workspace_path,omitempty"`
+
+	// Q Optional substring filter on the relative file path.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Limit Maximum number of results to return.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // CreateMemoryJSONRequestBody defines body for CreateMemory for application/json ContentType.

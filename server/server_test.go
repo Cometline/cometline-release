@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -104,6 +105,121 @@ func TestCreateWorkspaceRegistersPath(t *testing.T) {
 	}
 	if ws.ID != got.ID {
 		t.Fatalf("lookup workspace id = %q, want %q", ws.ID, got.ID)
+	}
+}
+
+func TestListWorkspaceFiles(t *testing.T) {
+	t.Parallel()
+
+	engine, svc, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
+		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
+			ch <- event.Done()
+			return nil
+		}), nil
+	})
+	defer cleanup()
+
+	workspacePath := t.TempDir()
+	mustWrite(t, filepath.Join(workspacePath, "main.go"), "package main")
+	mustWrite(t, filepath.Join(workspacePath, "README.md"), "# readme")
+	mustWrite(t, filepath.Join(workspacePath, ".hidden", "secret.go"), "package hidden")
+	mustWrite(t, filepath.Join(workspacePath, "node_modules", "x", "index.js"), "x")
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces/files?workspace_path="+workspacePath, nil)
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var got workspaceFileListResponse
+	decodeJSON(t, rec.Body.Bytes(), &got)
+	want := []string{"README.md", "main.go"}
+	if len(got.Files) != len(want) {
+		t.Fatalf("files = %v, want %v", got.Files, want)
+	}
+	for i, w := range want {
+		if got.Files[i] != w {
+			t.Fatalf("files = %v, want %v", got.Files, want)
+		}
+	}
+
+	// Verify the workspace was registered.
+	_, err := svc.LookupWorkspaceByPath(context.Background(), workspacePath)
+	if err != nil {
+		t.Fatalf("LookupWorkspaceByPath() error = %v", err)
+	}
+}
+
+func TestListWorkspaceFilesFiltersByQuery(t *testing.T) {
+	t.Parallel()
+
+	engine, _, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
+		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
+			ch <- event.Done()
+			return nil
+		}), nil
+	})
+	defer cleanup()
+
+	workspacePath := t.TempDir()
+	mustWrite(t, filepath.Join(workspacePath, "main.go"), "package main")
+	mustWrite(t, filepath.Join(workspacePath, "README.md"), "# readme")
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces/files?workspace_path="+workspacePath+"&q=go", nil)
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var got workspaceFileListResponse
+	decodeJSON(t, rec.Body.Bytes(), &got)
+	want := []string{"main.go"}
+	assertSlice(t, got.Files, want)
+}
+
+func TestListWorkspaceFilesMissingWorkspace(t *testing.T) {
+	t.Parallel()
+
+	engine, _, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
+		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
+			ch <- event.Done()
+			return nil
+		}), nil
+	})
+	defer cleanup()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces/files", nil)
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
+func mustWrite(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+}
+
+func assertSlice(t *testing.T, got, want []string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
 	}
 }
 
@@ -395,6 +511,67 @@ func TestPostMessageStreamsSSEAndPersistsUserTurn(t *testing.T) {
 	}
 	if updated.Title != "hello from api" {
 		t.Fatalf("session title = %q, want %q", updated.Title, "hello from api")
+	}
+}
+
+func TestPostMessageInlinesFilePaths(t *testing.T) {
+	t.Parallel()
+
+	engine, svc, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
+		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
+			ch <- event.Done()
+			return nil
+		}), nil
+	})
+	defer cleanup()
+
+	ctx := context.Background()
+	workspacePath := t.TempDir()
+	mustWrite(t, filepath.Join(workspacePath, "main.go"), "package main\n")
+	mustWrite(t, filepath.Join(workspacePath, "missing.go"), "")
+	_ = os.Remove(filepath.Join(workspacePath, "missing.go"))
+
+	ws, err := svc.EnsureWorkspace(ctx, workspacePath)
+	if err != nil {
+		t.Fatalf("EnsureWorkspace() error = %v", err)
+	}
+	sess, err := svc.NewSession(ctx, ws.ID, "test-model", "test-provider")
+	if err != nil {
+		t.Fatalf("NewSession() error = %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	body := `{"text":"review @main.go and @missing.go","file_paths":["main.go","missing.go","main.go"]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/message", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	msgs, err := svc.BuildSDKMessages(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("BuildSDKMessages() error = %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("messages len = %d, want 1", len(msgs))
+	}
+	text := msgs[0].Content[0].(cometsdk.TextBlock).Text
+	if !strings.Contains(text, "review @main.go and @missing.go") {
+		t.Fatalf("user text missing original prompt: %q", text)
+	}
+	if !strings.Contains(text, "[File: main.go]") {
+		t.Fatalf("user text missing main.go content: %q", text)
+	}
+	if !strings.Contains(text, "package main") {
+		t.Fatalf("user text missing main.go source: %q", text)
+	}
+	if !strings.Contains(text, "Could not include missing.go") {
+		t.Fatalf("user text missing missing.go error note: %q", text)
+	}
+	if strings.Count(text, "[File: main.go]") != 1 {
+		t.Fatalf("main.go should be inlined once, got: %q", text)
 	}
 }
 
