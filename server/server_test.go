@@ -422,8 +422,8 @@ func TestLocalCORSAllowsCometlineRenderer(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("preflight status = %d, want %d body=%s", rec.Code, http.StatusNoContent, rec.Body.String())
 	}
-	if got := rec.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(got, http.MethodPost) || !strings.Contains(got, http.MethodDelete) {
-		t.Fatalf("Access-Control-Allow-Methods = %q, want POST and DELETE", got)
+	if got := rec.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(got, http.MethodPost) || !strings.Contains(got, http.MethodPut) || !strings.Contains(got, http.MethodDelete) {
+		t.Fatalf("Access-Control-Allow-Methods = %q, want POST, PUT, and DELETE", got)
 	}
 }
 
@@ -459,8 +459,33 @@ func TestLocalCORSAllowsPackagedCometlineOrigin(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("preflight status = %d, want %d body=%s", rec.Code, http.StatusNoContent, rec.Body.String())
 	}
-	if got := rec.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(got, http.MethodPost) || !strings.Contains(got, http.MethodDelete) {
-		t.Fatalf("Access-Control-Allow-Methods = %q, want POST and DELETE", got)
+	if got := rec.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(got, http.MethodPost) || !strings.Contains(got, http.MethodPut) || !strings.Contains(got, http.MethodDelete) {
+		t.Fatalf("Access-Control-Allow-Methods = %q, want POST, PUT, and DELETE", got)
+	}
+}
+
+func TestLocalCORSAllowsMemorySettingsPut(t *testing.T) {
+	t.Parallel()
+
+	engine, _, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
+		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
+			ch <- event.Done()
+			return nil
+		}), nil
+	})
+	defer cleanup()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodOptions, "/api/v1/memory/settings", nil)
+	req.Header.Set("Origin", "http://127.0.0.1:5173")
+	req.Header.Set("Access-Control-Request-Method", http.MethodPut)
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("preflight status = %d, want %d body=%s", rec.Code, http.StatusNoContent, rec.Body.String())
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(got, http.MethodPut) {
+		t.Fatalf("Access-Control-Allow-Methods = %q, want PUT", got)
 	}
 }
 
