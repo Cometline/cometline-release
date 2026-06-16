@@ -8,7 +8,7 @@ This is the living task board and roadmap for Cometline frontend shell work. Kee
 - **Phase 1: Chat/session MVP**: mostly done.
 - **Phase 2: Permission UX**: next major backend+frontend phase.
 - **Phase 3: Provider/secrets hardening**: partially prototyped in Electron, not production-safe.
-- **Phase 4+: Memory, skills, artifacts, scheduler, subagents, browser/computer use**: not started.
+- **Phase 4+: Memory, artifacts, scheduler, subagents, browser/computer use**: not started. Skills have a read-only first slice.
 
 ## Phase Task Board
 
@@ -32,7 +32,6 @@ When a task ships, move it to `Done`, update the relevant phase section below, a
 - [ ] Build Cometline approval UI for pending tool calls. Phase: 2. Owner area: Cometline chat/tool cards.
 - [ ] Add provider test flow with success, invalid key, rate limit, and network error states. Phase: 3. Owner area: CometMind provider API + Cometline settings.
 - [ ] Add memory schema/retrieval and memory management UI. Phase: 4. Owner area: CometMind memory + Cometline settings/chat indicators.
-- [ ] Add skills index/detail/invocation UI. Phase: 5. Owner area: CometMind skills API + Cometline routes.
 - [ ] Add artifact cards and sandboxed previews. Phase: 6. Owner area: Cometline UI + Electron-safe preview/open actions.
 
 ### Done
@@ -46,6 +45,7 @@ When a task ships, move it to `Done`, update the relevant phase section below, a
 - [x] Render assistant text, reasoning, tool calls/results, status, and normalized errors. Phase: 1.
 - [x] Add session deletion, hover trash control, and in-app confirmation sheet. Phase: 1.
 - [x] Add provider settings modal, model fetch prototype, and composer model selector. Phase: 3 prototype.
+- [x] Add read-only skills settings, current skill list, and sync action. Phase: 5 first slice.
 - [x] Generate rounded desktop app icon and use `project_icon.png` for assistant/project avatar. Phase: 0/1 polish.
 
 ## Phase 0: Desktop Scaffold

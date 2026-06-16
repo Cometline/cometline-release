@@ -17,8 +17,17 @@ export interface CometMindDiscordGatewaySettings {
 	workspacePath: string;
 }
 
+export interface CometMindSkillsSettings {
+	enabled: boolean;
+	roots: string[];
+	includeOpenCode: boolean;
+	includeClaude: boolean;
+	mirrorToCometMind: boolean;
+}
+
 export interface CometMindSettings {
 	acp: CometMindACPSettings;
+	skills: CometMindSkillsSettings;
 	gateway: {
 		discord: CometMindDiscordGatewaySettings;
 	};
@@ -50,6 +59,13 @@ export function defaultCometMindSettings(workspacePath = ''): CometMindSettings 
 			timeout: '30m',
 			interactive: true
 		},
+		skills: {
+			enabled: true,
+			roots: [],
+			includeOpenCode: true,
+			includeClaude: true,
+			mirrorToCometMind: false
+		},
 		gateway: {
 			discord: {
 				enabled: false,
@@ -77,6 +93,7 @@ export function normalizeCometMindSettings(
 ): CometMindSettings {
 	const defaults = defaultCometMindSettings(fallbackWorkspacePath);
 	const acp: Partial<CometMindACPSettings> = input?.acp ?? {};
+	const skills: Partial<CometMindSkillsSettings> = input?.skills ?? {};
 	const discord: Partial<CometMindDiscordGatewaySettings> = input?.gateway?.discord ?? {};
 	const args = Array.isArray(acp.args)
 		? acp.args.map((a) => String(a).trim()).filter(Boolean)
@@ -90,6 +107,22 @@ export function normalizeCometMindSettings(
 			timeout: String(acp.timeout ?? defaults.acp.timeout).trim() || defaults.acp.timeout,
 			interactive:
 				typeof acp.interactive === 'boolean' ? acp.interactive : defaults.acp.interactive
+		},
+		skills: {
+			enabled: typeof skills.enabled === 'boolean' ? skills.enabled : defaults.skills.enabled,
+			roots: cleanStringList(skills.roots),
+			includeOpenCode:
+				typeof skills.includeOpenCode === 'boolean'
+					? skills.includeOpenCode
+					: defaults.skills.includeOpenCode,
+			includeClaude:
+				typeof skills.includeClaude === 'boolean'
+					? skills.includeClaude
+					: defaults.skills.includeClaude,
+			mirrorToCometMind:
+				typeof skills.mirrorToCometMind === 'boolean'
+					? skills.mirrorToCometMind
+					: defaults.skills.mirrorToCometMind
 		},
 		gateway: {
 			discord: {
@@ -120,6 +153,10 @@ export function cloneCometMindSettings(settings: CometMindSettings): CometMindSe
 			args: [...settings.acp.args],
 			timeout: settings.acp.timeout,
 			interactive: settings.acp.interactive
+		},
+		skills: {
+			...settings.skills,
+			roots: [...settings.skills.roots]
 		},
 		gateway: {
 			discord: {

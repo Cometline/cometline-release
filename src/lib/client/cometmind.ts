@@ -2,6 +2,8 @@ import type {
 	CreateSessionRequest,
 	PostMessageRequest,
 	Session,
+	SkillListResponse,
+	SkillSyncResponse,
 	SessionListResponse,
 	StreamEvent,
 	TranscriptResponse,
@@ -32,6 +34,16 @@ export function ensureWorkspace(workspacePath: string): Promise<Workspace> {
 		method: 'POST',
 		body: JSON.stringify({ workspace_path: workspacePath })
 	});
+}
+
+export function listSkills(workspacePath = ''): Promise<SkillListResponse> {
+	const params = workspacePath ? `?${new URLSearchParams({ workspace_path: workspacePath })}` : '';
+	return api<SkillListResponse>(`/api/v1/skills${params}`);
+}
+
+export function syncSkills(workspacePath = ''): Promise<SkillSyncResponse> {
+	const params = workspacePath ? `?${new URLSearchParams({ workspace_path: workspacePath })}` : '';
+	return api<SkillSyncResponse>(`/api/v1/skills/sync${params}`, { method: 'POST' });
 }
 
 export function createSession(req: CreateSessionRequest): Promise<Session> {

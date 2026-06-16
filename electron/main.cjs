@@ -130,6 +130,13 @@ function defaultCometMindSettings(workspacePath = '') {
 			timeout: '30m',
 			interactive: true
 		},
+		skills: {
+			enabled: true,
+			roots: [],
+			includeOpenCode: true,
+			includeClaude: true,
+			mirrorToCometMind: false
+		},
 		gateway: {
 			discord: {
 				enabled: false,
@@ -166,6 +173,7 @@ function migrateDiscordTokenFields(discord) {
 function normalizeCometMindSettings(input, workspacePath = '') {
 	const defaults = defaultCometMindSettings(workspacePath);
 	const acp = input?.acp ?? {};
+	const skills = input?.skills ?? {};
 	const discord = input?.gateway?.discord ?? {};
 	const args = Array.isArray(acp.args)
 		? acp.args.map((a) => String(a).trim()).filter(Boolean)
@@ -180,6 +188,22 @@ function normalizeCometMindSettings(input, workspacePath = '') {
 			timeout: String(acp.timeout ?? defaults.acp.timeout).trim() || defaults.acp.timeout,
 			interactive:
 				typeof acp.interactive === 'boolean' ? acp.interactive : defaults.acp.interactive
+		},
+		skills: {
+			enabled: typeof skills.enabled === 'boolean' ? skills.enabled : defaults.skills.enabled,
+			roots: cleanList(skills.roots),
+			includeOpenCode:
+				typeof skills.includeOpenCode === 'boolean'
+					? skills.includeOpenCode
+					: defaults.skills.includeOpenCode,
+			includeClaude:
+				typeof skills.includeClaude === 'boolean'
+					? skills.includeClaude
+					: defaults.skills.includeClaude,
+			mirrorToCometMind:
+				typeof skills.mirrorToCometMind === 'boolean'
+					? skills.mirrorToCometMind
+					: defaults.skills.mirrorToCometMind
 		},
 		gateway: {
 			discord: {
@@ -892,6 +916,13 @@ command = ${JSON.stringify(settings.cometmind?.acp?.command ?? 'opencode')}
 args = ${JSON.stringify(settings.cometmind?.acp?.args ?? ['acp'])}
 timeout = ${JSON.stringify(settings.cometmind?.acp?.timeout ?? '30m')}
 interactive = ${settings.cometmind?.acp?.interactive ?? true}
+
+[skills]
+enabled = ${settings.cometmind?.skills?.enabled ?? true}
+roots = ${JSON.stringify(settings.cometmind?.skills?.roots ?? [])}
+include_opencode = ${settings.cometmind?.skills?.includeOpenCode ?? true}
+include_claude = ${settings.cometmind?.skills?.includeClaude ?? true}
+mirror_to_cometmind = ${settings.cometmind?.skills?.mirrorToCometMind ?? false}
 
 [gateway.discord]
 enabled = ${settings.cometmind?.gateway?.discord?.enabled ?? false}

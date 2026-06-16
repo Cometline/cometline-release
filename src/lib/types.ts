@@ -40,6 +40,25 @@ export interface Workspace {
 	path: string;
 }
 
+export interface SkillResource {
+	name: string;
+	description: string;
+	path: string;
+	source: string;
+	internal: boolean;
+}
+
+export interface SkillListResponse {
+	skills: SkillResource[];
+	errors?: string[];
+}
+
+export interface SkillSyncResponse {
+	created: string[];
+	skipped: string[];
+	errors?: string[];
+}
+
 export interface PostMessageRequest {
 	text: string;
 	images?: ImageAttachment[];

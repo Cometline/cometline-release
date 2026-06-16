@@ -88,8 +88,17 @@ declare global {
 		workspacePath: string;
 	}
 
+	interface CometMindSkillsSettings {
+		enabled: boolean;
+		roots: string[];
+		includeOpenCode: boolean;
+		includeClaude: boolean;
+		mirrorToCometMind: boolean;
+	}
+
 	interface CometMindSettings {
 		acp: CometMindACPSettings;
+		skills: CometMindSkillsSettings;
 		gateway: {
 			discord: CometMindDiscordGatewaySettings;
 		};

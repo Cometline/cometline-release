@@ -8,6 +8,8 @@
 	} from '$lib/cometmind-settings';
 	import type { ProviderConfig } from '$lib/types';
 	import { shellStore } from '$lib/stores/shell.svelte';
+	import { listSkills, syncSkills } from '$lib/client/cometmind';
+	import type { SkillResource } from '$lib/types';
 	import { onMount } from 'svelte';
 
 	let {
@@ -68,12 +70,46 @@
 	let allowedUsersText = $state(formatIdList(cometmind.gateway.discord.allowedUsers));
 	let allowedChannelsText = $state(formatIdList(cometmind.gateway.discord.allowedChannels));
 	let argsText = $state(cometmind.acp.args.join(' '));
+	let rootsText = $state(formatIdList(cometmind.skills.roots));
+	let skills = $state<SkillResource[]>([]);
+	let skillErrors = $state<string[]>([]);
+	let skillsBusy = $state(false);
+	let skillsStatus = $state('');
 	let gatewayRunning = $state(false);
 	let gatewayBusy = $state(false);
 
 	onMount(() => {
 		void refreshGatewayStatus();
+		void refreshSkills();
 	});
+
+	async function refreshSkills() {
+		skillsBusy = true;
+		skillsStatus = '';
+		try {
+			const result = await listSkills(shellStore.workspacePath);
+			skills = result.skills;
+			skillErrors = result.errors ?? [];
+		} catch (err) {
+			skillsStatus = err instanceof Error ? err.message : 'Failed to load skills';
+		} finally {
+			skillsBusy = false;
+		}
+	}
+
+	async function onSyncSkills() {
+		skillsBusy = true;
+		skillsStatus = '';
+		try {
+			const result = await syncSkills(shellStore.workspacePath);
+			skillsStatus = `Synced ${result.created.length} skills, skipped ${result.skipped.length}.`;
+			await refreshSkills();
+		} catch (err) {
+			skillsStatus = err instanceof Error ? err.message : 'Failed to sync skills';
+		} finally {
+			skillsBusy = false;
+		}
+	}
 
 	async function refreshGatewayStatus() {
 		const status = await window.electronAPI?.getDiscordGatewayStatus?.();
@@ -123,6 +159,10 @@
 					.split(/\s+/)
 					.map((part) => part.trim())
 					.filter(Boolean)
+			},
+			skills: {
+				...cometmind.skills,
+				roots: parseIdList(rootsText)
 			},
 			gateway: {
 				discord: {
@@ -186,6 +226,81 @@
 			description="Pause OpenCode when it asks a question or needs permission, so you can reply in the chat."
 			bind:checked={cometmind.acp.interactive}
 		/>
+	</div>
+
+	<div class="section-block">
+		<div class="section-heading">
+			<h3>Skills</h3>
+			<p>
+				CometMind reads Agent Skills from <code>~/.cometmind/skills</code>, workspace
+				<code>.agents/skills</code>/<code>.claude/skills</code>, and optional OpenCode or Claude
+				global skill folders.
+			</p>
+		</div>
+		<SettingsToggle
+			label="Enable skills"
+			description="Expose a compact skill index to CometMind and allow read-only loading via load_skill."
+			bind:checked={cometmind.skills.enabled}
+		/>
+		<div class="skills-options">
+			<label class="checkbox-row">
+				<input type="checkbox" bind:checked={cometmind.skills.includeOpenCode} />
+				<span>Include OpenCode skills</span>
+			</label>
+			<label class="checkbox-row">
+				<input type="checkbox" bind:checked={cometmind.skills.includeClaude} />
+				<span>Include Claude Code skills</span>
+			</label>
+			<label class="checkbox-row">
+				<input type="checkbox" bind:checked={cometmind.skills.mirrorToCometMind} />
+				<span>Mirror symlinks to ~/.cometmind/skills when syncing</span>
+			</label>
+		</div>
+		<label>
+			<span>Additional skill roots (one per line)</span>
+			<textarea
+				bind:value={rootsText}
+				onchange={syncListsFromText}
+				onblur={syncListsFromText}
+				rows="3"
+				placeholder="/path/to/skills"
+				spellcheck="false"
+			></textarea>
+		</label>
+		<div class="skills-actions">
+			<button class="secondary" type="button" onclick={refreshSkills} disabled={skillsBusy}>
+				{skillsBusy ? 'Loading...' : 'Refresh skills'}
+			</button>
+			<button class="secondary" type="button" onclick={onSyncSkills} disabled={skillsBusy}>
+				Sync symlinks
+			</button>
+		</div>
+		{#if skillsStatus}
+			<p class="field-hint">{skillsStatus}</p>
+		{/if}
+		<div class="skills-list">
+			<div class="skills-list-header">
+				<span>Available skills</span>
+				<strong>{skills.length}</strong>
+			</div>
+			{#if skills.length === 0}
+				<p class="field-hint">No skills discovered yet. Try <code>npx skills add ...</code> or add a custom root.</p>
+			{:else}
+				{#each skills as skill (skill.name)}
+					<div class="skill-row" title={skill.path}>
+						<strong>{skill.name}</strong>
+						<p>{skill.description}</p>
+					</div>
+				{/each}
+			{/if}
+		</div>
+		{#if skillErrors.length > 0}
+			<div class="skill-errors">
+				{#each skillErrors as error}
+					<p>{error}</p>
+				{/each}
+			</div>
+		{/if}
 	</div>
 
 	<div class="section-block">
@@ -333,6 +448,64 @@
 
 	.gateway-status.running {
 		color: #2f6f4f;
+	}
+
+	.skills-options,
+	.skills-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 10px 14px;
+	}
+
+	.skills-list {
+		border: 1px solid var(--border-soft);
+		border-radius: 12px;
+		background: rgba(255, 255, 255, 0.58);
+		max-height: 260px;
+		overflow: auto;
+	}
+
+	.skills-list-header {
+		position: sticky;
+		top: 0;
+		display: flex;
+		justify-content: space-between;
+		padding: 9px 11px;
+		border-bottom: 1px solid var(--border-soft);
+		background: rgba(250, 248, 244, 0.94);
+		font-size: 12px;
+		font-weight: 650;
+		color: var(--text-main);
+	}
+
+	.skill-row {
+		padding: 10px 11px;
+		border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+	}
+
+	.skill-row:last-child {
+		border-bottom: 0;
+	}
+
+	.skill-row strong {
+		display: block;
+		font-size: 12px;
+		color: var(--text-main);
+	}
+
+	.skill-row p,
+	.skill-errors p {
+		margin: 3px 0 0;
+		font-size: 11px;
+		line-height: 1.45;
+		color: var(--text-muted);
+	}
+
+	.skill-errors {
+		border: 1px solid rgba(190, 90, 60, 0.25);
+		border-radius: 10px;
+		padding: 8px 10px;
+		background: rgba(255, 236, 224, 0.45);
 	}
 
 	label {
