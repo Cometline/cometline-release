@@ -72,6 +72,26 @@ LIMIT 1;
 DELETE FROM sessions
 WHERE id = ?;
 
+-- name: ListSessionsByWorkspaceAsc :many
+SELECT id, updated_at, delegation_status
+FROM sessions
+WHERE workspace_id = ?
+ORDER BY updated_at ASC;
+
+-- name: ListStaleSessionIDs :many
+SELECT id
+FROM sessions
+WHERE
+    workspace_id = ?
+    AND updated_at < ?
+    AND delegation_status NOT IN (
+        'pending',
+        'running',
+        'awaiting_user',
+        'awaiting_permission'
+    )
+ORDER BY updated_at ASC;
+
 -- name: ListSessionsByWorkspace :many
 SELECT *
 FROM sessions

@@ -19,6 +19,11 @@ type GatewaySession struct {
 	LastActiveAt       int64  `json:"last_active_at"`
 }
 
+type MemoriesFt struct {
+	MemoryID string `json:"memory_id"`
+	Content  string `json:"content"`
+}
+
 type Memory struct {
 	ID              string         `json:"id"`
 	Scope           string         `json:"scope"`

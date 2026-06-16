@@ -63,7 +63,9 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 
 		system := r.systemPrompt()
 		if r.Memory != nil && r.Memory.Enabled() && steps == 0 {
-			query := lastUserMessageText(msgs)
+			query := memory.BuildRetrievalQuery(memory.RetrievalQueryInput{
+				Messages: msgs,
+			})
 			mems, memErr := r.Memory.RetrieveForTurn(ctx, query)
 			if memErr != nil {
 				ch <- event.Errorf(memErr.Error(), "memory")
@@ -197,22 +199,6 @@ func (r *Runner) emitMemoryExtract(ctx context.Context, turn session.AgentTurn, 
 		}
 	}
 	ch <- event.MemoryUpdated(wire)
-}
-
-func lastUserMessageText(msgs []cometsdk.Message) string {
-	for i := len(msgs) - 1; i >= 0; i-- {
-		if msgs[i].Role != cometsdk.RoleUser {
-			continue
-		}
-		var b strings.Builder
-		for _, bl := range msgs[i].Content {
-			if tb, ok := bl.(cometsdk.TextBlock); ok {
-				b.WriteString(tb.Text)
-			}
-		}
-		return strings.TrimSpace(b.String())
-	}
-	return ""
 }
 
 func (r *Runner) systemPrompt() string {

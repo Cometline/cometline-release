@@ -125,3 +125,8 @@ CREATE TABLE memory_events (
     detail      TEXT NOT NULL DEFAULT '',
     created_at  INTEGER NOT NULL DEFAULT (unixepoch ('now', 'subsec') * 1000)
 );
+
+CREATE VIRTUAL TABLE memories_fts USING fts5 (
+    memory_id UNINDEXED,
+    content
+);

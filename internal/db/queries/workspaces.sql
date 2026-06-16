@@ -14,3 +14,8 @@ SELECT *
 FROM workspaces
 WHERE id = ?
 LIMIT 1;
+
+-- name: ListWorkspaces :many
+SELECT *
+FROM workspaces
+ORDER BY created_at ASC;

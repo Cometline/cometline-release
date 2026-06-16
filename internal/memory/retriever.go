@@ -18,36 +18,70 @@ func (r *retriever) retrieve(ctx context.Context, query string, maxN int, thresh
 	if query == "" {
 		return nil, nil
 	}
-	vecs, err := r.embedder.Embed(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	if len(vecs) == 0 {
-		return nil, nil
-	}
-	qvec := vecs[0]
 
 	memories, err := r.store.listActive(ctx)
 	if err != nil {
 		return nil, err
 	}
+	if len(memories) == 0 {
+		return nil, nil
+	}
+
+	recordByID := make(map[string]Record, len(memories))
+	for _, m := range memories {
+		recordByID[m.ID] = m
+	}
+
+	simByID := make(map[string]float64)
+	vecs, err := r.embedder.Embed(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	if len(vecs) > 0 {
+		qvec := vecs[0]
+		for _, m := range memories {
+			if len(m.Embedding) == 0 {
+				continue
+			}
+			simByID[m.ID] = cosineSimilarity(qvec, m.Embedding)
+		}
+	}
+
+	vectorRanked := topNBySimilarity(simByID, retrievalPoolSize)
+
+	ftsRanked, err := r.store.searchFTS(ctx, query, retrievalPoolSize)
+	if err != nil {
+		return nil, err
+	}
+	ftsHit := make(map[string]struct{}, len(ftsRanked))
+	for _, id := range ftsRanked {
+		ftsHit[id] = struct{}{}
+	}
+
+	rrfScores := reciprocalRankFusion(vectorRanked, ftsRanked)
+	if len(rrfScores) == 0 {
+		return nil, nil
+	}
 
 	now := time.Now()
 	var scored []ScoredMemory
-	for _, m := range memories {
-		if len(m.Embedding) == 0 {
+	for id, rrfScore := range rrfScores {
+		m, ok := recordByID[id]
+		if !ok {
 			continue
 		}
-		sim := cosineSimilarity(qvec, m.Embedding)
+		sim := simByID[id]
 		if sim < threshold {
-			continue
+			if _, fts := ftsHit[id]; !fts {
+				continue
+			}
 		}
 		ew := EffectiveWeight(m, now, r.settings.Lifecycle)
 		scored = append(scored, ScoredMemory{
 			Record:          m,
 			Similarity:      sim,
 			EffectiveWeight: ew,
-			RetrievalScore:  RetrievalScore(sim, ew),
+			RetrievalScore:  rrfScore * ew,
 		})
 	}
 

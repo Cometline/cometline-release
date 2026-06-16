@@ -87,6 +87,20 @@ WHERE archived = 0;
 DELETE FROM memories
 WHERE id = ?;
 
+-- name: ListArchivedMemoryIDsOlderThan :many
+SELECT id
+FROM memories
+WHERE archived = 1 AND updated_at < ?
+ORDER BY updated_at ASC;
+
+-- name: DeleteMemoryEventsByMemoryID :exec
+DELETE FROM memory_events
+WHERE memory_id = ?;
+
+-- name: DeleteMemoryEventsOlderThan :exec
+DELETE FROM memory_events
+WHERE created_at < ?;
+
 -- name: InsertMemoryEvent :exec
 INSERT INTO memory_events (id, memory_id, action, detail, created_at)
 VALUES (?, ?, ?, ?, ?);

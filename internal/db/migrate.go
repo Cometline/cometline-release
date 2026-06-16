@@ -91,6 +91,15 @@ var alterStatements = [][]string{
 			created_at INTEGER NOT NULL DEFAULT (unixepoch('now', 'subsec') * 1000)
 		)`,
 	},
+	// v5 -> v6: FTS5 index for hybrid memory retrieval
+	{
+		`CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5 (
+			memory_id UNINDEXED,
+			content
+		)`,
+		`INSERT INTO memories_fts (memory_id, content)
+		 SELECT id, content FROM memories WHERE archived = 0`,
+	},
 }
 
 // execAlter runs one incremental DDL statement, tolerating idempotent failures
@@ -129,7 +138,7 @@ func splitStatements(sql string) []string {
 	return out
 }
 
-const schemaVersion = 5
+const schemaVersion = 6
 
 // EnsureSchema runs [Migrate] once per database file using PRAGMA user_version.
 // For existing databases, it applies incremental ALTER statements to upgrade

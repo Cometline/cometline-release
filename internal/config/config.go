@@ -75,6 +75,7 @@ type Config struct {
 	ACP              ACPConfig       `mapstructure:"acp"`
 	Skills           SkillsConfig    `mapstructure:"skills"`
 	Memory           MemoryConfig    `mapstructure:"memory"`
+	Storage          StorageConfig   `mapstructure:"storage"`
 	Gateway          GatewayConfig   `mapstructure:"gateway"`
 }
 
@@ -88,6 +89,7 @@ func Defaults() *Config {
 		ACP:       ACPConfig{Interactive: true},
 		Skills:    SkillsConfig{Enabled: true, IncludeOpenCode: true, IncludeClaude: true},
 		Memory:    defaultMemoryConfig(),
+		Storage:   defaultStorageConfig(),
 	}
 }
 
@@ -131,6 +133,7 @@ func Load() (*Config, error) {
 
 	applyEnvOverrides(cfg, def)
 	cfg.Memory = cfg.EffectiveMemoryConfig()
+	cfg.Storage = cfg.EffectiveStorageConfig()
 	return cfg, nil
 }
 
@@ -209,6 +212,18 @@ func applyEnvOverrides(c *Config, def *Config) {
 	}
 	if c.MaxSteps == 0 {
 		c.MaxSteps = def.MaxSteps
+	}
+	if v.IsSet("storage_retention_days") {
+		c.Storage.RetentionDays = v.GetInt("storage_retention_days")
+	}
+	if v.IsSet("storage_max_sessions_per_workspace") {
+		c.Storage.MaxSessionsPerWorkspace = v.GetInt("storage_max_sessions_per_workspace")
+	}
+	if v.IsSet("storage_archived_memory_purge_days") {
+		c.Storage.ArchivedMemoryPurgeDays = v.GetInt("storage_archived_memory_purge_days")
+	}
+	if v.IsSet("storage_vacuum_after_purge") {
+		c.Storage.VacuumAfterPurge = v.GetBool("storage_vacuum_after_purge")
 	}
 }
 

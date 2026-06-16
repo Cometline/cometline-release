@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/cometline/cometmind/internal/memory"
 	"github.com/cometline/cometmind/internal/paths"
 	"github.com/cometline/cometmind/internal/provider"
+	"github.com/cometline/cometmind/internal/retention"
 	"github.com/cometline/cometmind/internal/session"
 	"github.com/cometline/cometmind/internal/skills"
 	"github.com/cometline/cometmind/internal/store"
@@ -71,7 +73,23 @@ func New(ctx context.Context) (*Runtime, error) {
 			}
 		}
 	}
+	runRetention(ctx, sqlDB, sessions, r.Memory, cfg.EffectiveStorageConfig())
 	return r, nil
+}
+
+func runRetention(ctx context.Context, db *sql.DB, sessions *session.Service, mem *memory.Service, cfg config.StorageConfig) {
+	if !cfg.RetentionEnabled() && !cfg.MemoryPurgeEnabled() {
+		return
+	}
+	rr := &retention.Runner{
+		DB:       db,
+		Sessions: sessions,
+		Memory:   mem,
+		Config:   cfg,
+	}
+	if _, err := rr.Run(ctx); err != nil {
+		log.Printf("cometmind: retention failed: %v", err)
+	}
 }
 
 func loadSystemPrompt(path string) (string, error) {

@@ -70,3 +70,37 @@ func (q *Queries) GetWorkspaceByPath(ctx context.Context, path string) (Workspac
 	)
 	return i, err
 }
+
+const listWorkspaces = `-- name: ListWorkspaces :many
+SELECT id, name, path, created_at
+FROM workspaces
+ORDER BY created_at ASC
+`
+
+func (q *Queries) ListWorkspaces(ctx context.Context) ([]Workspace, error) {
+	rows, err := q.db.QueryContext(ctx, listWorkspaces)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Workspace{}
+	for rows.Next() {
+		var i Workspace
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Path,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

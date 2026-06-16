@@ -60,6 +60,26 @@ func (q *Queries) DeleteMemory(ctx context.Context, id string) error {
 	return err
 }
 
+const deleteMemoryEventsByMemoryID = `-- name: DeleteMemoryEventsByMemoryID :exec
+DELETE FROM memory_events
+WHERE memory_id = ?
+`
+
+func (q *Queries) DeleteMemoryEventsByMemoryID(ctx context.Context, memoryID sql.NullString) error {
+	_, err := q.db.ExecContext(ctx, deleteMemoryEventsByMemoryID, memoryID)
+	return err
+}
+
+const deleteMemoryEventsOlderThan = `-- name: DeleteMemoryEventsOlderThan :exec
+DELETE FROM memory_events
+WHERE created_at < ?
+`
+
+func (q *Queries) DeleteMemoryEventsOlderThan(ctx context.Context, createdAt int64) error {
+	_, err := q.db.ExecContext(ctx, deleteMemoryEventsOlderThan, createdAt)
+	return err
+}
+
 const getMemory = `-- name: GetMemory :one
 SELECT id, scope, kind, content, embedding, embedding_model, source, base_weight, access_count, pinned, source_session_id, superseded_by, archived, archived_reason, last_accessed_at, created_at, updated_at
 FROM memories
@@ -236,6 +256,36 @@ func (q *Queries) ListActiveMemories(ctx context.Context) ([]Memory, error) {
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listArchivedMemoryIDsOlderThan = `-- name: ListArchivedMemoryIDsOlderThan :many
+SELECT id
+FROM memories
+WHERE archived = 1 AND updated_at < ?
+ORDER BY updated_at ASC
+`
+
+func (q *Queries) ListArchivedMemoryIDsOlderThan(ctx context.Context, updatedAt int64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listArchivedMemoryIDsOlderThan, updatedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

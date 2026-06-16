@@ -136,6 +136,15 @@ func (s *Service) Compact(ctx context.Context) error {
 	return s.compactor.run(ctx)
 }
 
+// PurgeArchived hard-deletes archived memories and old memory_events.
+func (s *Service) PurgeArchived(ctx context.Context, olderThanDays int) (memories int, events int, err error) {
+	if olderThanDays <= 0 {
+		return 0, 0, nil
+	}
+	cutoff := time.Now().Add(-time.Duration(olderThanDays) * 24 * time.Hour).UnixMilli()
+	return s.store.purgeArchived(ctx, cutoff)
+}
+
 // ListActive returns active memories with effective weights.
 func (s *Service) ListActive(ctx context.Context) ([]ScoredMemory, error) {
 	memories, err := s.store.listActive(ctx)

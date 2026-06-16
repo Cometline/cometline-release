@@ -288,6 +288,85 @@ func (q *Queries) ListSessionsByWorkspace(ctx context.Context, workspaceID strin
 	return items, nil
 }
 
+const listSessionsByWorkspaceAsc = `-- name: ListSessionsByWorkspaceAsc :many
+SELECT id, updated_at, delegation_status
+FROM sessions
+WHERE workspace_id = ?
+ORDER BY updated_at ASC
+`
+
+type ListSessionsByWorkspaceAscRow struct {
+	ID               string `json:"id"`
+	UpdatedAt        int64  `json:"updated_at"`
+	DelegationStatus string `json:"delegation_status"`
+}
+
+func (q *Queries) ListSessionsByWorkspaceAsc(ctx context.Context, workspaceID string) ([]ListSessionsByWorkspaceAscRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSessionsByWorkspaceAsc, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSessionsByWorkspaceAscRow{}
+	for rows.Next() {
+		var i ListSessionsByWorkspaceAscRow
+		if err := rows.Scan(&i.ID, &i.UpdatedAt, &i.DelegationStatus); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listStaleSessionIDs = `-- name: ListStaleSessionIDs :many
+SELECT id
+FROM sessions
+WHERE
+    workspace_id = ?
+    AND updated_at < ?
+    AND delegation_status NOT IN (
+        'pending',
+        'running',
+        'awaiting_user',
+        'awaiting_permission'
+    )
+ORDER BY updated_at ASC
+`
+
+type ListStaleSessionIDsParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	UpdatedAt   int64  `json:"updated_at"`
+}
+
+func (q *Queries) ListStaleSessionIDs(ctx context.Context, arg ListStaleSessionIDsParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listStaleSessionIDs, arg.WorkspaceID, arg.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const touchSession = `-- name: TouchSession :exec
 UPDATE sessions
 SET updated_at = unixepoch ('now', 'subsec') * 1000
