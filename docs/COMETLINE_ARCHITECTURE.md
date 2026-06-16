@@ -40,7 +40,7 @@ cometline renderer
 
 Electron main process
   -> spawns cometmind serve --watch-parent
-  -> persists desktop settings + generated config.toml
+  -> persists ~/.cometmind/cometline-settings.json (single settings SSOT)
   -> exposes OS/native capabilities over preload IPC
   -> optionally spawns cometmind gateway run --platform discord
 ```
@@ -209,13 +209,13 @@ Never commit real provider API keys to docs, Makefiles, source files, or tests.
 | Path | Purpose |
 |---|---|
 | `~/.cometmind/cometmind.db` | CometMind SQLite database |
-| `~/.cometmind/config.toml` | CometMind config (generated from desktop settings) |
-| `~/.cometmind/cometline-settings.json` | Desktop settings (providers, memory, appearance, shortcuts) |
+| `~/.cometmind/cometline-settings.json` | Single settings file (desktop UI + CometMind runtime) |
+| `~/.cometmind/config.toml` | Legacy; read once for migration if JSON is missing |
 | `~/.cometmind/cometline-workspace.json` | Selected workspace path |
-| `~/.cometmind/cometline.log` | Electron-spawned CometMind logs |
-| `~/.cometmind/cometline-gateway.log` | Discord gateway logs when enabled |
+| `~/.cometmind/cometline.log` | Electron-spawned CometMind logs (rotates at 10 MB while running → `.log.1`) |
+| `~/.cometmind/cometline-gateway.log` | Discord gateway logs (same rotation) |
 
-Default system prompt: packaged `SOUL.md` is written into generated `config.toml`.
+Default system prompt: packaged `SOUL.md` path is stored in `cometmind.systemPromptPath` inside `cometline-settings.json`.
 
 ## Manual Test Checklist
 

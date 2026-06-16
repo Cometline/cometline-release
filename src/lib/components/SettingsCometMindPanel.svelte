@@ -237,7 +237,7 @@
 			<h3>OpenCode subagent (ACP)</h3>
 			<p>
 				Delegate coding tasks to the local OpenCode CLI. Written to <code>[acp]</code> in
-				<code>~/.cometmind/config.toml</code>.
+				<code>~/.cometmind/cometline-settings.json</code>.
 			</p>
 		</div>
 		<label>
@@ -394,7 +394,7 @@
 			<h3>Discord gateway</h3>
 			<p>
 				Runs <code>cometmind gateway run --platform discord</code> while Cometline is open.
-				Settings are saved to <code>~/.cometmind/config.toml</code>.
+				Settings are saved to <code>~/.cometmind/cometline-settings.json</code>.
 			</p>
 		</div>
 		<div class="gateway-runtime">

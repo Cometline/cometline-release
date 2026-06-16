@@ -142,7 +142,12 @@
 		return loading || saving;
 	}
 
-	export async function saveMemorySettings(): Promise<void> {
+	export function applySavedMemory(next: MemorySettings) {
+		settings = next;
+		selectedEmbeddingKey = embeddingKeyForSettings(next);
+	}
+
+	export function buildSavePayload(): MemorySettings {
 		if (loading) {
 			throw new Error('Memory settings are still loading');
 		}
@@ -153,9 +158,13 @@
 		if (!payload) {
 			throw new Error('Memory settings are not available');
 		}
+		return payload;
+	}
+
+	export async function saveMemorySettings(): Promise<void> {
 		saving = true;
 		try {
-			settings = await putMemorySettings(payload);
+			settings = await putMemorySettings(buildSavePayload());
 			const savedFromResponse = savedEmbeddingFromApi(settings.embedding);
 			selectedEmbeddingKey =
 				embeddingKeyForFields(providers, settings.embedding, savedFromResponse) ||

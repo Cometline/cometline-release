@@ -46,8 +46,8 @@ Saving embedding touched three places:
 | Store | How |
 | ----- | --- |
 | CometMind in-memory | `PUT /api/v1/memory/settings` |
-| `~/.cometmind/cometline-settings.json` | `persistMemoryEmbedding()` |
-| `~/.cometmind/config.toml` | `writeCometMindConfig()` |
+| `~/.cometmind/cometline-settings.json` | `persistSettings()` / Electron `writeProviderSettings()` |
+| ~~`~/.cometmind/config.toml`~~ | **Removed** — was `writeCometMindConfig()` (no longer written) |
 
 On reload the panel called **GET** from CometMind only. The footer **Save**
 button did not call `PUT /memory/settings`; only a separate Memory-panel
@@ -119,6 +119,17 @@ Added `TestLocalCORSAllowsMemorySettingsPut` in `server/server_test.go`.
 4. Quit and relaunch Cometline — selection persists.
 5. `cd cometmind && go test -run TestLocalCORS ./server`
 6. `cd cometline && pnpm test embedding-models`
+
+## Structural fix: JSON SSOT (ISSUE #1)
+
+Follow-up work consolidated settings into a single schema-owned module:
+
+- [`src/lib/settings/schema.ts`](../../src/lib/settings/schema.ts) — defaults, `normalizeSettings`, `validateSettings`, `runtimeSlice`
+- Electron bundles schema to [`electron/settings-schema.cjs`](../../electron/settings-schema.cjs); `writeCometMindConfig()` removed
+- CometMind [`internal/config/cometline_settings.go`](../../../../cometmind/internal/config/cometline_settings.go) reads `cometline-settings.json` directly
+- [`src/lib/settings/persist.ts`](../../src/lib/settings/persist.ts) — footer Save runs JSON write + `PUT /memory/settings` + sidecar restart in one flow
+
+Memory **behavior** (thresholds, auto_extract) still uses the CometMind API at runtime; embedding credentials and provider config live only in JSON.
 
 ## Relation to other postmortems
 

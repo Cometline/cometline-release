@@ -71,7 +71,7 @@ make install   # pnpm install in cometline/
 make dev       # build CometMind sidecar + launch Electron dev app
 ```
 
-On first launch, open **Settings** (⌘,) to configure a provider base URL, API key, and model. Settings are saved to `~/.cometmind/cometline-settings.json` and mirrored into `~/.cometmind/config.toml` for CometMind.
+On first launch, open **Settings** (⌘,) to configure a provider base URL, API key, and model. Settings are saved to `~/.cometmind/cometline-settings.json` (CometMind reads the same file).
 
 Optional one-off provider overrides:
 
@@ -159,11 +159,11 @@ Packaged apps embed the CometMind binary as an Electron extra resource and serve
 | Path | Purpose |
 |---|---|
 | `~/.cometmind/cometmind.db` | CometMind SQLite database |
-| `~/.cometmind/config.toml` | CometMind runtime config (generated from settings) |
-| `~/.cometmind/cometline-settings.json` | Desktop provider + UI settings |
+| `~/.cometmind/cometline-settings.json` | Single settings file (providers, CometMind runtime, appearance, shortcuts) |
+| `~/.cometmind/config.toml` | Legacy only; CometMind migrates from this if JSON is absent |
 | `~/.cometmind/cometline-workspace.json` | Selected workspace path |
-| `~/.cometmind/cometline.log` | Sidecar stdout/stderr |
-| `~/.cometmind/cometline-gateway.log` | Discord gateway log (when enabled) |
+| `~/.cometmind/cometline.log` | Sidecar stdout/stderr (rotates at 10 MB while running → `.log.1`) |
+| `~/.cometmind/cometline-gateway.log` | Discord gateway log (same rotation) |
 
 ---
 

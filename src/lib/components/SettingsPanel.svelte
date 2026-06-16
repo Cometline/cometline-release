@@ -329,8 +329,23 @@
 
 		if (activeSection === 'memory') {
 			try {
-				await memoryPanel?.saveMemorySettings();
-				status = saveStatusMessage('memory', false);
+				const memoryPayload = memoryPanel?.buildSavePayload();
+				if (!memoryPayload) {
+					throw new Error('Memory settings are not available');
+				}
+				applyMemoryEmbeddingToDraft(memoryPayload.embedding);
+				const payload = providerPayloadFromDraft();
+				const restartCometMind =
+					providersNeedRestart(payload) || cometmindNeedsRestart(payload);
+				const { settings: saved, memory } = await settingsStore.save(payload, {
+					restartCometMind,
+					memory: memoryPayload
+				});
+				if (memory) {
+					memoryPanel?.applySavedMemory(memory);
+				}
+				draft = cloneSettings(saved);
+				status = saveStatusMessage('memory', restartCometMind);
 			} catch (error) {
 				status =
 					error instanceof Error ? error.message : 'Failed to save memory settings';
@@ -344,20 +359,11 @@
 			) ??
 			draft.providers.find((provider) => provider.enabled) ??
 			draft.providers[0];
-		const payload: ProviderSettings = {
-			providers: draft.providers.map(cloneProvider),
-			activeProviderId: activeProvider?.id ?? '',
-			appearance: {
-				heroComposer: { ...draft.appearance.heroComposer },
-				caretTrail: { ...draft.appearance.caretTrail }
-			},
-			shortcuts: cloneShortcuts(draft),
-			app: { ...draft.app },
-			cometmind: cloneCometMindSettings(draft.cometmind)
-		};
+		const payload: ProviderSettings = providerPayloadFromDraft();
+		payload.activeProviderId = activeProvider?.id ?? '';
 		const restartCometMind =
 			providersNeedRestart(payload) || cometmindNeedsRestart(payload);
-		const saved = await settingsStore.save(payload, { restartCometMind });
+		const { settings: saved } = await settingsStore.save(payload, { restartCometMind });
 		draft = cloneSettings(saved);
 		cometmindPanelKey += 1;
 		activeSection = preservedSection;
@@ -460,7 +466,7 @@
 		};
 	}
 
-	async function persistMemoryEmbedding(embedding: MemorySettings['embedding']) {
+	function applyMemoryEmbeddingToDraft(embedding: MemorySettings['embedding']) {
 		let providerId = embedding.provider_id.trim();
 		const model = embedding.model.trim();
 		if ((!providerId || providerId === '__saved__') && model) {
@@ -482,7 +488,7 @@
 				return { ...provider, enabled: true, models, enabledModels };
 			});
 		}
-		const nextDraft = {
+		draft = {
 			...draft,
 			providers: nextProviders,
 			cometmind: {
@@ -499,21 +505,31 @@
 				}
 			}
 		};
-		draft = nextDraft;
-		await settingsStore.save(
-			{
-				providers: nextDraft.providers.map(cloneProvider),
-				activeProviderId: nextDraft.activeProviderId,
-				appearance: {
-					heroComposer: { ...nextDraft.appearance.heroComposer },
-					caretTrail: { ...nextDraft.appearance.caretTrail }
-				},
-				shortcuts: cloneShortcuts(nextDraft),
-				app: { ...nextDraft.app },
-				cometmind: cloneCometMindSettings(nextDraft.cometmind)
+	}
+
+	function providerPayloadFromDraft(): ProviderSettings {
+		const activeProvider =
+			draft.providers.find(
+				(provider) => provider.enabled && provider.enabledModels.length > 0
+			) ??
+			draft.providers.find((provider) => provider.enabled) ??
+			draft.providers[0];
+		return {
+			providers: draft.providers.map(cloneProvider),
+			activeProviderId: activeProvider?.id ?? '',
+			appearance: {
+				heroComposer: { ...draft.appearance.heroComposer },
+				caretTrail: { ...draft.appearance.caretTrail }
 			},
-			{ restartCometMind: false }
-		);
+			shortcuts: cloneShortcuts(draft),
+			app: { ...draft.app },
+			cometmind: cloneCometMindSettings(draft.cometmind)
+		};
+	}
+
+	async function persistMemoryEmbedding(embedding: MemorySettings['embedding']) {
+		applyMemoryEmbeddingToDraft(embedding);
+		await settingsStore.save(providerPayloadFromDraft(), { restartCometMind: false });
 	}
 
 	function methodNeedsFetch(method: ProviderMethod) {
@@ -541,7 +557,7 @@
 					{:else if activeSection === 'appearance'}
 						Customize hero composer glow and border colors for new-chat screens.
 					{:else if activeSection === 'cometmind'}
-						Configure OpenCode subagents and the Discord gateway in ~/.cometmind/config.toml.
+						Configure OpenCode subagents and the Discord gateway in ~/.cometmind/cometline-settings.json.
 					{:else if activeSection === 'memory'}
 						Manage global memories, retrieval thresholds, and compaction.
 					{:else if activeSection === 'general'}

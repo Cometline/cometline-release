@@ -4,6 +4,14 @@ const { pathToFileURL } = require('url');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
+const {
+	OPENCODE_GO_AVAILABLE_MODELS,
+	defaultSettings,
+	normalizeProviders,
+	normalizeSettings,
+	parseAndNormalizeSettings,
+	validateSettings
+} = require('./settings-schema.cjs');
 
 app.setName('Cometline');
 
@@ -27,258 +35,55 @@ const HEALTH_URL = `http://127.0.0.1:${COMETMIND_PORT}/api/v1/health`;
 const MAX_RETRIES = 50;
 const POLL_MS = 100;
 const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+const LOG_MAX_BYTES = 10 * 1024 * 1024;
+const LOG_BACKUP_COUNT = 1;
+const LOG_ROTATE_CHECK_BYTES = 512 * 1024;
 
-function defaultAppearance() {
-	return {
-		heroComposer: {
-			glowColor: '#72c0ff',
-			ringColor: '#9ed8ff'
-		},
-		caretTrail: {
-			enabled: true,
-			intensity: 0.72,
-			speed: 0.68
-		}
-	};
-}
-
-function defaultShortcuts() {
-	return {
-		toggleSidebar: { command: true, key: 'b' },
-		openSettings: { command: true, key: ',' },
-		newChat: { command: true, key: 't' },
-		stopResponse: { command: true, key: 'c' },
-		sendMessage: { key: 'Enter', shift: false },
-		insertNewline: { key: 'Enter', shift: true },
-		closeSettings: { key: 'Escape' },
-		focusSearch: { command: true, key: 'f' },
-		previousSession: { ctrl: true, meta: true, key: 'ArrowUp' },
-		nextSession: { ctrl: true, meta: true, key: 'ArrowDown' },
-		toggleWebPanel: { command: true, alt: true, key: 'b' },
-		openWebPanel: { command: true, key: 'o' }
-	};
-}
-
-function defaultProviderSettings() {
-	return {
-		providers: [
-			{
-				id: 'openai-compatible',
-				name: 'OpenAI Compatible',
-				method: 'openai-compatible',
-				enabled: false,
-				baseURL: '',
-				apiKey: '',
-				selectedModel: '',
-				models: [],
-				enabledModels: []
-			},
-			{
-				id: 'anthropic',
-				name: 'Anthropic',
-				method: 'anthropic',
-				enabled: false,
-				baseURL: 'https://api.anthropic.com',
-				apiKey: '',
-				selectedModel: '',
-				models: [],
-				enabledModels: []
-			},
-			{
-				id: 'openai',
-				name: 'OpenAI',
-				method: 'openai',
-				enabled: false,
-				baseURL: 'https://api.openai.com/v1',
-				apiKey: '',
-				selectedModel: '',
-				models: [],
-				enabledModels: []
-			},
-			{
-				id: 'opencode-go',
-				name: 'OpenCode Go',
-				method: 'opencode-go',
-				enabled: true,
-				baseURL: 'https://opencode.ai/zen/go/v1',
-				apiKey: '',
-				selectedModel: '',
-				models: [...OPENCODE_GO_AVAILABLE_MODELS],
-				enabledModels: []
-			}
-		],
-		activeProviderId: 'opencode-go',
-		appearance: defaultAppearance(),
-		shortcuts: defaultShortcuts(),
-		app: defaultAppSettings(),
-		cometmind: defaultCometMindSettings()
-	};
-}
-
-function defaultAppSettings() {
-	return {
-		openAtLogin: false,
-		hasSeenIntro: false
-	};
-}
-
-function normalizeAppSettings(app) {
-	const defaults = defaultAppSettings();
-	return {
-		openAtLogin:
-			typeof app?.openAtLogin === 'boolean' ? app.openAtLogin : defaults.openAtLogin,
-		hasSeenIntro:
-			typeof app?.hasSeenIntro === 'boolean' ? app.hasSeenIntro : defaults.hasSeenIntro
-	};
-}
-
-function defaultCometMindSettings(workspacePath = '') {
-	return {
-		acp: {
-			command: 'opencode',
-			args: ['acp'],
-			timeout: '30m',
-			interactive: true
-		},
-		skills: {
-			enabled: true,
-			roots: [],
-			includeOpenCode: true,
-			includeClaude: true,
-			mirrorToCometMind: false
-		},
-		memory: {
-			embedding: {
-				providerId: '',
-				provider: '',
-				model: '',
-				baseURL: '',
-				apiKey: ''
-			}
-		},
-		gateway: {
-			discord: {
-				enabled: false,
-				botToken: '',
-				botTokenEnv: 'DISCORD_BOT_TOKEN',
-				providerId: '',
-				modelId: '',
-				allowedUsers: [],
-				allowedChannels: [],
-				requireMention: true,
-				workspacePath
-			}
-		}
-	};
-}
-
-function looksLikeDiscordBotToken(value) {
-	const parts = String(value).split('.');
-	if (parts.length !== 3) return false;
-	return parts[0].length >= 18 && parts[1].length >= 4 && parts[2].length >= 20;
-}
-
-function migrateDiscordTokenFields(discord) {
-	const defaults = defaultCometMindSettings().gateway.discord;
-	let botToken = String(discord?.botToken ?? '').trim();
-	let botTokenEnv = String(discord?.botTokenEnv ?? defaults.botTokenEnv).trim() || defaults.botTokenEnv;
-	if (!botToken && looksLikeDiscordBotToken(botTokenEnv)) {
-		botToken = botTokenEnv;
-		botTokenEnv = defaults.botTokenEnv;
+function rotateLogIfNeeded(logPath) {
+	try {
+		if (!fs.existsSync(logPath)) return;
+		const { size } = fs.statSync(logPath);
+		if (size < LOG_MAX_BYTES) return;
+		const oldest = `${logPath}.${LOG_BACKUP_COUNT}`;
+		if (fs.existsSync(oldest)) fs.unlinkSync(oldest);
+		fs.renameSync(logPath, oldest);
+	} catch (err) {
+		console.error(`Failed to rotate log ${logPath}:`, err);
 	}
-	return { botToken, botTokenEnv };
 }
 
-function normalizeCometMindSettings(input, workspacePath = '') {
-	const defaults = defaultCometMindSettings(workspacePath);
-	const acp = input?.acp ?? {};
-	const skills = input?.skills ?? {};
-	const memory = input?.memory ?? {};
-	const embedding = memory?.embedding ?? {};
-	const discord = input?.gateway?.discord ?? {};
-	const args = Array.isArray(acp.args)
-		? acp.args.map((a) => String(a).trim()).filter(Boolean)
-		: defaults.acp.args;
-	const cleanList = (values) =>
-		Array.isArray(values) ? values.map((v) => String(v).trim()).filter(Boolean) : [];
-	const { botToken, botTokenEnv } = migrateDiscordTokenFields(discord);
+function createRotatingLogWriter(logPath) {
+	rotateLogIfNeeded(logPath);
+	let stream = fs.createWriteStream(logPath, { flags: 'a' });
+	let bytesSinceCheck = 0;
+
+	function maybeRotate() {
+		try {
+			if (!fs.existsSync(logPath)) return;
+			if (fs.statSync(logPath).size < LOG_MAX_BYTES) return;
+			stream.end();
+			rotateLogIfNeeded(logPath);
+			stream = fs.createWriteStream(logPath, { flags: 'a' });
+			bytesSinceCheck = 0;
+		} catch (err) {
+			console.error(`Failed to rotate log ${logPath}:`, err);
+		}
+	}
+
 	return {
-		acp: {
-			command: String(acp.command ?? defaults.acp.command).trim() || defaults.acp.command,
-			args: args.length > 0 ? args : defaults.acp.args,
-			timeout: String(acp.timeout ?? defaults.acp.timeout).trim() || defaults.acp.timeout,
-			interactive:
-				typeof acp.interactive === 'boolean' ? acp.interactive : defaults.acp.interactive
-		},
-		skills: {
-			enabled: typeof skills.enabled === 'boolean' ? skills.enabled : defaults.skills.enabled,
-			roots: cleanList(skills.roots),
-			includeOpenCode:
-				typeof skills.includeOpenCode === 'boolean'
-					? skills.includeOpenCode
-					: defaults.skills.includeOpenCode,
-			includeClaude:
-				typeof skills.includeClaude === 'boolean'
-					? skills.includeClaude
-					: defaults.skills.includeClaude,
-			mirrorToCometMind:
-				typeof skills.mirrorToCometMind === 'boolean'
-					? skills.mirrorToCometMind
-					: defaults.skills.mirrorToCometMind
-		},
-		memory: {
-			embedding: {
-				providerId: String(embedding.providerId ?? defaults.memory.embedding.providerId).trim(),
-				provider: String(embedding.provider ?? defaults.memory.embedding.provider).trim(),
-				model: String(embedding.model ?? defaults.memory.embedding.model).trim(),
-				baseURL: String(embedding.baseURL ?? defaults.memory.embedding.baseURL).trim(),
-				apiKey: String(embedding.apiKey ?? defaults.memory.embedding.apiKey).trim()
+		write(data) {
+			stream.write(data);
+			bytesSinceCheck += data.length;
+			if (bytesSinceCheck >= LOG_ROTATE_CHECK_BYTES) {
+				bytesSinceCheck = 0;
+				maybeRotate();
 			}
 		},
-		gateway: {
-			discord: {
-				enabled:
-					typeof discord.enabled === 'boolean' ? discord.enabled : defaults.gateway.discord.enabled,
-				botToken,
-				botTokenEnv,
-				providerId: String(discord.providerId ?? defaults.gateway.discord.providerId).trim(),
-				modelId: String(discord.modelId ?? defaults.gateway.discord.modelId).trim(),
-				allowedUsers: cleanList(discord.allowedUsers),
-				allowedChannels: cleanList(discord.allowedChannels),
-				requireMention:
-					typeof discord.requireMention === 'boolean'
-						? discord.requireMention
-						: defaults.gateway.discord.requireMention,
-				workspacePath:
-					String(discord.workspacePath ?? defaults.gateway.discord.workspacePath).trim() ||
-					defaults.gateway.discord.workspacePath
-			}
+		end() {
+			stream.end();
 		}
 	};
 }
-
-const OPENCODE_GO_AVAILABLE_MODELS = [
-	'deepseek-v4-flash',
-	'deepseek-v4-pro',
-	'glm-5',
-	'glm-5.1',
-	'kimi-k2.6',
-	'kimi-k2.7-code',
-	'mimo-v2.5',
-	'mimo-v2.5-pro',
-	'minimax-m2.7',
-	'minimax-m3',
-	'qwen3.6-plus',
-	'qwen3.7-max',
-	'qwen3.7-plus'
-];
-const VALID_PROVIDER_METHODS = ['openai-compatible', 'openai', 'anthropic', 'opencode-go'];
-const BUILTIN_PROVIDER_NAMES = {
-	'openai-compatible': 'OpenAI Compatible',
-	anthropic: 'Anthropic',
-	openai: 'OpenAI',
-	'opencode-go': 'OpenCode Go'
-};
 
 // Must run before app `ready`. Marking the scheme standard + secure gives the
 // loaded page a normal web origin (so history API routing, fetch, and module
@@ -453,182 +258,11 @@ function getSettingsPath() {
 	return path.join(dir, 'cometline-settings.json');
 }
 
-function getConfigPath() {
-	const dir = path.join(os.homedir(), '.cometmind');
-	if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-	return path.join(dir, 'config.toml');
-}
-
-function migrateSingleProvider(saved) {
-	// Old format stored a single provider at the top level.
-	if (saved && typeof saved === 'object' && !Array.isArray(saved.providers)) {
-		const id = String(saved.provider || 'openai').trim();
-		return {
-			providers: [
-				{
-					id,
-					name:
-						id === 'opencode-go'
-							? 'OpenCode Go'
-							: id.charAt(0).toUpperCase() + id.slice(1),
-					method:
-						id === 'openai' && saved.baseURL?.includes('opencode.ai')
-							? 'opencode-go'
-							: id === 'openai'
-								? 'openai-compatible'
-								: id,
-					enabled: true,
-					baseURL: String(saved.baseURL || '').trim(),
-					apiKey: String(saved.apiKey || '').trim(),
-					selectedModel: String(saved.selectedModel || '').trim(),
-					models: Array.isArray(saved.models) ? saved.models.filter(Boolean) : [],
-					enabledModels: saved.selectedModel ? [String(saved.selectedModel).trim()] : []
-				}
-			],
-			activeProviderId: id
-		};
-	}
-	return null;
-}
-
-function normalizeProvider(provider, fallback = {}) {
-	const method = VALID_PROVIDER_METHODS.includes(provider?.method)
-		? provider.method
-		: fallback.method || 'openai-compatible';
-	const rawModels = Array.isArray(provider?.models) ? provider.models : fallback.models || [];
-	const models = rawModels.map((model) => String(model || '').trim()).filter(Boolean);
-	const modelList =
-		method === 'opencode-go'
-			? Array.from(new Set([...OPENCODE_GO_AVAILABLE_MODELS, ...models]))
-			: models;
-	const legacySelected = String(
-		provider?.selectedModel || fallback.selectedModel || ''
-	).trim();
-	const rawEnabledModels = Array.isArray(provider?.enabledModels)
-		? provider.enabledModels
-		: legacySelected
-			? [legacySelected]
-			: [];
-	const enabledModels = rawEnabledModels
-		.map((model) => String(model || '').trim())
-		.filter((model) => model && modelList.includes(model));
-	const id = String(
-		provider?.id ||
-			fallback.id ||
-			`provider-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-	).trim();
-	const builtInName = BUILTIN_PROVIDER_NAMES[id];
-
+function settingsNormalizeOptions() {
 	return {
-		id,
-		name: builtInName ?? String(provider?.name || fallback.name || 'Provider').trim(),
-		method,
-		enabled:
-			typeof provider?.enabled === 'boolean' ? provider.enabled : Boolean(fallback.enabled),
-		baseURL: String(provider?.baseURL ?? fallback.baseURL ?? '').trim(),
-		apiKey: String(provider?.apiKey ?? fallback.apiKey ?? '').trim(),
-		selectedModel: enabledModels[0] || '',
-		models: modelList,
-		enabledModels
+		fallbackWorkspacePath: readStoredWorkspacePath() || getDefaultWorkspacePath(),
+		systemPromptPath: resolveSystemPromptPath()
 	};
-}
-
-function normalizeHexColor(value, fallback) {
-	if (typeof value !== 'string') return fallback;
-	const trimmed = value.trim();
-	if (!/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed)) return fallback;
-	if (trimmed.length === 4) {
-		return `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`.toLowerCase();
-	}
-	return trimmed.toLowerCase();
-}
-
-function normalizeUnitValue(value, fallback) {
-	if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
-	return Math.min(1, Math.max(0, value));
-}
-
-function normalizeAppearance(appearance) {
-	const defaults = defaultAppearance();
-	return {
-		heroComposer: {
-			glowColor: normalizeHexColor(
-				appearance?.heroComposer?.glowColor,
-				defaults.heroComposer.glowColor
-			),
-			ringColor: normalizeHexColor(
-				appearance?.heroComposer?.ringColor,
-				defaults.heroComposer.ringColor
-			)
-		},
-		caretTrail: {
-			enabled:
-				typeof appearance?.caretTrail?.enabled === 'boolean'
-					? appearance.caretTrail.enabled
-					: defaults.caretTrail.enabled,
-			intensity: normalizeUnitValue(
-				appearance?.caretTrail?.intensity,
-				defaults.caretTrail.intensity
-			),
-			speed: normalizeUnitValue(appearance?.caretTrail?.speed, defaults.caretTrail.speed)
-		}
-	};
-}
-
-function isLegacySessionNavBinding(binding) {
-	if (binding?.command) {
-		return binding.alt !== true && binding.shift !== true && binding.ctrl !== true;
-	}
-	return Boolean(binding?.ctrl && binding.meta === false);
-}
-
-function normalizeSessionNavBinding(id, binding, defaultBinding) {
-	if (id !== 'previousSession' && id !== 'nextSession') {
-		return binding ?? defaultBinding;
-	}
-	if (!binding) return { ...defaultBinding };
-	if (isLegacySessionNavBinding(binding)) {
-		return { ...defaultBinding };
-	}
-	return binding;
-}
-
-function normalizeToggleWebPanelBinding(binding, defaultBinding) {
-	if (!binding) return { ...defaultBinding };
-	if (binding.key === 'b' && binding.command && binding.alt !== true) {
-		return { ...defaultBinding };
-	}
-	return binding;
-}
-
-function normalizeShortcuts(shortcuts) {
-	const defaults = defaultShortcuts();
-	if (!shortcuts || typeof shortcuts !== 'object') return defaults;
-	const next = { ...defaults };
-	for (const id of Object.keys(defaults)) {
-		const saved = shortcuts[id];
-		if (saved && typeof saved === 'object' && typeof saved.key === 'string') {
-			const normalized = {
-				key: saved.key,
-				...(typeof saved.command === 'boolean' && { command: saved.command }),
-				...(typeof saved.ctrl === 'boolean' && { ctrl: saved.ctrl }),
-				...(typeof saved.meta === 'boolean' && { meta: saved.meta }),
-				...(typeof saved.alt === 'boolean' && { alt: saved.alt }),
-				...(typeof saved.shift === 'boolean' && { shift: saved.shift })
-			};
-			if (id === 'toggleWebPanel') {
-				next[id] = normalizeToggleWebPanelBinding(normalized, defaults[id]);
-				continue;
-			}
-			next[id] = normalizeSessionNavBinding(id, normalized, defaults[id]);
-		} else {
-			next[id] =
-				id === 'toggleWebPanel'
-					? normalizeToggleWebPanelBinding(undefined, defaults[id])
-					: normalizeSessionNavBinding(id, undefined, defaults[id]);
-		}
-	}
-	return next;
 }
 
 function shortcutKeyMatches(a, b) {
@@ -863,7 +497,7 @@ function attachMainWindowShortcuts(webContents) {
 		}
 
 		if (shortcutCaptureActive || sessionNavigationSuspended) return;
-		const shortcuts = readProviderSettings().shortcuts ?? defaultShortcuts();
+		const shortcuts = readProviderSettings().shortcuts ?? defaultSettings().shortcuts;
 		if (matchesInputShortcut(input, shortcuts.previousSession)) {
 			event.preventDefault();
 			webContents.send('cometline:navigate-session', 'prev');
@@ -881,7 +515,7 @@ function handleWebPanelGuestShortcuts(event, input) {
 		return true;
 	}
 	if (shortcutCaptureActive || sessionNavigationSuspended) return false;
-	const shortcuts = readProviderSettings().shortcuts ?? defaultShortcuts();
+	const shortcuts = readProviderSettings().shortcuts ?? defaultSettings().shortcuts;
 	if (matchesInputShortcut(input, shortcuts.toggleWebPanel)) {
 		event.preventDefault();
 		sendToggleWebPanel();
@@ -901,21 +535,7 @@ function attachWebviewPanelShortcuts(webContents) {
 	});
 }
 
-function normalizeProviders(providers) {
-	const defaults = defaultProviderSettings().providers;
-	const saved = Array.isArray(providers) ? providers : [];
-	const defaultProviders = defaults.map((provider) => {
-		const savedProvider = saved.find((p) => p.id === provider.id);
-		return normalizeProvider(savedProvider || provider, provider);
-	});
-	const customProviders = saved
-		.filter((provider) => !defaults.some((p) => p.id === provider.id))
-		.map((provider) => normalizeProvider(provider));
-	return [...defaultProviders, ...customProviders];
-}
-
 function readProviderSettings() {
-	const defaults = defaultProviderSettings();
 	const fromEnv = {
 		activeProviderId: process.env.COMETMIND_PROVIDER,
 		baseURL: process.env.COMETMIND_BASE_URL,
@@ -936,22 +556,7 @@ function readProviderSettings() {
 		}
 	}
 
-	const migrated = migrateSingleProvider(saved);
-	const base = migrated ? migrated : { ...defaults, ...saved };
-
-	base.providers = normalizeProviders(base.providers);
-	base.appearance = normalizeAppearance(saved.appearance ?? base.appearance);
-	base.shortcuts = normalizeShortcuts(saved.shortcuts ?? base.shortcuts);
-	base.cometmind = normalizeCometMindSettings(
-		saved.cometmind ?? base.cometmind,
-		readStoredWorkspacePath() || getDefaultWorkspacePath()
-	);
-	base.app = normalizeAppSettings(saved.app ?? base.app);
-	if (!base.activeProviderId || !base.providers.find((p) => p.id === base.activeProviderId)) {
-		base.activeProviderId =
-			base.providers.find((p) => p.enabled && p.enabledModels.length > 0)?.id ??
-			base.providers[0].id;
-	}
+	const base = parseAndNormalizeSettings(saved, settingsNormalizeOptions());
 
 	// Allow env overrides for the active provider only. Apply provider first so
 	// key/baseURL/model attach to the provider selected by COMETMIND_PROVIDER.
@@ -985,17 +590,19 @@ function writeProviderSettings(settings) {
 		nextProviders.find((p) => p.enabled)?.id ??
 		nextProviders[0]?.id ??
 		'';
-	const next = {
-		providers: nextProviders,
-		activeProviderId: nextActive,
-		appearance: normalizeAppearance(settings.appearance ?? current.appearance),
-		shortcuts: normalizeShortcuts(settings.shortcuts ?? current.shortcuts),
-		cometmind: normalizeCometMindSettings(
-			settings.cometmind ?? current.cometmind,
-			readStoredWorkspacePath() || getDefaultWorkspacePath()
-		),
-		app: normalizeAppSettings(settings.app ?? current.app)
-	};
+	const next = validateSettings(
+		normalizeSettings(
+			{
+				providers: nextProviders,
+				activeProviderId: nextActive,
+				appearance: settings.appearance ?? current.appearance,
+				shortcuts: settings.shortcuts ?? current.shortcuts,
+				cometmind: settings.cometmind ?? current.cometmind,
+				app: settings.app ?? current.app
+			},
+			settingsNormalizeOptions()
+		)
+	);
 	const settingsPath = getSettingsPath();
 	fs.writeFileSync(settingsPath, JSON.stringify(next, null, 2));
 	try {
@@ -1003,79 +610,7 @@ function writeProviderSettings(settings) {
 	} catch {
 		/* ignore */
 	}
-	writeCometMindConfig(next);
 	return next;
-}
-
-function writeCometMindConfig(settings) {
-	const runtimeProviders = settings.providers.filter(
-		(p) => p.enabled && p.enabledModels.length > 0
-	);
-	const active =
-		runtimeProviders.find((p) => p.id === settings.activeProviderId) ?? runtimeProviders[0];
-	if (!active) return;
-
-	const providerEntries = runtimeProviders
-		.map(
-			(p) => `[[providers]]
-id = ${JSON.stringify(p.id)}
-name = ${JSON.stringify(p.name)}
-method = ${JSON.stringify(p.method)}
-base_url = ${JSON.stringify(p.baseURL)}
-api_key = ${JSON.stringify(p.apiKey)}
-model = ${JSON.stringify(p.enabledModels[0] || p.selectedModel || p.models[0] || '')}
-`
-		)
-		.join('\n');
-
-	const content = `# CometMind — generated by Cometline
-provider = ${JSON.stringify(active.id)}
-model = ${JSON.stringify(active.enabledModels[0] || active.selectedModel || active.models[0] || '')}
-base_url = ${JSON.stringify(active.baseURL)}
-max_tokens = 8192
-max_steps = 50
-system_prompt_path = ${JSON.stringify(resolveSystemPromptPath())}
-
-${providerEntries}
-[acp]
-command = ${JSON.stringify(settings.cometmind?.acp?.command ?? 'opencode')}
-args = ${JSON.stringify(settings.cometmind?.acp?.args ?? ['acp'])}
-timeout = ${JSON.stringify(settings.cometmind?.acp?.timeout ?? '30m')}
-interactive = ${settings.cometmind?.acp?.interactive ?? true}
-
-[skills]
-enabled = ${settings.cometmind?.skills?.enabled ?? true}
-roots = ${JSON.stringify(settings.cometmind?.skills?.roots ?? [])}
-include_opencode = ${settings.cometmind?.skills?.includeOpenCode ?? true}
-include_claude = ${settings.cometmind?.skills?.includeClaude ?? true}
-mirror_to_cometmind = ${settings.cometmind?.skills?.mirrorToCometMind ?? false}
-
-[memory.embedding]
-provider_id = ${JSON.stringify(settings.cometmind?.memory?.embedding?.providerId ?? '')}
-provider = ${JSON.stringify(settings.cometmind?.memory?.embedding?.provider ?? '')}
-model = ${JSON.stringify(settings.cometmind?.memory?.embedding?.model ?? '')}
-base_url = ${JSON.stringify(settings.cometmind?.memory?.embedding?.baseURL ?? '')}
-api_key = ${JSON.stringify(settings.cometmind?.memory?.embedding?.apiKey ?? '')}
-
-[gateway.discord]
-enabled = ${settings.cometmind?.gateway?.discord?.enabled ?? false}
-bot_token = ${JSON.stringify(settings.cometmind?.gateway?.discord?.botToken ?? '')}
-bot_token_env = ${JSON.stringify(settings.cometmind?.gateway?.discord?.botTokenEnv ?? 'DISCORD_BOT_TOKEN')}
-allowed_users = ${JSON.stringify(settings.cometmind?.gateway?.discord?.allowedUsers ?? [])}
-allowed_channels = ${JSON.stringify(settings.cometmind?.gateway?.discord?.allowedChannels ?? [])}
-require_mention = ${settings.cometmind?.gateway?.discord?.requireMention ?? true}
-workspace_path = ${JSON.stringify(settings.cometmind?.gateway?.discord?.workspacePath ?? '')}
-provider = ${JSON.stringify(settings.cometmind?.gateway?.discord?.providerId ?? '')}
-model = ${JSON.stringify(settings.cometmind?.gateway?.discord?.modelId ?? '')}
-`;
-
-	const configPath = getConfigPath();
-	fs.writeFileSync(configPath, content);
-	try {
-		fs.chmodSync(configPath, 0o600);
-	} catch {
-		/* ignore */
-	}
 }
 
 function providerEnv() {
@@ -1091,7 +626,8 @@ function providerEnv() {
 		...process.env,
 		COMETMIND_PROVIDER: active.id,
 		COMETMIND_MODEL: active.enabledModels[0] || active.selectedModel || active.models[0] || '',
-		COMETMIND_SYSTEM_PROMPT_PATH: resolveSystemPromptPath()
+		COMETMIND_SYSTEM_PROMPT_PATH:
+			settings.cometmind?.systemPromptPath || resolveSystemPromptPath()
 	};
 	if (active.baseURL) env.COMETMIND_BASE_URL = active.baseURL;
 	if (active.apiKey) env.COMETMIND_API_KEY = active.apiKey;
@@ -1163,7 +699,7 @@ function startCometMind() {
 
 	const binary = resolveCometMindBinary();
 	const logPath = getLogPath();
-	const logStream = fs.createWriteStream(logPath, { flags: 'a' });
+	const logStream = createRotatingLogWriter(logPath);
 
 	if (!fs.existsSync(binary)) {
 		console.error(`CometMind binary not found: ${binary}`);
@@ -1293,7 +829,7 @@ function startDiscordGateway() {
 
 	const binary = resolveCometMindBinary();
 	const logPath = getGatewayLogPath();
-	const logStream = fs.createWriteStream(logPath, { flags: 'a' });
+	const logStream = createRotatingLogWriter(logPath);
 
 	if (!fs.existsSync(binary)) {
 		console.error(`CometMind binary not found: ${binary}`);
@@ -1723,9 +1259,8 @@ app.whenReady().then(async () => {
 		ensureTray();
 	}
 
-	// Ensure CometMind config exists before starting so the active provider is
-	// available even on first launch.
-	writeCometMindConfig(readProviderSettings());
+	// Ensure settings JSON exists with system prompt path before starting CometMind.
+	writeProviderSettings(readProviderSettings());
 	const startupSettings = readProviderSettings();
 	applyOpenAtLoginSetting(startupSettings.app?.openAtLogin);
 	startCometMind();

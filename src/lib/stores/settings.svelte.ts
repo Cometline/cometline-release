@@ -1,218 +1,37 @@
-import type { AppSettings, CaretTrailSettings, ProviderConfig, ProviderSettings } from '$lib/types';
 import {
 	cloneCometMindSettings,
-	defaultCometMindSettings,
-	normalizeCometMindSettings
-} from '$lib/cometmind-settings';
-import {
-	DEFAULT_HERO_COMPOSER_APPEARANCE,
-	normalizeHeroComposerAppearance
-} from '$lib/hero-composer-appearance';
-import { defaultKeyboardShortcuts, normalizeKeyboardShortcuts } from '$lib/keyboard-shortcuts';
+	cloneProvider,
+	defaultSettings,
+	migrateSingleProvider,
+	newProvider,
+	normalizeCometMindSettings,
+	normalizeProvider,
+	normalizeProviders,
+	normalizeSettings,
+	parseAndNormalizeSettings,
+	runtimeProviders,
+	runtimeSlice,
+	validateSettings,
+	OPENCODE_GO_AVAILABLE_MODELS,
+	type CometMindSettings,
+	type RuntimeSettingsSlice
+} from '$lib/settings/schema';
+import type { MemorySettings } from '$lib/client/cometmind';
+import type { ProviderConfig, ProviderSettings } from '$lib/types';
+import { defaultKeyboardShortcuts } from '$lib/keyboard-shortcuts';
 import { modelStore } from './model.svelte';
 import { connectionState } from './runtime.svelte';
-
-const OPENCODE_GO_AVAILABLE_MODELS = [
-	'deepseek-v4-flash',
-	'deepseek-v4-pro',
-	'glm-5',
-	'glm-5.1',
-	'kimi-k2.6',
-	'kimi-k2.7-code',
-	'mimo-v2.5',
-	'mimo-v2.5-pro',
-	'minimax-m2.7',
-	'minimax-m3',
-	'qwen3.6-plus',
-	'qwen3.7-max',
-	'qwen3.7-plus'
-];
-const DEFAULT_PROVIDERS: ProviderConfig[] = [
-	{
-		id: 'openai-compatible',
-		name: 'OpenAI Compatible',
-		method: 'openai-compatible',
-		enabled: false,
-		baseURL: '',
-		apiKey: '',
-		selectedModel: '',
-		models: [],
-		enabledModels: []
-	},
-	{
-		id: 'anthropic',
-		name: 'Anthropic',
-		method: 'anthropic',
-		enabled: false,
-		baseURL: 'https://api.anthropic.com',
-		apiKey: '',
-		selectedModel: '',
-		models: [],
-		enabledModels: []
-	},
-	{
-		id: 'openai',
-		name: 'OpenAI',
-		method: 'openai',
-		enabled: false,
-		baseURL: 'https://api.openai.com/v1',
-		apiKey: '',
-		selectedModel: '',
-		models: [],
-		enabledModels: []
-	},
-	{
-		id: 'opencode-go',
-		name: 'OpenCode Go',
-		method: 'opencode-go',
-		enabled: true,
-		baseURL: 'https://opencode.ai/zen/go/v1',
-		apiKey: '',
-		selectedModel: '',
-		models: [...OPENCODE_GO_AVAILABLE_MODELS],
-		enabledModels: []
-	}
-];
-
-function cloneProvider(provider: ProviderConfig): ProviderConfig {
-	return {
-		...provider,
-		models: [...provider.models],
-		enabledModels: [...provider.enabledModels]
-	};
-}
-
-function normalizeProvider(
-	provider: Partial<ProviderConfig>,
-	fallback?: ProviderConfig
-): ProviderConfig {
-	const method = provider.method ?? fallback?.method ?? 'openai-compatible';
-	const models = Array.isArray(provider.models)
-		? provider.models.filter(Boolean)
-		: (fallback?.models ?? []);
-	const modelList =
-		method === 'opencode-go'
-			? Array.from(new Set([...OPENCODE_GO_AVAILABLE_MODELS, ...models]))
-			: models;
-	const legacySelected = provider.selectedModel || fallback?.selectedModel || '';
-	const enabledModelsSource = Array.isArray(provider.enabledModels)
-		? provider.enabledModels
-		: legacySelected
-			? [legacySelected]
-			: [];
-	const enabledModels = enabledModelsSource.filter((model) => modelList.includes(model));
-	const selectedModel = enabledModels[0] ?? '';
-
-	const id = String(provider.id || fallback?.id || `provider-${Date.now()}`).trim();
-	const builtIn = DEFAULT_PROVIDERS.find((item) => item.id === id);
-
-	return {
-		id,
-		name: builtIn?.name ?? String(provider.name || fallback?.name || 'Provider').trim(),
-		method,
-		enabled:
-			typeof provider.enabled === 'boolean' ? provider.enabled : (fallback?.enabled ?? false),
-		baseURL: String(provider.baseURL ?? fallback?.baseURL ?? '').trim(),
-		apiKey: String(provider.apiKey ?? fallback?.apiKey ?? '').trim(),
-		selectedModel,
-		models: [...modelList],
-		enabledModels
-	};
-}
-
-function normalizeProviders(providers: Partial<ProviderConfig>[] | undefined): ProviderConfig[] {
-	const saved = Array.isArray(providers) ? providers : [];
-	const normalizedDefaults = DEFAULT_PROVIDERS.map((provider) => {
-		const savedProvider = saved.find((p) => p.id === provider.id);
-		return normalizeProvider(savedProvider ?? provider, provider);
-	});
-	const customProviders = saved
-		.filter((provider) => !DEFAULT_PROVIDERS.some((p) => p.id === provider.id))
-		.map((provider) => normalizeProvider(provider));
-	return [...normalizedDefaults, ...customProviders];
-}
-
-function newProvider(id: string): ProviderConfig {
-	return {
-		id,
-		name: 'New Provider',
-		method: 'openai-compatible',
-		enabled: false,
-		baseURL: '',
-		apiKey: '',
-		selectedModel: '',
-		models: [],
-		enabledModels: []
-	};
-}
-
-function defaultAppearance() {
-	return {
-		heroComposer: { ...DEFAULT_HERO_COMPOSER_APPEARANCE },
-		caretTrail: defaultCaretTrailSettings()
-	};
-}
-
-function defaultCaretTrailSettings(): CaretTrailSettings {
-	return { enabled: true, intensity: 0.72, speed: 0.68 };
-}
-
-function normalizeUnit(value: unknown, fallback: number): number {
-	if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
-	return Math.min(1, Math.max(0, value));
-}
-
-function normalizeCaretTrailSettings(
-	settings: Partial<CaretTrailSettings> | undefined
-): CaretTrailSettings {
-	const defaults = defaultCaretTrailSettings();
-	return {
-		enabled: typeof settings?.enabled === 'boolean' ? settings.enabled : defaults.enabled,
-		intensity: normalizeUnit(settings?.intensity, defaults.intensity),
-		speed: normalizeUnit(settings?.speed, defaults.speed)
-	};
-}
-
-function defaultAppSettings(): AppSettings {
-	return { openAtLogin: false, hasSeenIntro: false };
-}
-
-function defaultSettings(): ProviderSettings {
-	const providers = DEFAULT_PROVIDERS.map(cloneProvider);
-	const active =
-		providers.find((provider) => provider.enabled && provider.enabledModels.length > 0) ??
-		providers[0];
-	return {
-		providers,
-		activeProviderId: active.id,
-		appearance: defaultAppearance(),
-		shortcuts: defaultKeyboardShortcuts(),
-		app: defaultAppSettings(),
-		cometmind: defaultCometMindSettings()
-	};
-}
-
-function fallbackSettings() {
-	const defaults = defaultSettings();
-	return {
-		providers: defaults.providers.map(cloneProvider),
-		activeProviderId: defaults.activeProviderId,
-		appearance: defaultAppearance(),
-		shortcuts: defaultKeyboardShortcuts(),
-		app: defaultAppSettings(),
-		cometmind: defaultCometMindSettings()
-	};
-}
+import { persistSettings } from '$lib/settings/persist';
 
 const LOCAL_SETTINGS_KEY = 'cometline-settings';
 
 function readLocalSettings(): ProviderSettings {
 	try {
 		const raw = localStorage.getItem(LOCAL_SETTINGS_KEY);
-		if (!raw) return fallbackSettings();
-		return normalizeSettings(JSON.parse(raw) as Partial<ProviderSettings>);
+		if (!raw) return defaultSettings();
+		return parseAndNormalizeSettings(JSON.parse(raw) as Partial<ProviderSettings>);
 	} catch {
-		return fallbackSettings();
+		return defaultSettings();
 	}
 }
 
@@ -220,37 +39,8 @@ function writeLocalSettings(settings: ProviderSettings) {
 	localStorage.setItem(LOCAL_SETTINGS_KEY, JSON.stringify(settings));
 }
 
-function normalizeSettings(next: Partial<ProviderSettings>): ProviderSettings {
-	const providers = normalizeProviders(next.providers);
-	const firstEnabled = providers.find(
-		(provider) => provider.enabled && provider.enabledModels.length > 0
-	);
-	const activeProviderId = firstEnabled?.id ?? next.activeProviderId ?? providers[0]?.id ?? '';
-	const appearance = {
-		heroComposer: normalizeHeroComposerAppearance(next.appearance?.heroComposer),
-		caretTrail: normalizeCaretTrailSettings(next.appearance?.caretTrail)
-	};
-	return {
-		providers,
-		activeProviderId,
-		appearance,
-		shortcuts: normalizeKeyboardShortcuts(next.shortcuts),
-		app: {
-			openAtLogin:
-				typeof next.app?.openAtLogin === 'boolean'
-					? next.app.openAtLogin
-					: defaultAppSettings().openAtLogin,
-			hasSeenIntro:
-				typeof next.app?.hasSeenIntro === 'boolean'
-					? next.app.hasSeenIntro
-					: defaultAppSettings().hasSeenIntro
-		},
-		cometmind: normalizeCometMindSettings(next.cometmind)
-	};
-}
-
 function createSettingsStore() {
-	let settings = $state<ProviderSettings>(fallbackSettings());
+	let settings = $state<ProviderSettings>(defaultSettings());
 	let isLoading = $state(false);
 	let isSaving = $state(false);
 	let isFetchingModels = $state(false);
@@ -278,8 +68,6 @@ function createSettingsStore() {
 		isFetchingModels = true;
 		error = '';
 		try {
-			// Plain object required: Electron IPC uses structured clone, which rejects
-			// Svelte 5 reactive proxies from $state/$derived.
 			const models =
 				(await window.electronAPI?.fetchProviderModels?.(cloneProvider(provider))) ?? [];
 			const enabledModels = provider.enabledModels.filter((model) => models.includes(model));
@@ -297,25 +85,14 @@ function createSettingsStore() {
 
 	async function save(
 		draft: ProviderSettings,
-		options: { restartCometMind?: boolean } = {}
+		options: { restartCometMind?: boolean; memory?: MemorySettings } = {}
 	) {
 		isSaving = true;
 		error = '';
-		const restartCometMind = options.restartCometMind ?? true;
 		try {
-			const normalized = normalizeSettings(draft);
-			if (window.electronAPI?.saveProviderSettings) {
-				const saved = await window.electronAPI.saveProviderSettings(normalized, {
-					restartCometMind
-				});
-				apply(saved);
-				if (restartCometMind) connectionState.reconnect();
-				return saved;
-			}
-			writeLocalSettings(normalized);
-			apply(normalized);
-			if (restartCometMind) connectionState.reconnect();
-			return normalized;
+			const result = await persistSettings(draft, options);
+			apply(result.settings);
+			return result;
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to save settings';
 			throw err;
@@ -330,7 +107,6 @@ function createSettingsStore() {
 			...settings,
 			app: { ...settings.app, hasSeenIntro: true }
 		};
-		// Persist the flag without restarting CometMind (no provider change).
 		await save(next, { restartCometMind: false });
 	}
 
@@ -439,3 +215,21 @@ function createSettingsStore() {
 }
 
 export const settingsStore = createSettingsStore();
+
+export {
+	cloneCometMindSettings,
+	cloneProvider,
+	defaultSettings,
+	defaultKeyboardShortcuts,
+	migrateSingleProvider,
+	newProvider,
+	normalizeCometMindSettings,
+	normalizeProvider,
+	normalizeProviders,
+	normalizeSettings,
+	OPENCODE_GO_AVAILABLE_MODELS,
+	runtimeProviders,
+	runtimeSlice,
+	type CometMindSettings,
+	type RuntimeSettingsSlice
+};
