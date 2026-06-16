@@ -11,37 +11,40 @@ go:     1.25
 
 ## Role in the Cometline stack
 
-Comet SDK is the **LLM I/O layer** of the Cometline stack. It is consumed by **CometMind** (the general AI agent runtime), giving it uniform model access regardless of provider.
+Comet SDK is the **LLM I/O layer** of the Cometline stack. CometMind consumes it for uniform model access regardless of provider.
 
 ```
 ┌─────────────────────────────────────────────┐
-│  cometline   Electron desktop shell           │  ← UI
+│  cometline   Electron desktop shell         │  ← UI
 ├─────────────────────────────────────────────┤
-│  cometmind   General AI agent runtime         │  ← brain
-│              (agent loop, tools, persistence; │
-│               delegates coding to OpenCode    │
-│               via ACP)                        │
+│  cometmind   General AI agent runtime       │  ← brain
+│              (agent loop, tools, memory,    │
+│               ACP delegation, persistence)  │
 ├─────────────────────────────────────────────┤
-│  comet-sdk   Provider-agnostic LLM I/O        │  ← this repo
+│  comet-sdk   Provider-agnostic LLM I/O      │  ← this repo
 └─────────────────────────────────────────────┘
 ```
 
-Comet SDK deliberately stays a **pure LLM I/O library**: it does not contain an agent loop, does not execute tools, and does not persist anything. That separation lets CometMind own orchestration while the SDK focuses solely on talking to models cleanly across providers.
+Comet SDK deliberately stays a **pure LLM I/O library**: no agent loop, no tool execution, no persistence, no memory. CometMind owns orchestration; the SDK focuses on talking to models cleanly across providers.
 
 ---
 
 ## What it does
 
-Comet SDK gives you a single `Provider` interface that works identically for Anthropic, OpenAI, and any OpenAI-compatible endpoint (e.g. a company unified API). It handles:
+Comet SDK gives you a single `Provider` interface that works identically for Anthropic, OpenAI, and any OpenAI-compatible endpoint (DeepSeek, company gateways, OpenCode Zen, etc.). It handles:
 
 - Streaming responses over SSE
+- Reasoning / chain-of-thought events (`ReasoningStartEvent`, `ReasoningContentEvent`)
+- Multimodal user input (`ImageBlock` with base64 data URLs)
 - Tool calling with full delta assembly
 - Provider-specific message normalisation
-- Automatic retry with exponential backoff
-- Token usage tracking
+- Automatic retry with exponential backoff (429, 5xx, Anthropic 529)
+- Token usage tracking, including Anthropic prompt-cache fields
 - Structured debug logging via `log/slog`
 
-For most callers, the recommended public entry point is the `llm` package, especially `llm.GenerateMessage` and `llm.StreamMessage`. Use `Provider.Stream()` directly when you need lower-level control over raw events.
+For most callers, the recommended public entry point is the `llm` package: `llm.GenerateMessage`, `llm.StreamMessage`, and `llm.GenerateJSON`.
+
+Use `Provider.Stream()` directly when you need lower-level control over raw events.
 
 ---
 
@@ -51,7 +54,7 @@ For most callers, the recommended public entry point is the `llm` package, espec
 ┌─────────────────────────────────────────────────────────────┐
 │                         caller                              │
 │                                                             │
-│   provider.Stream(ctx, &Request{                            │
+│   llm.StreamMessage(ctx, provider, &Request{                 │
 │       Model, Messages, Tools, System,                       │
 │       MaxTokens, Options["openai"|"anthropic"]              │
 │   })                                                        │
@@ -62,13 +65,12 @@ For most callers, the recommended public entry point is the `llm` package, espec
 │                   cometsdk  (sdk.go)                        │
 │                                                             │
 │  Provider · Request · Message · Block                       │
-│  Event (TextDelta · ToolCallStart · ToolCallDelta ·         │
-│         ToolCallDone · StepFinish · Error · Done)           │
+│  Event (TextDelta · Reasoning* · ToolCall* · StepFinish ·   │
+│         Error · Done)                                       │
 │  Tool · TokenUsage · ProviderConfig · Option                │
 │                                                             │
 │  errors.go                                                  │
-│  AuthError · RateLimitError · ServerError ·                 │
-│  ContextLengthError · StreamError                           │
+│  AuthError · RateLimitError · ServerError · StreamError     │
 └────────────────┬──────────────────────┬─────────────────────┘
                  │                      │
     ┌────────────▼────────┐  ┌──────────▼───────────┐
@@ -77,29 +79,24 @@ For most callers, the recommended public entry point is the `llm` package, espec
     │  client.go           │  │  client.go            │
     │  convert.go          │  │  convert.go           │
     │  stream.go           │  │  stream.go            │
-    │  fixtures/           │  │  fixtures/            │
-    └────────┬─────────────┘  └──────────┬────────────┘
-             │                           │
+    │  fixtures/           │  │  reasoning.go         │
+    └────────┬─────────────┘  │  fixtures/            │
+             │                └──────────┬─────────────┘
              └─────────────┬─────────────┘
                            │
            ┌───────────────▼───────────────┐
            │          internal/            │
            │                               │
            │  sse/scanner.go               │
-           │  bufio.Scanner wrapper        │
-           │  parses event: / data: lines  │
-           │                               │
            │  retry/retry.go               │
-           │  cenkalti/backoff/v4          │
-           │  1s → 2s → 4s + jitter        │
-           │  Retry-After · ctx cancel     │
+           │  providerbase/providerbase.go │
            └───────────────────────────────┘
                         │
           ┌─────────────┼──────────────────┐
           ▼             ▼                  ▼
-   Anthropic API   OpenAI API      Company Unified API
-   /v1/messages    /v1/chat/       (OpenAI-compatible)
-                   completions     WithBaseURL(...)
+   Anthropic API   OpenAI API      OpenAI-compatible APIs
+   /v1/messages    /v1/chat/       (DeepSeek, gateways, etc.)
+                   completions
 ```
 
 ---
@@ -108,6 +105,12 @@ For most callers, the recommended public entry point is the `llm` package, espec
 
 ```bash
 go get github.com/cometline/comet-sdk
+```
+
+In this monorepo, CometMind uses a local replace:
+
+```go
+replace github.com/cometline/comet-sdk => ../comet-sdk
 ```
 
 ---
@@ -174,8 +177,8 @@ import (
 )
 
 p := openai.NewOpenAIProvider(
-    os.Getenv("CUSTOM_API_KEY"),
-    cometsdk.WithBaseURL("https://your-company-api.example.com"),
+    os.Getenv("OPENAI_API_KEY"),
+    cometsdk.WithBaseURL("https://api.openai.com"),
 )
 
 req := &cometsdk.Request{
@@ -183,16 +186,11 @@ req := &cometsdk.Request{
     MaxTokens: 1000,
     Messages: []cometsdk.Message{
         {
-            Role:    cometsdk.RoleUser,
-            Content: []cometsdk.Block{cometsdk.TextBlock{Text: "What is the capital of France?"}},
-        },
-    },
-    // Provider-specific parameters via Options
-    Options: map[string]any{
-        "openai": map[string]any{
-            "temperature":      0.8,
-            "top_p":            1.0,
-            "presence_penalty": 1.0,
+            Role: cometsdk.RoleUser,
+            Content: []cometsdk.Block{
+                cometsdk.TextBlock{Text: "What is in this image?"},
+                cometsdk.ImageBlock{MediaType: "image/png", Data: base64PNG},
+            },
         },
     },
 }
@@ -203,8 +201,8 @@ for ev := range stream.Events() {
     switch e := ev.(type) {
     case cometsdk.TextDeltaEvent:
         fmt.Print(e.Text)
-    case cometsdk.ToolCallStartEvent:
-        fmt.Printf("\n[start tool %s]\n", e.Name)
+    case cometsdk.ReasoningContentEvent:
+        fmt.Print(e.Text) // chain-of-thought tokens
     case cometsdk.ToolCallDoneEvent:
         fmt.Printf("\n[done tool %s input=%s]\n", e.Name, e.Input)
     }
@@ -218,9 +216,15 @@ if err != nil {
 fmt.Printf("\nfinish=%s tool_calls=%d\n", result.FinishReason, len(result.ToolCalls))
 ```
 
+**Important:** drain `Events()` before calling `Result()` — otherwise the stream deadlocks.
+
+### JSON extraction: `llm.GenerateJSON`
+
+For structured extraction (used by CometMind memory), `GenerateJSON` sets OpenAI `response_format: json_object` or appends a JSON-only hint for Anthropic, then parses the model output into your struct.
+
 ### Lower-level primitive: `Provider.Stream()`
 
-Use `Provider.Stream()` directly when you want raw provider-normalized events and will assemble the response yourself.
+Use `Provider.Stream()` when you want raw provider-normalized events and will assemble the response yourself.
 
 ```go
 ch, err := p.Stream(context.Background(), req)
@@ -231,6 +235,8 @@ if err != nil {
 for event := range ch {
     switch e := event.(type) {
     case cometsdk.TextDeltaEvent:
+        fmt.Print(e.Text)
+    case cometsdk.ReasoningContentEvent:
         fmt.Print(e.Text)
     case cometsdk.ToolCallDoneEvent:
         fmt.Printf("\n[tool: %s(%s)]\n", e.Name, e.Input)
@@ -244,12 +250,30 @@ for event := range ch {
 
 ---
 
+## Event vocabulary
+
+| Event | Meaning |
+|---|---|
+| `TextDeltaEvent` | Visible answer text chunk |
+| `ReasoningStartEvent` | Reasoning block begins |
+| `ReasoningContentEvent` | Reasoning token chunk |
+| `ToolCallStartEvent` | Tool call started (name known, input may be partial) |
+| `ToolCallDeltaEvent` | Partial tool argument JSON |
+| `ToolCallDoneEvent` | Complete tool call with valid JSON input |
+| `StepFinishEvent` | One model step ended; carries `FinishReason` and `TokenUsage` |
+| `ErrorEvent` | Mid-stream failure; channel closes after |
+| `DoneEvent` | Terminal success marker |
+
+After `Collect` / `StreamMessage.Result`, reasoning is stored separately in `Message.ReasoningContent` as `ReasoningBlock` values — not mixed into the main answer text.
+
+---
+
 ## Provider-specific options
 
 Any parameter not in the `Request` struct can be passed through `Options` without changing SDK code:
 
 ```go
-// Anthropic — thinking, top_k, top_p, etc.
+// Anthropic — thinking, top_k, top_p, cache_control, etc.
 Options: map[string]any{
     "anthropic": map[string]any{
         "top_k": 40,
@@ -273,6 +297,8 @@ Options: map[string]any{
 
 SDK-managed fields (`model`, `messages`, `stream`, `max_tokens`) cannot be overridden via Options.
 
+Pass temperature through Options — the top-level `Request.Temperature` field exists but is not wired to providers yet.
+
 ---
 
 ## Configuration options
@@ -284,6 +310,7 @@ p := anthropic.NewAnthropicProvider(apiKey,
     cometsdk.WithMaxRetries(3),
     cometsdk.WithHTTPClient(myHTTPClient),
     cometsdk.WithLogger(slog.Default()),
+    cometsdk.WithBearerAuth(), // unified gateway auth for Anthropic
 )
 ```
 
@@ -297,6 +324,18 @@ p := anthropic.NewAnthropicProvider(apiKey, cometsdk.WithLogger(log))
 ```
 
 Pass `cometsdk.WithLogger(nil)` to silence all SDK output.
+
+---
+
+## OpenAI-compatible quirks handled in code
+
+The OpenAI provider includes compatibility shims for real-world gateways:
+
+- **`reasoning_content`** treated as a reasoning alias (DeepSeek and similar)
+- Embedded thinking tags in content (for example `<think>...</think>`)
+- **`reasoning_split`** retry for MiniMax / `mimo-*` models
+- Image input downgrade when a model rejects vision (retries with a text placeholder)
+- `stream_options.include_usage: true` so usage arrives before `[DONE]`
 
 ---
 
@@ -318,9 +357,10 @@ if err != nil {
 |---|---|
 | `AuthError` | Invalid or missing API key (401/403) |
 | `RateLimitError` | Rate limited (429); carries `RetryAfter` |
-| `ServerError` | Provider 5xx response |
-| `ContextLengthError` | Input exceeds model context window |
+| `ServerError` | Provider non-success HTTP response (including context-length 400s) |
 | `StreamError` | Error occurring mid-stream (after HTTP 200) |
+
+Finish reasons are normalized by `NormalizeFinishReason` to `stop`, `tool_use`, `max_tokens`, or `error`.
 
 ---
 
@@ -334,7 +374,10 @@ make test-openai        # OpenAI package only
 make test-live          # real API calls (requires env vars)
 make test-live-anthropic
 make test-live-openai
+make lint               # golangci-lint (must be installed)
 ```
+
+Provider packages replay checked-in SSE fixtures under `provider/*/fixtures/` via `httptest` — update fixtures when parser behavior changes.
 
 **Live test environment variables:**
 
@@ -346,13 +389,11 @@ export CUSTOM_BASE_URL="https://your-company-api.example.com"
 export CUSTOM_BASE_URL="https://your-company-api.example.com/v1"
 
 # Direct provider access (used as fallback when CUSTOM_API_KEY is not set)
-export ANTHROPIC_API_KEY="sk-ant-..."   # fallback for Anthropic live tests
-export OPENAI_API_KEY="sk-..."          # fallback for OpenAI live tests
+export ANTHROPIC_API_KEY="sk-ant-..."
+export OPENAI_API_KEY="sk-..."
 
-# CUSTOM_BASE_URL applies to any provider and accepts either a root URL or
-# a /v1-suffixed URL:
-#   Anthropic → replaces https://api.anthropic.com
-#   OpenAI    → replaces https://api.openai.com
+# Optional model override for llm live tests
+export LIVE_TEST_MODEL="gpt-4o"
 ```
 
 ---
@@ -366,7 +407,3 @@ export OPENAI_API_KEY="sk-..."          # fallback for OpenAI live tests
 | `log/slog` | Structured logging (stdlib) |
 
 ---
-
-## Documentation
-
-- [`docs/HLD.md`](docs/HLD.md) — High-level design document
