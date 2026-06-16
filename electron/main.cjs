@@ -1532,6 +1532,10 @@ app.whenReady().then(async () => {
 	// Serve the packaged bundle over the custom app:// scheme.
 	if (app.isPackaged) registerAppProtocol();
 
+	if (process.platform === 'darwin') {
+		ensureTray();
+	}
+
 	// Ensure CometMind config exists before starting so the active provider is
 	// available even on first launch.
 	writeCometMindConfig(readProviderSettings());
@@ -1547,9 +1551,6 @@ app.whenReady().then(async () => {
 	}
 	await createWindow();
 	configureAutoUpdater();
-	if (process.platform === 'darwin') {
-		ensureTray();
-	}
 
 	app.on('activate', () => {
 		// Reopening from the Dock: re-show the warm, hidden window if it still
