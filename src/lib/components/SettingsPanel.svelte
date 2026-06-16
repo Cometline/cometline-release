@@ -15,7 +15,8 @@
 		Trash2,
 		Workflow,
 		X,
-		Brain
+		Brain,
+		Sparkles
 	} from '@lucide/svelte';
 	import type {
 		ProviderConfig,
@@ -92,7 +93,10 @@
 				caretTrail: { ...settings.appearance.caretTrail }
 			},
 			shortcuts: cloneShortcuts(settings),
-			app: { openAtLogin: settings.app?.openAtLogin ?? false },
+			app: {
+				openAtLogin: settings.app?.openAtLogin ?? false,
+				hasSeenIntro: settings.app?.hasSeenIntro ?? false
+			},
 			cometmind: cloneCometMindSettings(normalizeCometMindSettings(settings.cometmind))
 		};
 	}
@@ -218,6 +222,11 @@
 		const selected = await api.selectWorkspacePath();
 		if (!selected) return;
 		shellStore.setWorkspacePath(selected);
+	}
+
+	function replayIntro() {
+		shellStore.closeSettings();
+		shellStore.openIntro();
 	}
 
 	function updateProvider(providerId: string, patch: Partial<ProviderConfig>) {
@@ -918,6 +927,16 @@
 									Check for updates
 								</button>
 							{/if}
+						</div>
+						<div class="about-row">
+							<div class="update-info">
+								<span class="about-label">Intro</span>
+								<span class="about-value">Replay the first-run animation</span>
+							</div>
+							<button class="secondary" onclick={replayIntro}>
+								<Sparkles size={14} />
+								Replay intro
+							</button>
 						</div>
 					</div>
 				{/if}

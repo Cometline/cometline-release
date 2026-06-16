@@ -1,4 +1,4 @@
-import type { CaretTrailSettings, ProviderConfig, ProviderSettings } from '$lib/types';
+import type { AppSettings, CaretTrailSettings, ProviderConfig, ProviderSettings } from '$lib/types';
 import {
 	cloneCometMindSettings,
 	defaultCometMindSettings,
@@ -174,7 +174,7 @@ function normalizeCaretTrailSettings(
 }
 
 function defaultAppSettings(): AppSettings {
-	return { openAtLogin: false };
+	return { openAtLogin: false, hasSeenIntro: false };
 }
 
 function defaultSettings(): ProviderSettings {
@@ -239,7 +239,11 @@ function normalizeSettings(next: Partial<ProviderSettings>): ProviderSettings {
 			openAtLogin:
 				typeof next.app?.openAtLogin === 'boolean'
 					? next.app.openAtLogin
-					: defaultAppSettings().openAtLogin
+					: defaultAppSettings().openAtLogin,
+			hasSeenIntro:
+				typeof next.app?.hasSeenIntro === 'boolean'
+					? next.app.hasSeenIntro
+					: defaultAppSettings().hasSeenIntro
 		},
 		cometmind: normalizeCometMindSettings(next.cometmind)
 	};
@@ -318,6 +322,16 @@ function createSettingsStore() {
 		} finally {
 			isSaving = false;
 		}
+	}
+
+	async function markIntroSeen() {
+		if (settings.app.hasSeenIntro) return;
+		const next: ProviderSettings = {
+			...settings,
+			app: { ...settings.app, hasSeenIntro: true }
+		};
+		// Persist the flag without restarting CometMind (no provider change).
+		await save(next, { restartCometMind: false });
 	}
 
 	async function saveShortcuts(shortcuts: ProviderSettings['shortcuts']) {
@@ -414,6 +428,7 @@ function createSettingsStore() {
 		load,
 		fetchModelsFor,
 		save,
+		markIntroSeen,
 		saveShortcuts,
 		setActiveProvider,
 		updateProvider,

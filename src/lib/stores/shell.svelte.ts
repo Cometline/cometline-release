@@ -6,6 +6,7 @@ export type FocusedPane = 'chat' | 'web';
 function createShellStore() {
 	let sidebarOpen = $state(true);
 	let settingsOpen = $state(false);
+	let introOpen = $state(false);
 	let composerPhase = $state<'centered' | 'docked'>('centered');
 	let workspacePath = $state('/');
 	let bootMessage = $state('');
@@ -41,6 +42,9 @@ function createShellStore() {
 		},
 		get settingsOpen() {
 			return settingsOpen;
+		},
+		get introOpen() {
+			return introOpen;
 		},
 		get composerPhase() {
 			return composerPhase;
@@ -87,6 +91,12 @@ function createShellStore() {
 		},
 		closeSettings() {
 			settingsOpen = false;
+		},
+		openIntro() {
+			introOpen = true;
+		},
+		closeIntro() {
+			introOpen = false;
 		},
 		dockComposer() {
 			composerPhase = 'docked';

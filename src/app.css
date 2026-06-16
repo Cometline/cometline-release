@@ -66,6 +66,15 @@
 	--hero-composer-impact-scale: 1.01;
 	--duration-hero-exit-ring: 0.24s;
 
+	/* Intro sequence (first-run cinematic) */
+	--intro-bg: #07090e;
+	--intro-ink: #f3f0e7;
+	--intro-ink-soft: rgba(243, 240, 231, 0.62);
+	--intro-gold: #d8c08a;
+	--ease-intro: cubic-bezier(0.16, 1, 0.3, 1);
+	--duration-intro-enter: 1.1s;
+	--duration-intro-exit: 0.9s;
+
 	/* Hero composer aura (default blue; overridden by settings) */
 	--hero-composer-glow-color: #72c0ff;
 	--hero-composer-glow-strong: rgba(114, 192, 255, 0.52);

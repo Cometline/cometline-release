@@ -13,7 +13,12 @@
 
 	onMount(() => {
 		connectionState.startPolling();
-		void settingsStore.load();
+		void settingsStore.load().then(() => {
+			// First launch: play the cinematic intro once.
+			if (!settingsStore.settings.app.hasSeenIntro) {
+				shellStore.openIntro();
+			}
+		});
 		void initializeWorkspace();
 		return () => connectionState.stopPolling();
 	});

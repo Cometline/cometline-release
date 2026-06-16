@@ -130,6 +130,7 @@ import type { CometMindSettings } from '$lib/cometmind-settings';
 
 export interface AppSettings {
 	openAtLogin: boolean;
+	hasSeenIntro: boolean;
 }
 
 export interface ProviderSettings {

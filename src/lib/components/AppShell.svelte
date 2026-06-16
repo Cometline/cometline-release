@@ -3,6 +3,7 @@
 	import Sidebar from './Sidebar.svelte';
 	import RuntimeOverlay from './RuntimeOverlay.svelte';
 	import SettingsModal from './SettingsModal.svelte';
+	import IntroAnimation from './IntroAnimation.svelte';
 	import UpdateButton from './UpdateButton.svelte';
 	import WebPanel from './WebPanel.svelte';
 	import { shellStore } from '$lib/stores/shell.svelte';
@@ -195,6 +196,9 @@
 	</div>
 	<SettingsModal />
 	<UpdateButton />
+	{#if shellStore.introOpen}
+		<IntroAnimation />
+	{/if}
 </div>
 
 <style>

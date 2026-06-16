@@ -56,6 +56,7 @@ declare global {
 
 	interface AppSettings {
 		openAtLogin: boolean;
+		hasSeenIntro: boolean;
 	}
 
 	interface OpenAtLoginState {
