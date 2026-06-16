@@ -678,6 +678,7 @@ function sendOpenWebPanel() {
 
 // macOS menu bar icons are 16pt. Ship trayIcon.png (16px) + trayIcon@2x.png (32px);
 // Electron picks @2x on Retina when both sit in the same folder.
+// Regenerate from buildResources/icon.png (center-crop ~850px) — see docs/postmortem/macos-tray-icon-oversized-and-gray.md.
 function resolveTrayResourcePath(filename) {
 	if (app.isPackaged) {
 		return path.join(process.resourcesPath, filename);

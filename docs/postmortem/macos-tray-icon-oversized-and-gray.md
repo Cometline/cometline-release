@@ -7,6 +7,8 @@
 
 The Cometline menu bar icon on macOS was visibly larger than the surrounding system tray icons and appeared as a gray/white blob instead of the project avatar.
 
+After the 16×16 / 32×32 fix, a follow-up report showed the icon **too small** next to neighbors: the assets were regenerated from `static/project_avatar_96.png` (circular avatar on a square canvas), so at 16pt most of the slot was empty padding rather than artwork.
+
 ## Root cause
 
 Two separate issues stacked together:
@@ -50,9 +52,13 @@ sips -z 32 32 static/project_avatar_96.png --out buildResources/trayIcon.png
 Electron’s documented approach: load `trayIcon.png` by path; on Retina it automatically picks the `@2x` sibling. No manual `scaleFactor` re-wrap needed.
 
 ```bash
-sips -z 16 16 static/project_avatar_96.png --out buildResources/trayIcon.png
-sips -z 32 32 static/project_avatar_96.png --out buildResources/trayIcon@2x.png
+# Crop ~85% from the center of icon.png so the squircle fills the menu bar slot.
+sips -c 850 850 buildResources/icon.png --out /tmp/tray-crop.png
+sips -z 16 16 /tmp/tray-crop.png --out buildResources/trayIcon.png
+sips -z 32 32 /tmp/tray-crop.png --out buildResources/trayIcon@2x.png
 ```
+
+Do **not** use `static/project_avatar_96.png` for tray icons — the circular avatar leaves heavy padding at 16×16 and reads as a tiny dot in the menu bar.
 
 Both files must be bundled (`package.json` `extraResources`) and live in the same folder in dev (`buildResources/`).
 
@@ -68,7 +74,7 @@ Both files must be bundled (`package.json` `extraResources`) and live in the sam
 
 | What to change | File | Notes |
 | -------------- | ---- | ----- |
-| Colored avatar source | `static/project_avatar_96.png` | Regenerate `trayIcon.png` (16×16) and `trayIcon@2x.png` (32×32). |
+| Colored tray source | `buildResources/icon.png` | Center-crop ~850×850 from the 1024 squircle, then export 16×16 + 32×32. Avoid `project_avatar_96.png` (circular, too much padding at menu bar size). |
 | Monochrome menu bar icon | `buildResources/trayTemplate.png` | Must be a true template (single color with alpha). Keep the `Template.png` suffix so `setTemplateImage(true)` is applied. |
 | Candidate order | `electron/main.cjs` | First-match wins; put the desired icon first. |
 | Menu bar icon size | `buildResources/trayIcon.png` + `trayIcon@2x.png` | 16×16 + 32×32 pair; never a lone 32px file at scaleFactor 1.0. |
