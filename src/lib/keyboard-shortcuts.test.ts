@@ -97,4 +97,9 @@ describe('keyboard-shortcuts', () => {
 			shift: true
 		});
 	});
+
+	it('includes openWebPanel default shortcut', () => {
+		const normalized = normalizeKeyboardShortcuts({});
+		expect(normalized.openWebPanel).toEqual({ command: true, key: 'o' });
+	});
 });

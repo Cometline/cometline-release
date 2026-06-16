@@ -9,7 +9,8 @@ export type ShortcutAction =
 	| 'focusSearch'
 	| 'previousSession'
 	| 'nextSession'
-	| 'toggleWebPanel';
+	| 'toggleWebPanel'
+	| 'openWebPanel';
 
 export interface ShortcutBinding {
 	key: string;
@@ -83,6 +84,11 @@ export const SHORTCUT_DEFINITIONS: KeyboardShortcutDefinition[] = [
 		id: 'toggleWebPanel',
 		label: 'Toggle web panel',
 		defaultBinding: { command: true, alt: true, key: 'b' }
+	},
+	{
+		id: 'openWebPanel',
+		label: 'Open web panel',
+		defaultBinding: { command: true, key: 'o' }
 	}
 ];
 

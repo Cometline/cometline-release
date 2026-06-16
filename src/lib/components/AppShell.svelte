@@ -79,6 +79,11 @@
 				shellStore.toggleWebPanel();
 				return;
 			}
+			if (matchesShortcut(event, shortcuts.openWebPanel)) {
+				event.preventDefault();
+				shellStore.openWebPanelFromShortcut();
+				return;
+			}
 			if (matchesShortcut(event, shortcuts.openSettings)) {
 				event.preventDefault();
 				shellStore.openSettings();
@@ -124,6 +129,11 @@
 			shellStore.toggleWebPanel();
 		});
 
+		const unsubscribeOpenWebPanel = window.electronAPI?.onOpenWebPanel?.(() => {
+			if (shellStore.settingsOpen) return;
+			shellStore.openWebPanelFromShortcut();
+		});
+
 		function updateFullScreen(isFullScreen: boolean) {
 			if (import.meta.env.DEV) {
 				console.log('[AppShell] fullscreen state:', isFullScreen);
@@ -143,6 +153,7 @@
 			unsubscribeNavigate?.();
 			unsubscribeCloseWebPanel?.();
 			unsubscribeToggleWebPanel?.();
+			unsubscribeOpenWebPanel?.();
 			unsubscribeFullScreen?.();
 			document.removeEventListener('fullscreenchange', onDomFullScreenChange);
 		};

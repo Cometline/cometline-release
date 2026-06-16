@@ -1,15 +1,9 @@
 import { openExternalLink } from '$lib/external-link';
 import { getActiveSessionId } from '$lib/active-session';
 import { shellStore } from '$lib/stores/shell.svelte';
+import { isWebPanelUrl } from '$lib/web-panel-url';
 
-export function isWebPanelUrl(rawUrl: string): boolean {
-	try {
-		const parsed = new URL(String(rawUrl));
-		return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-	} catch {
-		return false;
-	}
-}
+export { isWebPanelUrl, normalizeUserUrl } from '$lib/web-panel-url';
 
 /** Opens http(s) links in the in-app web panel; mailto and dev fallback stay external. */
 export function openLink(rawUrl: string): void {

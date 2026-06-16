@@ -54,7 +54,8 @@ function defaultShortcuts() {
 		focusSearch: { command: true, key: 'f' },
 		previousSession: { ctrl: true, meta: true, key: 'ArrowUp' },
 		nextSession: { ctrl: true, meta: true, key: 'ArrowDown' },
-		toggleWebPanel: { command: true, alt: true, key: 'b' }
+		toggleWebPanel: { command: true, alt: true, key: 'b' },
+		openWebPanel: { command: true, key: 'o' }
 	};
 }
 
@@ -669,6 +670,12 @@ function sendToggleWebPanel() {
 	}
 }
 
+function sendOpenWebPanel() {
+	if (mainWindow && !mainWindow.isDestroyed()) {
+		mainWindow.webContents.send('cometline:open-web-panel');
+	}
+}
+
 // macOS menu bar icons are 16pt. Ship trayIcon.png (16px) + trayIcon@2x.png (32px);
 // Electron picks @2x on Retina when both sit in the same folder.
 function resolveTrayResourcePath(filename) {
@@ -877,6 +884,11 @@ function handleWebPanelGuestShortcuts(event, input) {
 	if (matchesInputShortcut(input, shortcuts.toggleWebPanel)) {
 		event.preventDefault();
 		sendToggleWebPanel();
+		return true;
+	}
+	if (matchesInputShortcut(input, shortcuts.openWebPanel)) {
+		event.preventDefault();
+		sendOpenWebPanel();
 		return true;
 	}
 	return false;

@@ -13,6 +13,7 @@ function createShellStore() {
 	let fullscreen = $state(false);
 	let webPanelsBySession = $state<Record<string, SessionWebPanel>>({});
 	let focusedPane = $state<FocusedPane>('chat');
+	let addressBarFocusRequestId = $state(0);
 
 	function activeSessionId(): string | null {
 		return getActiveSessionId();
@@ -68,6 +69,9 @@ function createShellStore() {
 		get hasWebPanelForSession() {
 			return panelForActiveSession() !== null;
 		},
+		get addressBarFocusRequestId() {
+			return addressBarFocusRequestId;
+		},
 		setWorkspacePath(path: string) {
 			workspacePath = path;
 		},
@@ -118,6 +122,51 @@ function createShellStore() {
 			};
 			focusedPane = 'web';
 			syncWebPanelOpen(true);
+		},
+		openWebPanelEmpty() {
+			const sessionId = activeSessionId();
+			if (!sessionId) return;
+			webPanelsBySession = {
+				...webPanelsBySession,
+				[sessionId]: { url: '', visible: true }
+			};
+			focusedPane = 'web';
+			syncWebPanelOpen(true);
+			addressBarFocusRequestId += 1;
+		},
+		navigateWebPanel(url: string) {
+			const sessionId = activeSessionId();
+			if (!sessionId) return;
+			webPanelsBySession = {
+				...webPanelsBySession,
+				[sessionId]: { url, visible: true }
+			};
+			focusedPane = 'web';
+			syncWebPanelOpen(true);
+		},
+		requestAddressBarFocus() {
+			const sessionId = activeSessionId();
+			if (!sessionId) return;
+			const panel = webPanelsBySession[sessionId];
+			if (!panel) return;
+			if (!panel.visible) {
+				webPanelsBySession = {
+					...webPanelsBySession,
+					[sessionId]: { ...panel, visible: true }
+				};
+				syncWebPanelOpen(true);
+				focusedPane = 'web';
+			}
+			addressBarFocusRequestId += 1;
+		},
+		openWebPanelFromShortcut() {
+			const sessionId = activeSessionId();
+			if (!sessionId) return;
+			if (panelForActiveSession()) {
+				this.requestAddressBarFocus();
+				return;
+			}
+			this.openWebPanelEmpty();
 		},
 		toggleWebPanel() {
 			const sessionId = activeSessionId();

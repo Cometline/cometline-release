@@ -116,7 +116,8 @@ export type ShortcutAction =
 	| 'focusSearch'
 	| 'previousSession'
 	| 'nextSession'
-	| 'toggleWebPanel';
+	| 'toggleWebPanel'
+	| 'openWebPanel';
 
 export interface ShortcutBinding {
 	key: string;

@@ -2,7 +2,7 @@
 	import { ArrowLeft, ArrowRight, RotateCw, X } from '@lucide/svelte';
 	import { shellStore } from '$lib/stores/shell.svelte';
 	import { getActiveSessionId } from '$lib/active-session';
-	import { isWebPanelUrl, openLink } from '$lib/open-link';
+	import { isWebPanelUrl, normalizeUserUrl, openLink } from '$lib/open-link';
 	import { openExternalLink } from '$lib/external-link';
 
 	type WebviewElement = HTMLElement & {
@@ -10,6 +10,7 @@
 		goBack(): void;
 		goForward(): void;
 		reload(): void;
+		stop(): void;
 		canGoBack(): boolean;
 		canGoForward(): boolean;
 		getURL(): string;
@@ -17,28 +18,41 @@
 	};
 
 	let webviewEl = $state<WebviewElement | null>(null);
+	let addressInputEl = $state<HTMLInputElement | null>(null);
 	let canGoBack = $state(false);
 	let canGoForward = $state(false);
 	let loading = $state(false);
-	let displayUrl = $state('');
+	let addressInput = $state('');
 	let pageTitle = $state('');
 	let webviewSessionId = $state<string | null>(null);
 	let webviewLoadedUrl = $state<string | null>(null);
+	let addressEditing = $state(false);
 
 	const panelOpen = $derived(shellStore.webPanelOpen);
 	const panelUrl = $derived(shellStore.webPanelUrl);
 	const activeSessionId = $derived(getActiveSessionId());
+	const showWebview = $derived(Boolean(shellStore.hasWebPanelForSession && panelUrl));
+
+	function syncAddressFromNavigation() {
+		if (addressEditing) return;
+		const el = webviewEl;
+		if (el) {
+			try {
+				addressInput = el.getURL() || panelUrl || '';
+			} catch {
+				addressInput = panelUrl || '';
+			}
+			return;
+		}
+		addressInput = panelUrl || '';
+	}
 
 	function updateNavigationState() {
 		const el = webviewEl;
 		if (!el) return;
 		canGoBack = el.canGoBack();
 		canGoForward = el.canGoForward();
-		try {
-			displayUrl = el.getURL() || panelUrl || '';
-		} catch {
-			displayUrl = panelUrl || '';
-		}
+		syncAddressFromNavigation();
 		try {
 			pageTitle = el.getTitle() || '';
 		} catch {
@@ -66,6 +80,37 @@
 
 	function handlePanelMouseDown() {
 		shellStore.setFocusedPane('web');
+	}
+
+	function submitAddress() {
+		const normalized = normalizeUserUrl(addressInput);
+		if (!normalized) return;
+		addressEditing = false;
+		shellStore.navigateWebPanel(normalized);
+	}
+
+	function onAddressKeydown(event: KeyboardEvent) {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			submitAddress();
+			return;
+		}
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			addressEditing = false;
+			syncAddressFromNavigation();
+			addressInputEl?.blur();
+		}
+	}
+
+	function onAddressFocus() {
+		addressEditing = true;
+		shellStore.setFocusedPane('web');
+	}
+
+	function onAddressBlur() {
+		addressEditing = false;
+		syncAddressFromNavigation();
 	}
 
 	function onNewWindow(event: Event & { url?: string; preventDefault?: () => void }) {
@@ -117,6 +162,11 @@
 			el.removeEventListener('page-title-updated', onTitleUpdated);
 			el.removeEventListener('new-window', onNewWindow);
 			el.removeEventListener('focus', onFocus);
+			try {
+				el.stop();
+			} catch {
+				// ignore teardown errors
+			}
 		};
 	}
 
@@ -130,7 +180,9 @@
 			el.src = url;
 			webviewSessionId = sessionId;
 			webviewLoadedUrl = url;
-			displayUrl = url;
+			if (!addressEditing) {
+				addressInput = url;
+			}
 		}
 	});
 
@@ -141,20 +193,33 @@
 	});
 
 	$effect(() => {
-		const el = webviewEl;
+		panelUrl;
+		if (!addressEditing) {
+			syncAddressFromNavigation();
+		}
+	});
+
+	$effect(() => {
 		if (!shellStore.hasWebPanelForSession) {
 			loading = false;
 			canGoBack = false;
 			canGoForward = false;
 			pageTitle = '';
-			// Actually unload the webview when the panel is closed so media
-			// and other background activity stops instead of continuing hidden.
-			if (el && webviewLoadedUrl !== null) {
-				el.src = 'about:blank';
-				webviewLoadedUrl = null;
-				webviewSessionId = null;
+			webviewLoadedUrl = null;
+			webviewSessionId = null;
+			if (!addressEditing) {
+				addressInput = '';
 			}
 		}
+	});
+
+	$effect(() => {
+		const requestId = shellStore.addressBarFocusRequestId;
+		if (!requestId || !panelOpen) return;
+		queueMicrotask(() => {
+			addressInputEl?.focus();
+			addressInputEl?.select();
+		});
 	});
 </script>
 
@@ -182,15 +247,35 @@
 				>
 					<ArrowRight size={16} />
 				</button>
-				<button type="button" class="icon-button" onclick={onReload} aria-label="Reload">
+				<button
+					type="button"
+					class="icon-button"
+					disabled={!showWebview}
+					onclick={onReload}
+					aria-label="Reload"
+				>
 					<RotateCw size={16} class={loading ? 'spin' : ''} />
 				</button>
 			</div>
-			<div class="url-display" title={displayUrl}>
+			<div class="url-field">
 				{#if pageTitle}
 					<span class="page-title">{pageTitle}</span>
 				{/if}
-				<span class="page-url">{displayUrl}</span>
+				<input
+					bind:this={addressInputEl}
+					class="address-input"
+					type="text"
+					inputmode="url"
+					spellcheck="false"
+					autocapitalize="off"
+					autocomplete="off"
+					placeholder="Enter a URL"
+					bind:value={addressInput}
+					onfocus={onAddressFocus}
+					onblur={onAddressBlur}
+					onkeydown={onAddressKeydown}
+					aria-label="Web panel address"
+				/>
 			</div>
 			<button type="button" class="icon-button close-button" onclick={onClose} aria-label="Close panel">
 				<X size={16} />
@@ -198,8 +283,10 @@
 		</header>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class="web-panel-content" onmousedown={handlePanelMouseDown}>
-			<!-- Electron webview tag; inert in plain browser dev without Electron. -->
-			<webview bind:this={webviewEl} class="web-panel-view"></webview>
+			{#if showWebview}
+				<!-- Electron webview tag; inert in plain browser dev without Electron. -->
+				<webview bind:this={webviewEl} class="web-panel-view"></webview>
+			{/if}
 		</div>
 	</div>
 </div>
@@ -275,7 +362,7 @@
 		cursor: default;
 	}
 
-	.url-display {
+	.url-field {
 		flex: 1;
 		min-width: 0;
 		display: flex;
@@ -293,12 +380,24 @@
 		white-space: nowrap;
 	}
 
-	.page-url {
+	.address-input {
+		width: 100%;
+		min-width: 0;
+		border: none;
+		background: transparent;
 		font-size: 11px;
 		color: var(--text-muted);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		padding: 0;
+		outline: none;
+	}
+
+	.address-input:focus {
+		color: var(--text-main);
+	}
+
+	.address-input::placeholder {
+		color: var(--text-muted);
+		opacity: 0.7;
 	}
 
 	.close-button {
