@@ -20,6 +20,7 @@
 		embeddingOptionKey,
 		embeddingProviderForMethod,
 		mergeEmbeddingFields,
+		savedEmbeddingFromApi,
 		type SavedEmbeddingRef
 	} from '$lib/embedding-models';
 	import type { ProviderConfig } from '$lib/types';
@@ -45,13 +46,21 @@
 
 	let loadError = $state('');
 
+	const persistedEmbedding = $derived(
+		settings ? mergeEmbeddingFields(settings.embedding, savedEmbedding) : undefined
+	);
+
 	const embeddingDropdownOptions = $derived(
-		buildEmbeddingDropdownOptions(providers, savedEmbedding)
+		buildEmbeddingDropdownOptions(providers, savedEmbedding, persistedEmbedding)
 	);
 
 	function embeddingKeyForSettings(next: MemorySettings | null) {
 		if (!next) return '';
-		return embeddingKeyForFields(providers, next.embedding, savedEmbedding);
+		return embeddingKeyForFields(
+			providers,
+			mergeEmbeddingFields(next.embedding, savedEmbedding),
+			savedEmbedding
+		);
 	}
 
 	$effect(() => {
@@ -112,7 +121,7 @@
 			const [s, list] = await Promise.all([getMemorySettings(), listMemories()]);
 			const mergedEmbedding = mergeEmbeddingFields(s.embedding, savedEmbedding);
 			let nextSettings: MemorySettings = { ...s, embedding: mergedEmbedding };
-			if (!s.embedding.model.trim() && savedEmbedding?.model.trim()) {
+			if (!s.embedding.model.trim() && mergedEmbedding.model.trim()) {
 				nextSettings = await putMemorySettings(nextSettings);
 			}
 			settings = nextSettings;
@@ -129,22 +138,38 @@
 		}
 	}
 
-	async function saveSettings() {
-		if (!settings) return;
+	export function isBusy(): boolean {
+		return loading || saving;
+	}
+
+	export async function saveMemorySettings(): Promise<void> {
+		if (loading) {
+			throw new Error('Memory settings are still loading');
+		}
+		if (!settings) {
+			throw new Error('Memory settings are not available');
+		}
 		const payload = applyEmbeddingSelection();
-		if (!payload) return;
+		if (!payload) {
+			throw new Error('Memory settings are not available');
+		}
 		saving = true;
-		status = '';
 		try {
 			settings = await putMemorySettings(payload);
-			selectedEmbeddingKey = embeddingKeyForSettings(settings) || selectedEmbeddingKey;
+			const savedFromResponse = savedEmbeddingFromApi(settings.embedding);
+			selectedEmbeddingKey =
+				embeddingKeyForFields(providers, settings.embedding, savedFromResponse) ||
+				selectedEmbeddingKey;
 			await onEmbeddingSaved?.(settings.embedding);
-			status = 'Memory settings saved.';
 		} catch (error) {
-			status = error instanceof Error ? error.message : 'Failed to save settings';
+			throw error instanceof Error ? error : new Error('Failed to save memory settings');
 		} finally {
 			saving = false;
 		}
+	}
+
+	export function syncFields() {
+		// Memory settings persist via SettingsPanel footer Save.
 	}
 
 	async function addMemory() {
@@ -201,10 +226,6 @@
 		} catch (error) {
 			status = error instanceof Error ? error.message : 'Preview failed';
 		}
-	}
-
-	export function syncFields() {
-		// Settings are saved via explicit buttons in this panel.
 	}
 </script>
 
@@ -296,7 +317,6 @@
 				{#if compacting}<span class="spin"><LoaderCircle size={14} /></span>{/if}
 				Run compaction
 			</button>
-			<button class="primary" onclick={saveSettings} disabled={saving}>Save settings</button>
 		</div>
 
 		<div class="search-row">
@@ -469,8 +489,7 @@
 		color: var(--text-soft);
 	}
 
-	.secondary,
-	.primary {
+	.secondary {
 		border: none;
 		border-radius: 10px;
 		padding: 8px 11px;
@@ -480,16 +499,8 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 7px;
-	}
-
-	.secondary {
 		background: rgba(15, 23, 42, 0.04);
 		color: var(--text-main);
-	}
-
-	.primary {
-		background: var(--text-main);
-		color: white;
 	}
 
 	.icon {

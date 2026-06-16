@@ -279,6 +279,8 @@
 					: 'CometMind runtime saved.';
 			case 'general':
 				return 'General settings saved.';
+			case 'memory':
+				return 'Memory settings saved.';
 			default:
 				return 'Saved settings.';
 		}
@@ -315,6 +317,18 @@
 		const preservedSection = activeSection;
 		const preservedProviderId = selectedProviderId;
 		const preservedModelSearch = modelSearch;
+
+		if (activeSection === 'memory') {
+			try {
+				await memoryPanel?.saveMemorySettings();
+				status = saveStatusMessage('memory', false);
+			} catch (error) {
+				status =
+					error instanceof Error ? error.message : 'Failed to save memory settings';
+			}
+			return;
+		}
+
 		const activeProvider =
 			draft.providers.find(
 				(provider) => provider.enabled && provider.enabledModels.length > 0
@@ -438,8 +452,14 @@
 	}
 
 	async function persistMemoryEmbedding(embedding: MemorySettings['embedding']) {
-		const providerId = embedding.provider_id.trim();
+		let providerId = embedding.provider_id.trim();
 		const model = embedding.model.trim();
+		if ((!providerId || providerId === '__saved__') && model) {
+			const matched = draft.providers.find(
+				(p) => p.enabledModels.includes(model) || p.models.includes(model)
+			);
+			if (matched) providerId = matched.id;
+		}
 		let nextProviders = draft.providers.map(cloneProvider);
 		if (providerId && model) {
 			nextProviders = nextProviders.map((provider) => {
@@ -461,7 +481,7 @@
 				memory: {
 					...draft.cometmind.memory,
 					embedding: {
-						providerId: embedding.provider_id,
+						providerId: providerId || embedding.provider_id,
 						provider: embedding.provider,
 						model: embedding.model,
 						baseURL: embedding.base_url,
@@ -918,6 +938,8 @@
 					Runs Discord gateway while Cometline is open when enabled
 				{:else if activeSection === 'general'}
 					&nbsp;
+				{:else if activeSection === 'memory'}
+					Embedding and memory behavior save with Save below
 				{:else}
 					&nbsp;
 				{/if}
@@ -928,7 +950,8 @@
 				onclick={save}
 				disabled={settingsStore.isSaving ||
 					settingsStore.isFetchingModels ||
-					(activeSection === 'providers' && enabledModelCount === 0)}
+					(activeSection === 'providers' && enabledModelCount === 0) ||
+					(activeSection === 'memory' && memoryPanel?.isBusy?.())}
 			>
 				{#if settingsStore.isSaving}<span class="spin"><LoaderCircle size={14} /></span
 					>{/if}

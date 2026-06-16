@@ -138,6 +138,11 @@ function findProviderForSaved(
 		);
 		if (byMethod) return byMethod;
 	}
+	if (saved.model) {
+		return providers.find(
+			(p) => p.enabledModels.includes(saved.model) || p.models.includes(saved.model)
+		);
+	}
 	return undefined;
 }
 
@@ -147,7 +152,7 @@ function orphanOptionFromSaved(
 ): EmbeddingModelOption | undefined {
 	if (!trim(saved.model)) return undefined;
 	const provider = findProviderForSaved(providers, saved);
-	const providerId = saved.providerId || provider?.id || '';
+	const providerId = saved.providerId || provider?.id || '__saved__';
 	const providerName = provider?.name || saved.providerId || saved.provider || 'Saved provider';
 	const method = provider?.method ?? 'openai-compatible';
 	return {
@@ -201,21 +206,31 @@ export function resolveEmbeddingSelection(
 	if (savedMatch) return savedMatch;
 
 	const orphan = orphanOptionFromSaved(providers, savedRef);
-	if (orphan && orphan.providerId && orphan.model) {
-		const alreadyListed = options.some((opt) => embeddingOptionKey(opt) === embeddingOptionKey(orphan));
+	if (orphan?.model) {
+		const alreadyListed = options.some(
+			(opt) => embeddingOptionKey(opt) === embeddingOptionKey(orphan)
+		);
 		if (!alreadyListed) return orphan;
 	}
 
 	return undefined;
 }
 
+function persistedEmbeddingRef(
+	saved?: SavedEmbeddingRef,
+	current?: MemoryEmbeddingFields
+): SavedEmbeddingRef {
+	return savedEmbeddingFromApi(mergeEmbeddingFields(current, saved));
+}
+
 /** Dropdown options: enabled models plus an orphan entry for a persisted but disabled selection. */
 export function buildEmbeddingDropdownOptions(
 	providers: ProviderConfig[],
-	saved?: SavedEmbeddingRef
+	saved?: SavedEmbeddingRef,
+	current?: MemoryEmbeddingFields
 ): EmbeddingModelOption[] {
 	const options = listEmbeddingModelOptions(providers);
-	const savedRef = savedEmbeddingFromLocal(saved);
+	const savedRef = persistedEmbeddingRef(saved, current);
 	if (!trim(savedRef.model)) return options;
 
 	const resolved = resolveEmbeddingSelection(
@@ -224,7 +239,8 @@ export function buildEmbeddingDropdownOptions(
 		savedRef.model,
 		savedRef
 	);
-	if (!resolved?.orphan) return options;
+	if (!resolved) return options;
+	if (!resolved.orphan) return options;
 	if (options.some((opt) => embeddingOptionKey(opt) === embeddingOptionKey(resolved))) {
 		return options;
 	}
@@ -236,11 +252,12 @@ export function embeddingKeyForFields(
 	embedding: MemoryEmbeddingFields,
 	saved?: SavedEmbeddingRef
 ): string {
+	const persisted = persistedEmbeddingRef(saved, embedding);
 	const match = resolveEmbeddingSelection(
 		providers,
-		embedding.provider_id,
-		embedding.model,
-		saved ?? savedEmbeddingFromApi(embedding)
+		persisted.providerId,
+		persisted.model,
+		persisted
 	);
 	return match ? embeddingOptionKey(match) : '';
 }

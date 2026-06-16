@@ -79,6 +79,23 @@ describe('resolveEmbeddingSelection', () => {
 		expect(match?.orphan).toBe(true);
 		expect(match?.model).toBe('text-embedding-3-small');
 	});
+
+	it('returns orphan when provider id is missing but model is saved', () => {
+		const match = resolveEmbeddingSelection(
+			[baseProvider({ enabledModels: ['gpt-4o'] })],
+			'',
+			'text-embedding-3-small',
+			{
+				providerId: '',
+				provider: '',
+				model: 'text-embedding-3-small',
+				baseURL: '',
+				apiKey: ''
+			}
+		);
+		expect(match?.orphan).toBe(true);
+		expect(match?.providerId).toBe('openai');
+	});
 });
 
 describe('mergeEmbeddingFields', () => {
@@ -131,6 +148,23 @@ describe('buildEmbeddingDropdownOptions', () => {
 		});
 		expect(options).toHaveLength(1);
 		expect(options[0]?.orphan).toBe(true);
+	});
+
+	it('includes orphan from API current fields when local saved is empty', () => {
+		const providers = [baseProvider({ enabledModels: ['gpt-4o'] })];
+		const options = buildEmbeddingDropdownOptions(
+			providers,
+			undefined,
+			{
+				provider_id: 'openai',
+				provider: 'openai',
+				model: 'text-embedding-3-small',
+				base_url: 'https://api.openai.com/v1'
+			}
+		);
+		expect(options).toHaveLength(1);
+		expect(options[0]?.orphan).toBe(true);
+		expect(options[0]?.model).toBe('text-embedding-3-small');
 	});
 });
 
