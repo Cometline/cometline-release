@@ -107,6 +107,19 @@ CometMind stores durable facts, preferences, and project notes in SQLite with em
 
 Memory is configured under `[memory]` in config and exposed through REST (see API below). Cometline renders injected memories in the chat UI and provides a full memory settings panel.
 
+### Storage & retention
+
+Session and archived-memory cleanup runs once when CometMind starts (sidecar restart after saving General settings in Cometline). Configure under `cometmind.storage` in `cometline-settings.json` (or legacy `[storage]` in `config.toml` / `COMETMIND_STORAGE_*` env overrides):
+
+| Field | Default | Meaning |
+|---|---|---|
+| `retentionDays` | 90 | Delete sessions with no activity for N days; `0` disables |
+| `maxSessionsPerWorkspace` | 0 | Keep only the M most recently updated sessions per workspace; `0` disables |
+| `archivedMemoryPurgeDays` | 90 | Hard-delete archived memories older than N days; `0` disables |
+| `vacuumAfterPurge` | `true` | Run SQLite `VACUUM` after deletions to reclaim disk |
+
+Deleting a session also removes its Discord channel mapping (`gateway_sessions`); the next message in that channel starts a fresh session.
+
 ### Agent Skills
 
 CometMind discovers skills from standard install locations and injects a compact index into the system prompt:
@@ -243,7 +256,13 @@ Example JSON shape (Cometline writes the full file from Settings):
   "activeProviderId": "my-gateway",
   "cometmind": {
     "systemPromptPath": "/path/to/SOUL.md",
-    "memory": { "embedding": { "providerId": "", "model": "" } }
+    "memory": { "embedding": { "providerId": "", "model": "" } },
+    "storage": {
+      "retentionDays": 90,
+      "maxSessionsPerWorkspace": 0,
+      "archivedMemoryPurgeDays": 90,
+      "vacuumAfterPurge": true
+    }
   }
 }
 ```

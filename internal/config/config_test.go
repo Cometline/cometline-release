@@ -102,6 +102,15 @@ func TestLoadReadsCometlineSettingsJSON(t *testing.T) {
 	if cfg.SystemPromptPath != "/tmp/SOUL.md" {
 		t.Fatalf("SystemPromptPath = %q, want /tmp/SOUL.md", cfg.SystemPromptPath)
 	}
+	if cfg.Storage.RetentionDays != 90 {
+		t.Fatalf("Storage.RetentionDays = %d, want 90", cfg.Storage.RetentionDays)
+	}
+	if cfg.Storage.ArchivedMemoryPurgeDays != 90 {
+		t.Fatalf("Storage.ArchivedMemoryPurgeDays = %d, want 90", cfg.Storage.ArchivedMemoryPurgeDays)
+	}
+	if !cfg.Storage.VacuumAfterPurge {
+		t.Fatal("expected Storage.VacuumAfterPurge true")
+	}
 }
 
 func TestLoadReadsLegacyProvidersToml(t *testing.T) {
@@ -176,5 +185,11 @@ func TestAdaptCometlineSettingsMatchesRuntimeSlice(t *testing.T) {
 	}
 	if !cfg.Skills.IncludeOpenCode {
 		t.Fatal("expected skills.include_opencode true")
+	}
+	if cfg.Storage.RetentionDays != 90 {
+		t.Fatalf("Storage.RetentionDays = %d, want 90", cfg.Storage.RetentionDays)
+	}
+	if cfg.Storage.MaxSessionsPerWorkspace != 0 {
+		t.Fatalf("Storage.MaxSessionsPerWorkspace = %d, want 0", cfg.Storage.MaxSessionsPerWorkspace)
 	}
 }

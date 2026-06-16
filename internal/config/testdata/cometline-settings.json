@@ -64,6 +64,12 @@
         "apiKey": ""
       }
     },
+    "storage": {
+      "retentionDays": 90,
+      "maxSessionsPerWorkspace": 0,
+      "archivedMemoryPurgeDays": 90,
+      "vacuumAfterPurge": true
+    },
     "gateway": {
       "discord": {
         "enabled": false,

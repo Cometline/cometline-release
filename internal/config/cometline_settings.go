@@ -54,6 +54,13 @@ type cometlineDiscordJSON struct {
 	WorkspacePath   string   `json:"workspacePath"`
 }
 
+type cometlineStorageJSON struct {
+	RetentionDays           int  `json:"retentionDays"`
+	MaxSessionsPerWorkspace int  `json:"maxSessionsPerWorkspace"`
+	ArchivedMemoryPurgeDays int  `json:"archivedMemoryPurgeDays"`
+	VacuumAfterPurge        bool `json:"vacuumAfterPurge"`
+}
+
 type cometlineCometmindJSON struct {
 	SystemPromptPath string                       `json:"systemPromptPath"`
 	ACP              cometlineACPJSON             `json:"acp"`
@@ -61,6 +68,7 @@ type cometlineCometmindJSON struct {
 	Memory           struct {
 		Embedding cometlineMemoryEmbeddingJSON `json:"embedding"`
 	} `json:"memory"`
+	Storage cometlineStorageJSON `json:"storage"`
 	Gateway struct {
 		Discord cometlineDiscordJSON `json:"discord"`
 	} `json:"gateway"`
@@ -168,6 +176,12 @@ func adaptCometlineSettings(raw cometlineSettingsJSON) (*Config, error) {
 				BaseURL:    strings.TrimSpace(cm.Memory.Embedding.BaseURL),
 				APIKey:     cm.Memory.Embedding.APIKey,
 			},
+		},
+		Storage: StorageConfig{
+			RetentionDays:           cm.Storage.RetentionDays,
+			MaxSessionsPerWorkspace: cm.Storage.MaxSessionsPerWorkspace,
+			ArchivedMemoryPurgeDays: cm.Storage.ArchivedMemoryPurgeDays,
+			VacuumAfterPurge:        cm.Storage.VacuumAfterPurge,
 		},
 		Gateway: GatewayConfig{
 			Discord: DiscordGatewayConfig{
