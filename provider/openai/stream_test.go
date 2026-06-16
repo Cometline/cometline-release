@@ -269,6 +269,52 @@ func TestStream_ImageFallbackOnUnsupported(t *testing.T) {
 	require.True(t, done)
 }
 
+// TestStream_ReasoningSplitFallbackOnUnsupported retries without reasoning_split
+// when a gateway rejects the non-standard field (LiteLLM, Azure, Anthropic, etc.).
+func TestStream_ReasoningSplitFallbackOnUnsupported(t *testing.T) {
+	fixtureData, err := os.ReadFile("fixtures/text_response.sse")
+	require.NoError(t, err)
+
+	var sawReasoningSplit []bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		hasReasoningSplit := strings.Contains(string(body), "reasoning_split")
+		sawReasoningSplit = append(sawReasoningSplit, hasReasoningSplit)
+		if hasReasoningSplit {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"error":{"message":"litellm.BadRequestError: Unknown parameter: 'reasoning_split'"}}`)) //nolint:errcheck
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.Write(fixtureData) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	p := NewOpenAIProvider("test-key",
+		cometsdk.WithBaseURL(srv.URL),
+		cometsdk.WithMaxRetries(1),
+	)
+	req := &cometsdk.Request{
+		Model:    "MiniMax-M3",
+		Messages: []cometsdk.Message{{Role: cometsdk.RoleUser, Content: []cometsdk.Block{cometsdk.TextBlock{Text: "Hi"}}}},
+	}
+
+	ch, err := p.Stream(context.Background(), req)
+	require.NoError(t, err)
+
+	events := collectEvents(t, ch)
+	require.Equal(t, []bool{true, false}, sawReasoningSplit)
+
+	var done bool
+	for _, e := range events {
+		if _, ok := e.(cometsdk.DoneEvent); ok {
+			done = true
+		}
+	}
+	require.True(t, done)
+}
+
 // TestStream_NoImageFallbackWithoutImage ensures a 400 that is unrelated to
 // images is NOT retried with the image-downgrade path (it just fails).
 func TestStream_NoImageFallbackWithoutImage(t *testing.T) {

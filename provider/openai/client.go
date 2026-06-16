@@ -45,13 +45,28 @@ func NewOpenAIProvider(apiKey string, opts ...cometsdk.Option) cometsdk.Provider
 
 func (p *provider) ID() string { return providerID }
 
+type streamFlags struct {
+	disableImageContent  bool
+	enableReasoningSplit bool
+}
+
 // Stream sends req to the OpenAI Chat Completions API and returns a channel of events.
 func (p *provider) Stream(ctx context.Context, req *cometsdk.Request) (<-chan cometsdk.Event, error) {
 	ch := make(chan cometsdk.Event, 32)
 
 	p.log.DebugContext(ctx, "stream.start", "model", req.Model)
 
-	httpResp, err := p.streamWithRetry(ctx, req, false)
+	flags := streamFlags{enableReasoningSplit: shouldEnableReasoningSplit(req.Model)}
+	httpResp, err := p.streamWithRetry(ctx, req, flags)
+
+	// Some OpenAI-compatible gateways (e.g. LiteLLM → Anthropic) reject the
+	// non-standard reasoning_split field. Retry once without it; embedded
+	// thinking tags in content are still parsed when providers use them.
+	if err != nil && isReasoningSplitUnsupportedError(err) {
+		p.log.DebugContext(ctx, "stream.reasoning_split_fallback", "error", err, "model", req.Model)
+		flags.enableReasoningSplit = false
+		httpResp, err = p.streamWithRetry(ctx, req, flags)
+	}
 
 	// Reactive image fallback: if the request carried image content and the
 	// endpoint rejected it (some OpenAI-compatible models such as DeepSeek
@@ -61,7 +76,8 @@ func (p *provider) Stream(ctx context.Context, req *cometsdk.Request) (<-chan co
 	// tells us it can't read the image.
 	if err != nil && requestHasImage(req) && isImageUnsupportedError(err) {
 		p.log.DebugContext(ctx, "stream.image_fallback", "error", err, "model", req.Model)
-		httpResp, err = p.streamWithRetry(ctx, req, true)
+		flags.disableImageContent = true
+		httpResp, err = p.streamWithRetry(ctx, req, flags)
 	}
 
 	if err != nil {
@@ -76,7 +92,7 @@ func (p *provider) Stream(ctx context.Context, req *cometsdk.Request) (<-chan co
 // streamWithRetry runs the request through the standard retry policy. When
 // disableImageContent is true, image content blocks are downgraded to a text
 // placeholder before sending.
-func (p *provider) streamWithRetry(ctx context.Context, req *cometsdk.Request, disableImageContent bool) (*http.Response, error) {
+func (p *provider) streamWithRetry(ctx context.Context, req *cometsdk.Request, flags streamFlags) (*http.Response, error) {
 	attempt := 0
 	var httpResp *http.Response
 
@@ -85,7 +101,7 @@ func (p *provider) streamWithRetry(ctx context.Context, req *cometsdk.Request, d
 		if attempt > 1 {
 			p.log.DebugContext(ctx, "stream.retry", "attempt", attempt, "model", req.Model)
 		}
-		r, err := p.doRequest(ctx, req, disableImageContent)
+		r, err := p.doRequest(ctx, req, flags)
 		if err != nil {
 			p.log.DebugContext(ctx, "stream.request_error", "attempt", attempt, "error", err)
 			return err
@@ -97,8 +113,8 @@ func (p *provider) streamWithRetry(ctx context.Context, req *cometsdk.Request, d
 	return httpResp, err
 }
 
-func (p *provider) doRequest(ctx context.Context, req *cometsdk.Request, disableImageContent bool) (*http.Response, error) {
-	body, err := toOpenAIRequest(req, disableImageContent)
+func (p *provider) doRequest(ctx context.Context, req *cometsdk.Request, flags streamFlags) (*http.Response, error) {
+	body, err := toOpenAIRequest(req, flags.disableImageContent, flags.enableReasoningSplit)
 	if err != nil {
 		return nil, fmt.Errorf("openai: marshal request: %w", err)
 	}
@@ -175,4 +191,26 @@ func isImageUnsupportedError(err error) bool {
 			strings.Contains(msg, "not support") ||
 			strings.Contains(msg, "invalid") ||
 			strings.Contains(msg, "unknown variant"))
+}
+
+// isReasoningSplitUnsupportedError reports whether err is a 4xx ServerError
+// whose message indicates the endpoint rejected the reasoning_split field.
+func isReasoningSplitUnsupportedError(err error) bool {
+	se, ok := err.(*cometsdk.ServerError)
+	if !ok {
+		return false
+	}
+	if se.StatusCode < 400 || se.StatusCode >= 500 {
+		return false
+	}
+	msg := strings.ToLower(se.Message)
+	return strings.Contains(msg, "reasoning_split")
+}
+
+// shouldEnableReasoningSplit reports whether to send the non-standard
+// reasoning_split request field. Most OpenAI-compatible gateways (LiteLLM,
+// Azure, Anthropic proxies) reject it; only enable for providers known to use it.
+func shouldEnableReasoningSplit(model string) bool {
+	m := strings.ToLower(strings.TrimSpace(model))
+	return strings.Contains(m, "minimax") || strings.HasPrefix(m, "mimo-")
 }

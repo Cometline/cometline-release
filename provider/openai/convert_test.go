@@ -18,7 +18,7 @@ func TestConvertRequest_SystemPromptPrepended(t *testing.T) {
 		},
 	}
 
-	data, err := toOpenAIRequest(req, false)
+	data, err := toOpenAIRequest(req, false, true)
 	require.NoError(t, err)
 
 	var out openAIRequest
@@ -44,7 +44,7 @@ func TestConvertRequest_ToolResultRole(t *testing.T) {
 		},
 	}
 
-	data, err := toOpenAIRequest(req, false)
+	data, err := toOpenAIRequest(req, false, true)
 	require.NoError(t, err)
 
 	var out openAIRequest
@@ -72,7 +72,7 @@ func TestConvertRequest_UserImageBlock(t *testing.T) {
 		},
 	}
 
-	data, err := toOpenAIRequest(req, false)
+	data, err := toOpenAIRequest(req, false, true)
 	require.NoError(t, err)
 
 	var out openAIRequest
@@ -103,7 +103,7 @@ func TestConvertRequest_UserImageBlockDowngradedWhenDisabled(t *testing.T) {
 		},
 	}
 
-	data, err := toOpenAIRequest(req, true)
+	data, err := toOpenAIRequest(req, true, true)
 	require.NoError(t, err)
 
 	var out openAIRequest
@@ -141,7 +141,7 @@ func TestConvertRequest_AssistantToolCallsOnlyUsesNullContent(t *testing.T) {
 		},
 	}
 
-	data, err := toOpenAIRequest(req, false)
+	data, err := toOpenAIRequest(req, false, true)
 	require.NoError(t, err)
 
 	var out map[string]any
@@ -166,7 +166,7 @@ func TestConvertRequest_StreamOptionsIncludeUsage(t *testing.T) {
 		Model:    "gpt-4o",
 		Messages: []cometsdk.Message{{Role: cometsdk.RoleUser, Content: []cometsdk.Block{cometsdk.TextBlock{Text: "Hi"}}}},
 	}
-	data, err := toOpenAIRequest(req, false)
+	data, err := toOpenAIRequest(req, false, true)
 	require.NoError(t, err)
 
 	var out openAIRequest
@@ -302,7 +302,7 @@ func TestConvertRequest_OptionsPassthrough(t *testing.T) {
 		},
 	}
 
-	data, err := toOpenAIRequest(req, false)
+	data, err := toOpenAIRequest(req, false, true)
 	require.NoError(t, err)
 
 	var out map[string]any
@@ -333,7 +333,7 @@ func TestConvertRequest_OptionsDoNotOverrideSDKFields(t *testing.T) {
 		},
 	}
 
-	data, err := toOpenAIRequest(req, false)
+	data, err := toOpenAIRequest(req, false, true)
 	require.NoError(t, err)
 
 	var out map[string]any
@@ -352,7 +352,7 @@ func TestConvertRequest_OptionsNil(t *testing.T) {
 		},
 	}
 
-	data, err := toOpenAIRequest(req, false)
+	data, err := toOpenAIRequest(req, false, true)
 	require.NoError(t, err)
 
 	var out map[string]any
@@ -374,12 +374,12 @@ func TestConvertRequest_OptionsWrongType(t *testing.T) {
 		},
 	}
 
-	_, err := toOpenAIRequest(req, false)
+	_, err := toOpenAIRequest(req, false, true)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "map[string]any")
 }
 
-func TestConvertRequest_ReasoningSplitEnabledByDefault(t *testing.T) {
+func TestConvertRequest_ReasoningSplitEnabledForMiniMax(t *testing.T) {
 	req := &cometsdk.Request{
 		Model: "MiniMax-M3",
 		Messages: []cometsdk.Message{
@@ -387,12 +387,36 @@ func TestConvertRequest_ReasoningSplitEnabledByDefault(t *testing.T) {
 		},
 	}
 
-	data, err := toOpenAIRequest(req, false)
+	data, err := toOpenAIRequest(req, false, true)
 	require.NoError(t, err)
 
 	var out map[string]any
 	require.NoError(t, json.Unmarshal(data, &out))
 	require.Equal(t, true, out["reasoning_split"])
+}
+
+func TestConvertRequest_ReasoningSplitOmittedWhenDisabled(t *testing.T) {
+	req := &cometsdk.Request{
+		Model: "claude-4.6-sonnet-anthropic",
+		Messages: []cometsdk.Message{
+			{Role: cometsdk.RoleUser, Content: []cometsdk.Block{cometsdk.TextBlock{Text: "Hi"}}},
+		},
+	}
+
+	data, err := toOpenAIRequest(req, false, false)
+	require.NoError(t, err)
+
+	var out map[string]any
+	require.NoError(t, json.Unmarshal(data, &out))
+	_, ok := out["reasoning_split"]
+	require.False(t, ok)
+}
+
+func TestShouldEnableReasoningSplit(t *testing.T) {
+	require.True(t, shouldEnableReasoningSplit("MiniMax-M3"))
+	require.True(t, shouldEnableReasoningSplit("mimo-v2.5"))
+	require.False(t, shouldEnableReasoningSplit("claude-4.6-sonnet-anthropic"))
+	require.False(t, shouldEnableReasoningSplit("gpt-5.5"))
 }
 
 func redactedThinkingContent(inner, after string) string {

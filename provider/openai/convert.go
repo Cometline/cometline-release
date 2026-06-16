@@ -18,7 +18,7 @@ type openAIRequest struct {
 	MaxTokens      int             `json:"max_tokens,omitempty"`
 	Stream         bool            `json:"stream"`
 	StreamOptions  *streamOptions  `json:"stream_options,omitempty"`
-	ReasoningSplit bool            `json:"reasoning_split"`
+	ReasoningSplit *bool           `json:"reasoning_split,omitempty"`
 }
 
 type streamOptions struct {
@@ -72,18 +72,21 @@ type openAIToolDef struct {
 // frequency_penalty, seed, etc. without requiring changes to this package.
 // SDK-managed fields (model, messages, stream, stream_options) take precedence
 // and cannot be overridden via Options.
-func toOpenAIRequest(req *cometsdk.Request, disableImageContent bool) ([]byte, error) {
+func toOpenAIRequest(req *cometsdk.Request, disableImageContent bool, enableReasoningSplit bool) ([]byte, error) {
 	msgs, err := convertMessages(req.System, req.Messages, disableImageContent)
 	if err != nil {
 		return nil, err
 	}
 
 	or := openAIRequest{
-		Model:          req.Model,
-		Messages:       msgs,
-		Stream:         true,
-		StreamOptions:  &streamOptions{IncludeUsage: true},
-		ReasoningSplit: true,
+		Model:         req.Model,
+		Messages:      msgs,
+		Stream:        true,
+		StreamOptions: &streamOptions{IncludeUsage: true},
+	}
+	if enableReasoningSplit {
+		reasoningSplit := true
+		or.ReasoningSplit = &reasoningSplit
 	}
 
 	if req.MaxTokens > 0 {
