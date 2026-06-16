@@ -3,11 +3,11 @@ package config
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/cometline/cometmind/internal/paths"
 	"github.com/spf13/viper"
 )
 
@@ -63,7 +63,7 @@ type GatewayConfig struct {
 	Discord DiscordGatewayConfig `mapstructure:"discord"`
 }
 
-// Config holds user-visible runtime settings loaded from ~/.cometmind/config.toml and environment.
+// Config holds user-visible runtime settings loaded from ~/.cometmind/cometline-settings.json and environment.
 type Config struct {
 	Provider         string          `mapstructure:"provider"`
 	Model            string          `mapstructure:"model"`
@@ -91,64 +91,64 @@ func Defaults() *Config {
 	}
 }
 
-// Load reads config from ~/.cometmind/config.toml (creating the parent dir), merges env, and unmarshals.
+// Load reads ~/.cometmind/cometline-settings.json (with legacy config.toml migration), merges env, and unmarshals.
 func Load() (*Config, error) {
-	dataDir, err := paths.DataDir()
+	dataDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
 	}
-	cfgPath := filepath.Join(dataDir, "config.toml")
-
-	v := viper.New()
-	v.SetConfigType("toml")
-	v.SetConfigFile(cfgPath)
-
-	// Environment
-	v.SetEnvPrefix("COMETMIND")
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	v.AutomaticEnv()
+	dataDir = filepath.Join(dataDir, ".cometmind")
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		return nil, err
+	}
+	settingsPath := filepath.Join(dataDir, "cometline-settings.json")
+	legacyTomlPath := filepath.Join(dataDir, "config.toml")
 
 	def := Defaults()
-	v.SetDefault("provider", def.Provider)
-	v.SetDefault("model", def.Model)
-	v.SetDefault("base_url", def.BaseURL)
-	v.SetDefault("max_tokens", def.MaxTokens)
-	v.SetDefault("max_steps", def.MaxSteps)
-	v.SetDefault("system_prompt_path", def.SystemPromptPath)
-	v.SetDefault("skills.enabled", def.Skills.Enabled)
-	v.SetDefault("skills.roots", def.Skills.Roots)
-	v.SetDefault("skills.include_opencode", def.Skills.IncludeOpenCode)
-	v.SetDefault("skills.include_claude", def.Skills.IncludeClaude)
-	v.SetDefault("skills.mirror_to_cometmind", def.Skills.MirrorToCometMind)
-	memDef := defaultMemoryConfig()
-	v.SetDefault("memory.enabled", memDef.Enabled)
-	v.SetDefault("memory.auto_extract", memDef.AutoExtract)
-	v.SetDefault("memory.auto_retrieve", memDef.AutoRetrieve)
-	v.SetDefault("memory.max_retrieved", memDef.MaxRetrieved)
-	v.SetDefault("memory.similarity_threshold", memDef.SimilarityThreshold)
-	v.SetDefault("memory.lifecycle.decay_half_life_days", memDef.Lifecycle.DecayHalfLifeDays)
-	v.SetDefault("memory.lifecycle.forget_threshold", memDef.Lifecycle.ForgetThreshold)
-	v.SetDefault("memory.lifecycle.usage_boost_factor", memDef.Lifecycle.UsageBoostFactor)
-	v.SetDefault("memory.lifecycle.max_usage_boost", memDef.Lifecycle.MaxUsageBoost)
-	v.SetDefault("memory.lifecycle.max_memories", memDef.Lifecycle.MaxMemories)
-	v.SetDefault("memory.lifecycle.compaction_target_ratio", memDef.Lifecycle.CompactionTargetRatio)
-	v.SetDefault("memory.lifecycle.compaction_on_extract", memDef.Lifecycle.CompactionOnExtract)
-	v.SetDefault("memory.embedding.provider", memDef.Embedding.Provider)
-	v.SetDefault("memory.embedding.model", memDef.Embedding.Model)
 
-	if _, err := os.Stat(cfgPath); errors.Is(err, os.ErrNotExist) {
-		if err := writeDefaultFile(cfgPath, def); err != nil {
+	var cfg *Config
+	switch {
+	case fileExists(settingsPath):
+		cfg, err = loadCometlineSettingsJSON(settingsPath)
+		if err != nil {
+			return nil, err
+		}
+	case fileExists(legacyTomlPath):
+		cfg, err = loadLegacyTomlConfig(legacyTomlPath, def)
+		if err != nil {
+			return nil, err
+		}
+		log.Printf("cometmind: loaded legacy %s; migrate to %s via Cometline Settings", legacyTomlPath, settingsPath)
+	default:
+		if err := writeMinimalCometlineSettingsJSON(settingsPath, def); err != nil {
+			return nil, err
+		}
+		cfg, err = loadCometlineSettingsJSON(settingsPath)
+		if err != nil {
 			return nil, err
 		}
 	}
 
-	if err := v.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("read config: %w", err)
-	}
+	applyEnvOverrides(cfg, def)
+	cfg.Memory = cfg.EffectiveMemoryConfig()
+	return cfg, nil
+}
 
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func loadLegacyTomlConfig(cfgPath string, def *Config) (*Config, error) {
+	v := viper.New()
+	v.SetConfigType("toml")
+	v.SetConfigFile(cfgPath)
+	if err := v.ReadInConfig(); err != nil {
+		return nil, fmt.Errorf("read legacy config: %w", err)
+	}
 	var c Config
 	if err := v.Unmarshal(&c); err != nil {
-		return nil, fmt.Errorf("unmarshal config: %w", err)
+		return nil, fmt.Errorf("unmarshal legacy config: %w", err)
 	}
 	if !v.IsSet("acp.interactive") {
 		c.ACP.Interactive = def.ACP.Interactive
@@ -168,9 +168,6 @@ func Load() (*Config, error) {
 	if c.Model == "" {
 		c.Model = def.Model
 	}
-	if c.BaseURL == "" {
-		c.BaseURL = def.BaseURL
-	}
 	if c.MaxTokens == 0 {
 		c.MaxTokens = def.MaxTokens
 	}
@@ -180,8 +177,39 @@ func Load() (*Config, error) {
 	if c.SystemPromptPath == "" {
 		c.SystemPromptPath = def.SystemPromptPath
 	}
-
 	return &c, nil
+}
+
+func applyEnvOverrides(c *Config, def *Config) {
+	v := viper.New()
+	v.SetEnvPrefix("COMETMIND")
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
+
+	if provider := strings.TrimSpace(v.GetString("provider")); provider != "" {
+		c.Provider = provider
+	}
+	if model := strings.TrimSpace(v.GetString("model")); model != "" {
+		c.Model = model
+	}
+	if baseURL := strings.TrimSpace(v.GetString("base_url")); baseURL != "" {
+		c.BaseURL = baseURL
+	}
+	if prompt := strings.TrimSpace(v.GetString("system_prompt_path")); prompt != "" {
+		c.SystemPromptPath = prompt
+	}
+	if v.IsSet("max_tokens") {
+		c.MaxTokens = v.GetInt("max_tokens")
+	}
+	if v.IsSet("max_steps") {
+		c.MaxSteps = v.GetInt("max_steps")
+	}
+	if c.MaxTokens == 0 {
+		c.MaxTokens = def.MaxTokens
+	}
+	if c.MaxSteps == 0 {
+		c.MaxSteps = def.MaxSteps
+	}
 }
 
 // FindProvider returns the provider entry matching id, or nil if none exists.
@@ -195,13 +223,7 @@ func (c *Config) FindProvider(id string) *ProviderEntry {
 }
 
 func writeDefaultFile(path string, def *Config) error {
-	content := fmt.Sprintf(`# CometMind — https://github.com/cometline/cometmind
-provider = %q
-model = %q
-base_url = %q
-max_tokens = %d
-max_steps = %d
-system_prompt_path = %q
-`, def.Provider, def.Model, def.BaseURL, def.MaxTokens, def.MaxSteps, def.SystemPromptPath)
-	return os.WriteFile(path, []byte(content), 0o600)
+	_ = path
+	_ = def
+	return errors.New("writeDefaultFile is deprecated; use cometline-settings.json")
 }

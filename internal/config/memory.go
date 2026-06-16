@@ -67,8 +67,10 @@ func defaultMemoryConfig() MemoryConfig {
 func (c *Config) MemorySettings() memory.Settings {
 	mc := c.Memory
 	def := defaultMemoryConfig()
-	if !c.memoryConfigured() {
+	if !c.memoryBehaviorConfigured() {
+		embedding := mc.Embedding
 		mc = def
+		mc.Embedding = embedding
 	}
 	s := memory.Settings{
 		Enabled:             mc.Enabled,
@@ -225,11 +227,55 @@ func usesOpenAIEmbeddingAPI(provider string) bool {
 	}
 }
 
-func (c *Config) memoryConfigured() bool {
+func (c *Config) memoryBehaviorConfigured() bool {
 	return c.Memory.Enabled || c.Memory.AutoExtract || c.Memory.AutoRetrieve ||
 		c.Memory.MaxRetrieved > 0 || c.Memory.SimilarityThreshold > 0 ||
 		strings.TrimSpace(c.Memory.ExtractionModel) != "" ||
-		strings.TrimSpace(c.Memory.Embedding.ProviderID) != "" ||
+		c.Memory.Lifecycle.DecayHalfLifeDays > 0 ||
+		c.Memory.Lifecycle.MaxMemories > 0
+}
+
+func (c *Config) memoryEmbeddingConfigured() bool {
+	return strings.TrimSpace(c.Memory.Embedding.ProviderID) != "" ||
 		strings.TrimSpace(c.Memory.Embedding.Provider) != "" ||
 		strings.TrimSpace(c.Memory.Embedding.Model) != ""
+}
+
+// MemoryRuntimeEnabled reports whether the memory subsystem should start.
+func (c *Config) MemoryRuntimeEnabled() bool {
+	return c.Memory.Enabled || c.Memory.AutoExtract || c.Memory.AutoRetrieve || c.memoryEmbeddingConfigured()
+}
+
+// EffectiveMemoryConfig returns memory settings merged with defaults for API responses.
+func (c *Config) EffectiveMemoryConfig() MemoryConfig {
+	s := c.MemorySettings()
+	emb := c.Memory.Embedding
+	if strings.TrimSpace(s.Embedding.Model) != "" {
+		emb.Provider = s.Embedding.Provider
+		emb.Model = s.Embedding.Model
+		emb.BaseURL = s.Embedding.BaseURL
+		emb.APIKey = s.Embedding.APIKey
+	}
+	return MemoryConfig{
+		Enabled:             s.Enabled,
+		AutoExtract:         s.AutoExtract,
+		AutoRetrieve:        s.AutoRetrieve,
+		MaxRetrieved:        s.MaxRetrieved,
+		SimilarityThreshold: s.SimilarityThreshold,
+		ExtractionModel:     s.ExtractionModel,
+		Lifecycle: MemoryLifecycleConfig{
+			DecayHalfLifeDays:     s.Lifecycle.DecayHalfLifeDays,
+			ForgetThreshold:       s.Lifecycle.ForgetThreshold,
+			UsageBoostFactor:      s.Lifecycle.UsageBoostFactor,
+			MaxUsageBoost:         s.Lifecycle.MaxUsageBoost,
+			MaxMemories:           s.Lifecycle.MaxMemories,
+			CompactionTargetRatio: s.Lifecycle.CompactionTargetRatio,
+			CompactionOnExtract:   s.Lifecycle.CompactionOnExtract,
+		},
+		Embedding: emb,
+	}
+}
+
+func (c *Config) memoryConfigured() bool {
+	return c.memoryBehaviorConfigured() || c.memoryEmbeddingConfigured()
 }

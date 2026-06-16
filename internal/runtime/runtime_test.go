@@ -30,8 +30,8 @@ func TestRuntimeWiresServiceAndRunner(t *testing.T) {
 	}
 
 	// A config file should have been written to the temp home.
-	if _, err := os.Stat(filepath.Join(home, ".cometmind", "config.toml")); err != nil {
-		t.Fatalf("expected default config file: %v", err)
+	if _, err := os.Stat(filepath.Join(home, ".cometmind", "cometline-settings.json")); err != nil {
+		t.Fatalf("expected default settings file: %v", err)
 	}
 
 	ws, err := rt.WorkspaceForCommand(ctx, t.TempDir())

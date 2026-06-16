@@ -62,7 +62,7 @@ func New(ctx context.Context) (*Runtime, error) {
 		Sessions:     sessions,
 		SystemPrompt: systemPrompt,
 	}
-	if cfg.Memory.Enabled || cfg.Memory.AutoExtract || cfg.Memory.AutoRetrieve {
+	if cfg.MemoryRuntimeEnabled() {
 		p, err := provider.New(cfg)
 		if err == nil {
 			mem, err := memory.NewService(sqlDB, cfg.MemorySettings(), p, sessions)

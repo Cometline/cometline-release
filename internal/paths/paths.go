@@ -27,13 +27,18 @@ func DataDir() (string, error) {
 	return dir, nil
 }
 
-// ConfigPath returns ~/.cometmind/config.toml.
-func ConfigPath() (string, error) {
+// SettingsPath returns ~/.cometmind/cometline-settings.json.
+func SettingsPath() (string, error) {
 	d, err := DataDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(d, "config.toml"), nil
+	return filepath.Join(d, "cometline-settings.json"), nil
+}
+
+// ConfigPath returns ~/.cometmind/cometline-settings.json (legacy name retained for callers).
+func ConfigPath() (string, error) {
+	return SettingsPath()
 }
 
 // DBPath returns ~/.cometmind/cometmind.db.

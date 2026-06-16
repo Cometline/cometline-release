@@ -167,7 +167,7 @@ func (a *App) handleSearchMemories(c *gin.Context) {
 }
 
 func (a *App) handleGetMemorySettings(c *gin.Context) {
-	c.JSON(http.StatusOK, a.config.Memory)
+	c.JSON(http.StatusOK, a.config.EffectiveMemoryConfig())
 }
 
 func (a *App) handlePutMemorySettings(c *gin.Context) {

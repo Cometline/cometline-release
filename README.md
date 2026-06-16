@@ -41,7 +41,7 @@ internal/
   acp/               ACP client for delegate_coding_task (OpenCode by default)
   gateway/           messaging adapters (Discord today)
   provider/          builds a comet-sdk provider from config/session
-  config/            config.toml loading + COMETMIND_* env overrides
+  config/            cometline-settings.json loading + legacy TOML migration + COMETMIND_* env
   db/                sqlc-generated querier + schema.sql + queries/*.sql
   event/event.go     CometMind-native event union (shared by SSE/CLI/gateway)
   store/open.go      opens SQLite (pure-Go modernc.org/sqlite)
@@ -86,7 +86,7 @@ When the model calls `delegate_coding_task`, CometMind spawns an external coding
 - Interactive mode can pause for user questions or permission prompts (`subagent_awaiting_input`).
 - The desktop can reply to awaiting children via `POST /api/v1/sessions/{id}/respond`.
 
-Configure in `~/.cometmind/config.toml`:
+Configure in `~/.cometmind/cometline-settings.json` (or legacy `config.toml` until migrated):
 
 ```toml
 [acp]
@@ -217,9 +217,38 @@ Persistent flag: `--workspace` / `-w` (defaults to current directory).
 
 ## Configuration
 
-Config lives at `~/.cometmind/config.toml`. The SQLite database is at `~/.cometmind/cometmind.db`.
+Settings live at `~/.cometmind/cometline-settings.json` (shared with Cometline). The SQLite database is at `~/.cometmind/cometmind.db`.
+
+If `cometline-settings.json` is missing but legacy `config.toml` exists, CometMind loads the TOML once and logs a migration hint. New installs get a minimal JSON template from `cometmind init` / first `Load()`.
 
 Environment overrides use the `COMETMIND_` prefix (dots become underscores). Provider API keys fall back to `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `COMETMIND_API_KEY`.
+
+Example JSON shape (Cometline writes the full file from Settings):
+
+```json
+{
+  "providers": [
+    {
+      "id": "my-gateway",
+      "name": "Company Gateway",
+      "method": "openai-compatible",
+      "enabled": true,
+      "baseURL": "https://gateway.example.com/v1",
+      "apiKey": "...",
+      "enabledModels": ["gpt-4o"],
+      "models": ["gpt-4o"],
+      "selectedModel": "gpt-4o"
+    }
+  ],
+  "activeProviderId": "my-gateway",
+  "cometmind": {
+    "systemPromptPath": "/path/to/SOUL.md",
+    "memory": { "embedding": { "providerId": "", "model": "" } }
+  }
+}
+```
+
+Legacy `config.toml` (still read for migration):
 
 ```toml
 provider = "anthropic"
@@ -251,7 +280,7 @@ require_mention = true
 workspace_path = "/path/to/workspace"
 ```
 
-When Cometline is running, it also writes `~/.cometmind/cometline-settings.json` and regenerates `config.toml` from the in-app Settings panel.
+When Cometline is running, Settings writes `~/.cometmind/cometline-settings.json`; CometMind reads that same file on startup.
 
 ## Database
 
