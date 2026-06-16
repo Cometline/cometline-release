@@ -240,6 +240,8 @@
 				onStop={stop}
 				onRemoveQueued={removeQueuedMessage}
 				onModelChange={onModelChange}
+				onWorkspaceChanged={() => chatStore.loadTranscript(sessionId)}
+				{sessionId}
 				disabled={connectionState.status !== 'ready'}
 				streaming={chatStore.isStreaming}
 				{queuedCount}

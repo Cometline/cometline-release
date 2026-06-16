@@ -31,6 +31,17 @@ export type UpdateSessionRequest = {
     provider_id: string;
 };
 
+export type ChangeSessionWorkspaceRequest = {
+    /**
+     * Absolute filesystem path for the new workspace root.
+     */
+    workspace_path: string;
+};
+
+export type WorkspaceListResponse = {
+    workspaces: Array<Workspace>;
+};
+
 export type PostMessageRequest = {
     /**
      * User input text. Required when images is empty.
@@ -106,7 +117,7 @@ export type TranscriptResponse = {
 };
 
 export type TranscriptItem = {
-    type: 'user' | 'reasoning' | 'assistant' | 'tool';
+    type: 'user' | 'reasoning' | 'assistant' | 'tool' | 'system';
     text?: string;
     images?: Array<ImageAttachment>;
     tool_name?: string;
@@ -431,6 +442,31 @@ export type GetHealthResponses = {
 
 export type GetHealthResponse = GetHealthResponses[keyof GetHealthResponses];
 
+export type ListWorkspacesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/workspaces';
+};
+
+export type ListWorkspacesErrors = {
+    /**
+     * Unexpected server error
+     */
+    500: ErrorResponse;
+};
+
+export type ListWorkspacesError = ListWorkspacesErrors[keyof ListWorkspacesErrors];
+
+export type ListWorkspacesResponses = {
+    /**
+     * Registered workspace roots
+     */
+    200: WorkspaceListResponse;
+};
+
+export type ListWorkspacesResponse = ListWorkspacesResponses[keyof ListWorkspacesResponses];
+
 export type CreateWorkspaceData = {
     body: CreateWorkspaceRequest;
     path?: never;
@@ -640,6 +676,44 @@ export type PatchSessionResponses = {
 };
 
 export type PatchSessionResponse = PatchSessionResponses[keyof PatchSessionResponses];
+
+export type ChangeSessionWorkspaceData = {
+    body: ChangeSessionWorkspaceRequest;
+    path: {
+        /**
+         * Persisted CometMind session identifier.
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/sessions/{id}/workspace';
+};
+
+export type ChangeSessionWorkspaceErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorResponse;
+    /**
+     * Resource not found
+     */
+    404: ErrorResponse;
+    /**
+     * Unexpected server error
+     */
+    500: ErrorResponse;
+};
+
+export type ChangeSessionWorkspaceError = ChangeSessionWorkspaceErrors[keyof ChangeSessionWorkspaceErrors];
+
+export type ChangeSessionWorkspaceResponses = {
+    /**
+     * Updated session resource
+     */
+    200: Session;
+};
+
+export type ChangeSessionWorkspaceResponse = ChangeSessionWorkspaceResponses[keyof ChangeSessionWorkspaceResponses];
 
 export type ListChildSessionsData = {
     body?: never;

@@ -170,6 +170,7 @@ declare global {
 			getWorkspacePath?: () => Promise<string>;
 			selectWorkspacePath?: () => Promise<string | null>;
 			setWorkspacePath?: (workspacePath: string) => Promise<string>;
+			listRecentWorkspaces?: () => Promise<string[]>;
 			getAppVersion?: () => Promise<string>;
 			getUpdateState?: () => Promise<UpdateState>;
 			checkForUpdates?: () => Promise<UpdateState>;

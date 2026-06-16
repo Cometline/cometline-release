@@ -2,6 +2,7 @@ import {
 	abortSession as abortSessionApi,
 	compactMemory as compactMemoryApi,
 	compactMemoryPreview as compactMemoryPreviewApi,
+	changeSessionWorkspace as changeSessionWorkspaceApi,
 	createMemory as createMemoryApi,
 	createSession as createSessionApi,
 	createWorkspace as createWorkspaceApi,
@@ -15,6 +16,7 @@ import {
 	listMemories as listMemoriesApi,
 	listSessions as listSessionsApi,
 	listSkills as listSkillsApi,
+	listWorkspaces as listWorkspacesApi,
 	patchSession as patchSessionApi,
 	putMemorySettings as putMemorySettingsApi,
 	searchMemories as searchMemoriesApi,
@@ -87,6 +89,18 @@ function skillQuery(workspacePath: string) {
 
 export function ensureWorkspace(workspacePath: string): Promise<Workspace> {
 	return createWorkspaceApi({
+		body: { workspace_path: workspacePath },
+		throwOnError: true
+	}).then(({ data }) => data);
+}
+
+export function listWorkspaces(): Promise<Workspace[]> {
+	return listWorkspacesApi({ throwOnError: true }).then(({ data }) => data.workspaces);
+}
+
+export function changeSessionWorkspace(sessionId: string, workspacePath: string): Promise<Session> {
+	return changeSessionWorkspaceApi({
+		path: { id: sessionId },
 		body: { workspace_path: workspacePath },
 		throwOnError: true
 	}).then(({ data }) => data);

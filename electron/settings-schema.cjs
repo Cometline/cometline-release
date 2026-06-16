@@ -4111,64 +4111,76 @@ function normalizeHeroComposerAppearance(appearance) {
 // src/lib/keyboard-shortcuts.ts
 var SHORTCUT_DEFINITIONS = [
   {
-    id: "toggleSidebar",
-    label: "Toggle sidebar",
-    defaultBinding: { command: true, key: "b" }
-  },
-  {
-    id: "openSettings",
-    label: "Open settings",
-    defaultBinding: { command: true, key: "," }
-  },
-  {
     id: "newChat",
     label: "New chat",
+    category: "chats",
     defaultBinding: { command: true, key: "t" }
-  },
-  {
-    id: "stopResponse",
-    label: "Stop response",
-    defaultBinding: { command: true, key: "c" }
-  },
-  {
-    id: "sendMessage",
-    label: "Send message",
-    defaultBinding: { key: "Enter", shift: false }
-  },
-  {
-    id: "insertNewline",
-    label: "Insert newline in composer",
-    defaultBinding: { key: "Enter", shift: true }
-  },
-  {
-    id: "closeSettings",
-    label: "Close settings",
-    defaultBinding: { key: "Escape" }
-  },
-  {
-    id: "focusSearch",
-    label: "Focus search chats",
-    defaultBinding: { command: true, key: "f" }
   },
   {
     id: "previousSession",
     label: "Previous chat",
+    category: "chats",
     defaultBinding: { ctrl: true, meta: true, key: "ArrowUp" }
   },
   {
     id: "nextSession",
     label: "Next chat",
+    category: "chats",
     defaultBinding: { ctrl: true, meta: true, key: "ArrowDown" }
+  },
+  {
+    id: "focusSearch",
+    label: "Focus search chats",
+    category: "chats",
+    defaultBinding: { command: true, key: "f" }
+  },
+  {
+    id: "sendMessage",
+    label: "Send message",
+    category: "composer",
+    defaultBinding: { key: "Enter", shift: false }
+  },
+  {
+    id: "insertNewline",
+    label: "Insert newline in composer",
+    category: "composer",
+    defaultBinding: { key: "Enter", shift: true }
+  },
+  {
+    id: "stopResponse",
+    label: "Stop response",
+    category: "composer",
+    defaultBinding: { command: true, key: "c" }
+  },
+  {
+    id: "toggleSidebar",
+    label: "Toggle sidebar",
+    category: "panels",
+    defaultBinding: { command: true, key: "b" }
   },
   {
     id: "toggleWebPanel",
     label: "Toggle web panel",
+    category: "panels",
     defaultBinding: { command: true, alt: true, key: "b" }
   },
   {
     id: "openWebPanel",
     label: "Open web panel",
+    category: "panels",
     defaultBinding: { command: true, key: "o" }
+  },
+  {
+    id: "openSettings",
+    label: "Open settings",
+    category: "settings",
+    defaultBinding: { command: true, key: "," }
+  },
+  {
+    id: "closeSettings",
+    label: "Close settings",
+    category: "settings",
+    defaultBinding: { key: "Escape" }
   }
 ];
 function keyMatches(a, b) {

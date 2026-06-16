@@ -5,6 +5,10 @@ export interface BuiltinSlashCommand {
 
 export const BUILTIN_SLASH_COMMANDS: BuiltinSlashCommand[] = [
 	{
+		name: 'change',
+		description: 'Switch workspace for this session'
+	},
+	{
 		name: 'create-skill',
 		description: 'Build a new Agent Skill in ~/.cometmind/skills'
 	}
@@ -37,7 +41,51 @@ export function expandBuiltinSlashCommand(text: string): string | null {
 	if (name === 'create-skill') {
 		return expandCreateSkillCommand(rest);
 	}
+	if (name === 'change') {
+		return null;
+	}
 	return null;
+}
+
+export function parseChangeCommand(text: string): { query: string } | null {
+	const match = /^\s*\/change(?:\s+(.*))?$/i.exec(text);
+	if (!match) return null;
+	return { query: (match[1] ?? '').trim() };
+}
+
+export function isChangeWorkspaceCommand(text: string): boolean {
+	return parseChangeCommand(text) !== null;
+}
+
+export type WorkspaceMenuOption =
+	| { kind: 'workspace'; path: string; label: string; description: string }
+	| { kind: 'browse'; path: ''; label: string; description: string };
+
+export function workspaceLabel(path: string): string {
+	const parts = path.split(/[/\\]/).filter(Boolean);
+	return parts[parts.length - 1] || path;
+}
+
+export function filterWorkspaceOptions(query: string, paths: string[]): WorkspaceMenuOption[] {
+	const q = query.toLowerCase();
+	const filtered = paths.filter((path) => {
+		if (!q) return true;
+		const lower = path.toLowerCase();
+		return lower.includes(q) || workspaceLabel(path).toLowerCase().includes(q);
+	});
+	const options: WorkspaceMenuOption[] = filtered.map((path) => ({
+		kind: 'workspace',
+		path,
+		label: workspaceLabel(path),
+		description: path
+	}));
+	options.push({
+		kind: 'browse',
+		path: '',
+		label: 'Browse folder…',
+		description: 'Open the native folder picker'
+	});
+	return options;
 }
 
 export type SlashMenuOption =

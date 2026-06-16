@@ -118,6 +118,8 @@ function itemFromTranscript(item: TranscriptItem, index: number): ChatItem {
 		return { id: `history-${index}`, type: 'user', text: item.text ?? '', images: item.images };
 	if (item.type === 'assistant')
 		return { id: `history-${index}`, type: 'assistant', text: item.text ?? '' };
+	if (item.type === 'system')
+		return { id: `history-${index}`, type: 'status', text: item.text ?? '' };
 	if (item.type === 'reasoning')
 		return {
 			id: `history-${index}`,

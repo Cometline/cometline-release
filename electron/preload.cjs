@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 	getWorkspacePath: () => ipcRenderer.invoke('cometline:get-workspace-path'),
 	selectWorkspacePath: () => ipcRenderer.invoke('cometline:select-workspace-path'),
 	setWorkspacePath: (workspacePath) => ipcRenderer.invoke('cometline:set-workspace-path', workspacePath),
+	listRecentWorkspaces: () => ipcRenderer.invoke('cometline:list-recent-workspaces'),
 	getProviderSettings: () => ipcRenderer.invoke('cometline:get-provider-settings'),
 	getDiscordGatewayStatus: () => ipcRenderer.invoke('cometline:get-discord-gateway-status'),
 	setDiscordGatewayEnabled: (enabled) =>

@@ -640,23 +640,61 @@ function getWorkspaceStoragePath() {
 	return path.join(dir, 'cometline-workspace.json');
 }
 
-function readStoredWorkspacePath() {
+function readWorkspaceStore() {
 	try {
 		const raw = fs.readFileSync(getWorkspaceStoragePath(), 'utf8');
 		const parsed = JSON.parse(raw);
-		const stored = String(parsed?.workspacePath || '').trim();
-		if (stored && fs.existsSync(stored)) return path.resolve(stored);
+		return {
+			workspacePath: String(parsed?.workspacePath || '').trim(),
+			recentPaths: Array.isArray(parsed?.recentPaths)
+				? parsed.recentPaths.map((item) => String(item || '').trim()).filter(Boolean)
+				: []
+		};
 	} catch {
-		// Fall through to defaults.
+		return { workspacePath: '', recentPaths: [] };
 	}
+}
+
+function readStoredWorkspacePath() {
+	const { workspacePath } = readWorkspaceStore();
+	if (workspacePath && fs.existsSync(workspacePath)) return path.resolve(workspacePath);
 	return '';
 }
 
-function writeStoredWorkspacePath(workspacePath) {
+function rememberWorkspacePath(workspacePath) {
 	const clean = path.resolve(workspacePath);
-	fs.writeFileSync(getWorkspaceStoragePath(), JSON.stringify({ workspacePath: clean }, null, 2));
+	const store = readWorkspaceStore();
+	const recentPaths = [clean, ...store.recentPaths.filter((item) => path.resolve(item) !== clean)].slice(
+		0,
+		20
+	);
+	fs.writeFileSync(
+		getWorkspaceStoragePath(),
+		JSON.stringify({ workspacePath: clean, recentPaths }, null, 2)
+	);
 	fs.chmodSync(getWorkspaceStoragePath(), 0o600);
 	return clean;
+}
+
+function writeStoredWorkspacePath(workspacePath) {
+	return rememberWorkspacePath(workspacePath);
+}
+
+function listRecentWorkspacePaths() {
+	const store = readWorkspaceStore();
+	const seen = new Set();
+	const out = [];
+	const add = (candidate) => {
+		const clean = String(candidate || '').trim();
+		if (!clean || !fs.existsSync(clean)) return;
+		const resolved = path.resolve(clean);
+		if (seen.has(resolved)) return;
+		seen.add(resolved);
+		out.push(resolved);
+	};
+	add(store.workspacePath);
+	for (const item of store.recentPaths) add(item);
+	return out;
 }
 
 function getDefaultWorkspacePath() {
@@ -1372,6 +1410,8 @@ ipcMain.handle('cometline:set-workspace-path', (_event, workspacePath) => {
 	const clean = writeStoredWorkspacePath(workspacePath);
 	return clean;
 });
+
+ipcMain.handle('cometline:list-recent-workspaces', () => listRecentWorkspacePaths());
 
 ipcMain.handle('cometline:get-provider-settings', () => readProviderSettings());
 

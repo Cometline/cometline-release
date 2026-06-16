@@ -8,11 +8,16 @@
 	import { shellStore } from '$lib/stores/shell.svelte';
 	import { matchesShortcut } from '$lib/keyboard-shortcuts';
 	import RichComposerInput from '$lib/components/RichComposerInput.svelte';
-	import { listSkills } from '$lib/client/cometmind';
+	import { listSkills, listWorkspaces, changeSessionWorkspace } from '$lib/client/cometmind';
+	import { sessionStore } from '$lib/stores/session.svelte';
 	import {
 		expandBuiltinSlashCommand,
 		filterSlashMenuOptions,
-		type SlashMenuOption
+		filterWorkspaceOptions,
+		isChangeWorkspaceCommand,
+		parseChangeCommand,
+		type SlashMenuOption,
+		type WorkspaceMenuOption
 	} from '$lib/skills/slash-commands';
 	import { formatDroppedFiles, readDroppedTextFiles } from '$lib/files/dropped-files';
 	import { imageDataURL, isSupportedImageFile, readImageAttachments } from '$lib/files/images';
@@ -23,6 +28,8 @@
 		onStop,
 		onRemoveQueued,
 		onModelChange,
+		onWorkspaceChanged,
+		sessionId = '',
 		disabled = false,
 		streaming = false,
 		queuedCount = 0,
@@ -35,6 +42,8 @@
 		onStop?: () => void;
 		onRemoveQueued?: (id: string) => void;
 		onModelChange?: (option: ModelOption) => void | Promise<void>;
+		onWorkspaceChanged?: () => void | Promise<void>;
+		sessionId?: string;
 		disabled?: boolean;
 		streaming?: boolean;
 		queuedCount?: number;
@@ -57,6 +66,10 @@
 	let skillsLoaded = $state(false);
 	let skillsLoading = $state(false);
 	let skillHighlight = $state(0);
+	let workspaceHighlight = $state(0);
+	let workspacePaths = $state<string[]>([]);
+	let workspacePathsLoading = $state(false);
+	let workspacePathsLoaded = $state(false);
 	let dismissedSkillCommand = $state('');
 	let dragDepth = $state(0);
 	let dropMessage = $state('');
@@ -72,6 +85,13 @@
 	let filteredSlashOptions = $derived.by(() => {
 		if (!skillCommandMatch) return [];
 		return filterSlashMenuOptions(skillCommandQuery, skills);
+	});
+	let changeCommand = $derived(parseChangeCommand(value));
+	let workspaceMenuOpen = $derived(Boolean(changeCommand));
+	let workspaceSearchQuery = $derived(changeCommand?.query ?? '');
+	let filteredWorkspaceOptions = $derived.by(() => {
+		if (!changeCommand) return [];
+		return filterWorkspaceOptions(workspaceSearchQuery, workspacePaths);
 	});
 	let skillNames = $derived(skills.map((skill) => skill.name));
 	let filteredModelOptions = $derived.by(() => {
@@ -132,6 +152,14 @@
 	});
 
 	$effect(() => {
+		if (!workspaceMenuOpen) return;
+		void ensureWorkspacePathsLoaded();
+		if (workspaceHighlight >= filteredWorkspaceOptions.length) {
+			workspaceHighlight = Math.max(0, filteredWorkspaceOptions.length - 1);
+		}
+	});
+
+	$effect(() => {
 		if (!queuePreviewOpen) return;
 		function onPointerDown(e: PointerEvent) {
 			if (queuePicker?.contains(e.target as Node)) return;
@@ -147,6 +175,10 @@
 
 	function submit() {
 		const trimmed = value.trim();
+		if (isChangeWorkspaceCommand(trimmed)) {
+			void handleChangeWorkspaceSubmit(trimmed);
+			return;
+		}
 		const expanded = expandBuiltinSlashCommand(trimmed) ?? expandSkillCommand(trimmed);
 		if (!canSubmit || disabled || !modelStore.selected) return;
 		onSend(expanded, images.length > 0 ? images : undefined);
@@ -156,6 +188,7 @@
 	}
 
 	function onKeydown(e: KeyboardEvent) {
+		if (handleWorkspaceMenuKeydown(e)) return;
 		if (handleSkillMenuKeydown(e)) return;
 		if (matchesShortcut(e, settingsStore.settings.shortcuts.stopResponse) && streaming) {
 			// Only intercept when there's no text selection in the editor.
@@ -195,6 +228,133 @@
 			skillsLoaded = true;
 		} finally {
 			skillsLoading = false;
+		}
+	}
+
+	async function ensureWorkspacePathsLoaded() {
+		if (workspacePathsLoaded || workspacePathsLoading) return;
+		workspacePathsLoading = true;
+		try {
+			const recent = (await window.electronAPI?.listRecentWorkspaces?.()) ?? [];
+			const registered = await listWorkspaces().catch(() => []);
+			const seen = new Set<string>();
+			const merged: string[] = [];
+			const add = (path: string) => {
+				const clean = path.trim();
+				if (!clean || seen.has(clean)) return;
+				seen.add(clean);
+				merged.push(clean);
+			};
+			for (const path of recent) add(path);
+			add(shellStore.workspacePath);
+			for (const ws of registered) add(ws.path);
+			workspacePaths = merged;
+			workspacePathsLoaded = true;
+		} catch {
+			workspacePaths = shellStore.workspacePath ? [shellStore.workspacePath] : [];
+			workspacePathsLoaded = true;
+		} finally {
+			workspacePathsLoading = false;
+		}
+	}
+
+	function handleWorkspaceMenuKeydown(e: KeyboardEvent): boolean {
+		if (!workspaceMenuOpen) return false;
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			input?.clear();
+			value = '';
+			return true;
+		}
+		if (e.key === 'ArrowDown') {
+			e.preventDefault();
+			if (filteredWorkspaceOptions.length > 0) {
+				workspaceHighlight = (workspaceHighlight + 1) % filteredWorkspaceOptions.length;
+				void scrollHighlightedWorkspaceIntoView();
+			}
+			return true;
+		}
+		if (e.key === 'ArrowUp') {
+			e.preventDefault();
+			if (filteredWorkspaceOptions.length > 0) {
+				workspaceHighlight =
+					(workspaceHighlight - 1 + filteredWorkspaceOptions.length) %
+					filteredWorkspaceOptions.length;
+				void scrollHighlightedWorkspaceIntoView();
+			}
+			return true;
+		}
+		if (e.key === 'Tab' || e.key === 'Enter') {
+			const option = filteredWorkspaceOptions[workspaceHighlight];
+			if (!option) {
+				if (e.key === 'Tab') {
+					e.preventDefault();
+					return true;
+				}
+				return false;
+			}
+			e.preventDefault();
+			void selectWorkspaceOption(option);
+			return true;
+		}
+		return false;
+	}
+
+	async function scrollHighlightedWorkspaceIntoView() {
+		await tick();
+		const option = skillMenu?.querySelector(`[data-workspace-index="${workspaceHighlight}"]`);
+		if (option instanceof HTMLElement) {
+			option.scrollIntoView({ block: 'nearest' });
+		}
+	}
+
+	async function selectWorkspaceOption(option: WorkspaceMenuOption) {
+		if (option.kind === 'browse') {
+			const picked = await window.electronAPI?.selectWorkspacePath?.();
+			if (!picked) return;
+			await applyWorkspaceChange(picked);
+			return;
+		}
+		await applyWorkspaceChange(option.path);
+	}
+
+	async function handleChangeWorkspaceSubmit(trimmed: string) {
+		const parsed = parseChangeCommand(trimmed);
+		if (!parsed) return;
+		const option = filteredWorkspaceOptions[workspaceHighlight];
+		if (option?.kind === 'workspace') {
+			await applyWorkspaceChange(option.path);
+			return;
+		}
+		if (option?.kind === 'browse') {
+			await selectWorkspaceOption(option);
+			return;
+		}
+		if (parsed.query) {
+			await applyWorkspaceChange(parsed.query);
+		}
+	}
+
+	async function applyWorkspaceChange(path: string) {
+		const clean = path.trim();
+		if (!clean) return;
+		try {
+			if (sessionId) {
+				const session = await changeSessionWorkspace(sessionId, clean);
+				sessionStore.updateSession(session);
+			}
+			await window.electronAPI?.setWorkspacePath?.(clean);
+			shellStore.setWorkspacePath(clean);
+			skillsLoaded = false;
+			skills = [];
+			workspacePathsLoaded = false;
+			setDropMessage(`Switched workspace to ${clean}`);
+			await onWorkspaceChanged?.();
+			input?.clear();
+			value = '';
+			workspaceHighlight = 0;
+		} catch (err) {
+			setDropMessage(err instanceof Error ? err.message : 'Failed to change workspace');
 		}
 	}
 
@@ -246,6 +406,16 @@
 	}
 
 	function selectSlashOption(option: SlashMenuOption) {
+		if (option.kind === 'builtin' && option.name === 'change') {
+			const next = '/change ';
+			input?.setText(next);
+			value = next;
+			dismissedSkillCommand = '';
+			skillHighlight = 0;
+			workspaceHighlight = 0;
+			void ensureWorkspacePathsLoaded();
+			return;
+		}
 		const next = `/${option.name} `;
 		input?.setText(next);
 		value = next;
@@ -426,7 +596,41 @@
 		<div class="drop-message" role="status" transition:fade={{ duration: 120 }}>{dropMessage}</div>
 	{/if}
 
-	{#if skillMenuOpen}
+	{#if workspaceMenuOpen}
+		<div
+			class="skill-command-menu"
+			role="listbox"
+			aria-label="Workspace paths"
+			bind:this={skillMenu}
+			transition:fly={{ y: 6, duration: 120 }}
+		>
+			{#if workspacePathsLoading && !workspacePathsLoaded}
+				<p class="skill-command-empty">Loading workspaces...</p>
+			{:else if filteredWorkspaceOptions.length === 0}
+				<p class="skill-command-empty">No matching workspaces.</p>
+			{:else}
+				{#each filteredWorkspaceOptions as option, index (`${option.kind}:${option.label}:${index}`)}
+					<button
+						type="button"
+						class="skill-command-option"
+						class:highlighted={index === workspaceHighlight}
+						data-workspace-index={index}
+						role="option"
+						aria-selected={index === workspaceHighlight}
+						onpointerenter={() => {
+							workspaceHighlight = index;
+						}}
+						onclick={() => {
+							void selectWorkspaceOption(option);
+						}}
+					>
+						<span class="skill-command-name">{option.label}</span>
+						<span class="skill-command-description">{option.description}</span>
+					</button>
+				{/each}
+			{/if}
+		</div>
+	{:else if skillMenuOpen}
 		<div
 			class="skill-command-menu"
 			role="listbox"
