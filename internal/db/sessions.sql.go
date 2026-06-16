@@ -24,7 +24,7 @@ INSERT INTO sessions (
     output_summary
 )
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, workspace_id, title, model_id, provider_id, status, token_usage, parent_session_id, purpose, delegation_status, output_summary, created_at, updated_at
+RETURNING id, workspace_id, title, model_id, provider_id, status, token_usage, parent_session_id, purpose, delegation_status, output_summary, acp_session_id, pending_question, created_at, updated_at
 `
 
 type CreateChildSessionParams struct {
@@ -66,6 +66,8 @@ func (q *Queries) CreateChildSession(ctx context.Context, arg CreateChildSession
 		&i.Purpose,
 		&i.DelegationStatus,
 		&i.OutputSummary,
+		&i.AcpSessionID,
+		&i.PendingQuestion,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -75,7 +77,7 @@ func (q *Queries) CreateChildSession(ctx context.Context, arg CreateChildSession
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (id, workspace_id, title, model_id, provider_id, status)
 VALUES (?, ?, ?, ?, ?, ?)
-RETURNING id, workspace_id, title, model_id, provider_id, status, token_usage, parent_session_id, purpose, delegation_status, output_summary, created_at, updated_at
+RETURNING id, workspace_id, title, model_id, provider_id, status, token_usage, parent_session_id, purpose, delegation_status, output_summary, acp_session_id, pending_question, created_at, updated_at
 `
 
 type CreateSessionParams struct {
@@ -109,6 +111,8 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		&i.Purpose,
 		&i.DelegationStatus,
 		&i.OutputSummary,
+		&i.AcpSessionID,
+		&i.PendingQuestion,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -125,8 +129,45 @@ func (q *Queries) DeleteSession(ctx context.Context, id string) error {
 	return err
 }
 
+const getActiveChildForParent = `-- name: GetActiveChildForParent :one
+SELECT id, workspace_id, title, model_id, provider_id, status, token_usage, parent_session_id, purpose, delegation_status, output_summary, acp_session_id, pending_question, created_at, updated_at
+FROM sessions
+WHERE
+    parent_session_id = ?
+    AND delegation_status IN (
+        'running',
+        'awaiting_user',
+        'awaiting_permission'
+    )
+ORDER BY updated_at DESC
+LIMIT 1
+`
+
+func (q *Queries) GetActiveChildForParent(ctx context.Context, parentSessionID sql.NullString) (Session, error) {
+	row := q.db.QueryRowContext(ctx, getActiveChildForParent, parentSessionID)
+	var i Session
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Title,
+		&i.ModelID,
+		&i.ProviderID,
+		&i.Status,
+		&i.TokenUsage,
+		&i.ParentSessionID,
+		&i.Purpose,
+		&i.DelegationStatus,
+		&i.OutputSummary,
+		&i.AcpSessionID,
+		&i.PendingQuestion,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getSession = `-- name: GetSession :one
-SELECT id, workspace_id, title, model_id, provider_id, status, token_usage, parent_session_id, purpose, delegation_status, output_summary, created_at, updated_at
+SELECT id, workspace_id, title, model_id, provider_id, status, token_usage, parent_session_id, purpose, delegation_status, output_summary, acp_session_id, pending_question, created_at, updated_at
 FROM sessions
 WHERE id = ?
 LIMIT 1
@@ -147,6 +188,8 @@ func (q *Queries) GetSession(ctx context.Context, id string) (Session, error) {
 		&i.Purpose,
 		&i.DelegationStatus,
 		&i.OutputSummary,
+		&i.AcpSessionID,
+		&i.PendingQuestion,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -154,7 +197,7 @@ func (q *Queries) GetSession(ctx context.Context, id string) (Session, error) {
 }
 
 const listChildSessions = `-- name: ListChildSessions :many
-SELECT id, workspace_id, title, model_id, provider_id, status, token_usage, parent_session_id, purpose, delegation_status, output_summary, created_at, updated_at
+SELECT id, workspace_id, title, model_id, provider_id, status, token_usage, parent_session_id, purpose, delegation_status, output_summary, acp_session_id, pending_question, created_at, updated_at
 FROM sessions
 WHERE parent_session_id = ?
 ORDER BY created_at ASC
@@ -181,6 +224,8 @@ func (q *Queries) ListChildSessions(ctx context.Context, parentSessionID sql.Nul
 			&i.Purpose,
 			&i.DelegationStatus,
 			&i.OutputSummary,
+			&i.AcpSessionID,
+			&i.PendingQuestion,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -198,7 +243,7 @@ func (q *Queries) ListChildSessions(ctx context.Context, parentSessionID sql.Nul
 }
 
 const listSessionsByWorkspace = `-- name: ListSessionsByWorkspace :many
-SELECT id, workspace_id, title, model_id, provider_id, status, token_usage, parent_session_id, purpose, delegation_status, output_summary, created_at, updated_at
+SELECT id, workspace_id, title, model_id, provider_id, status, token_usage, parent_session_id, purpose, delegation_status, output_summary, acp_session_id, pending_question, created_at, updated_at
 FROM sessions
 WHERE workspace_id = ?
 ORDER BY updated_at DESC
@@ -225,6 +270,8 @@ func (q *Queries) ListSessionsByWorkspace(ctx context.Context, workspaceID strin
 			&i.Purpose,
 			&i.DelegationStatus,
 			&i.OutputSummary,
+			&i.AcpSessionID,
+			&i.PendingQuestion,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -252,6 +299,24 @@ func (q *Queries) TouchSession(ctx context.Context, id string) error {
 	return err
 }
 
+const updateSessionACP = `-- name: UpdateSessionACP :exec
+UPDATE sessions
+SET
+    acp_session_id = ?,
+    updated_at = unixepoch ('now', 'subsec') * 1000
+WHERE id = ?
+`
+
+type UpdateSessionACPParams struct {
+	AcpSessionID string `json:"acp_session_id"`
+	ID           string `json:"id"`
+}
+
+func (q *Queries) UpdateSessionACP(ctx context.Context, arg UpdateSessionACPParams) error {
+	_, err := q.db.ExecContext(ctx, updateSessionACP, arg.AcpSessionID, arg.ID)
+	return err
+}
+
 const updateSessionDelegation = `-- name: UpdateSessionDelegation :exec
 UPDATE sessions
 SET
@@ -269,6 +334,33 @@ type UpdateSessionDelegationParams struct {
 
 func (q *Queries) UpdateSessionDelegation(ctx context.Context, arg UpdateSessionDelegationParams) error {
 	_, err := q.db.ExecContext(ctx, updateSessionDelegation, arg.DelegationStatus, arg.OutputSummary, arg.ID)
+	return err
+}
+
+const updateSessionDelegationState = `-- name: UpdateSessionDelegationState :exec
+UPDATE sessions
+SET
+    delegation_status = ?,
+    output_summary = ?,
+    pending_question = ?,
+    updated_at = unixepoch ('now', 'subsec') * 1000
+WHERE id = ?
+`
+
+type UpdateSessionDelegationStateParams struct {
+	DelegationStatus string `json:"delegation_status"`
+	OutputSummary    string `json:"output_summary"`
+	PendingQuestion  string `json:"pending_question"`
+	ID               string `json:"id"`
+}
+
+func (q *Queries) UpdateSessionDelegationState(ctx context.Context, arg UpdateSessionDelegationStateParams) error {
+	_, err := q.db.ExecContext(ctx, updateSessionDelegationState,
+		arg.DelegationStatus,
+		arg.OutputSummary,
+		arg.PendingQuestion,
+		arg.ID,
+	)
 	return err
 }
 

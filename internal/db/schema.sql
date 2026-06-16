@@ -22,12 +22,16 @@ CREATE TABLE sessions (
                                '',
                                'pending',
                                'running',
+                               'awaiting_user',
+                               'awaiting_permission',
                                'completed',
                                'failed',
                                'cancelled'
                            )
                        ),
     output_summary     TEXT NOT NULL DEFAULT '',
+    acp_session_id     TEXT NOT NULL DEFAULT '',
+    pending_question   TEXT NOT NULL DEFAULT '',
     created_at         INTEGER NOT NULL DEFAULT (unixepoch ('now', 'subsec') * 1000),
     updated_at         INTEGER NOT NULL DEFAULT (unixepoch ('now', 'subsec') * 1000)
 );

@@ -527,6 +527,33 @@ func (s *Service) UpdateDelegation(ctx context.Context, sessionID, status, summa
 	})
 }
 
+// UpdateDelegationState persists delegation status, summary, and pending question.
+func (s *Service) UpdateDelegationState(ctx context.Context, sessionID, status, summary, pendingQuestion string) error {
+	return s.q.UpdateSessionDelegationState(ctx, db.UpdateSessionDelegationStateParams{
+		DelegationStatus: status,
+		OutputSummary:    summary,
+		PendingQuestion:  pendingQuestion,
+		ID:               sessionID,
+	})
+}
+
+// UpdateACPSessionID stores the external ACP session identifier for a child session.
+func (s *Service) UpdateACPSessionID(ctx context.Context, sessionID, acpSessionID string) error {
+	return s.q.UpdateSessionACP(ctx, db.UpdateSessionACPParams{
+		AcpSessionID: acpSessionID,
+		ID:           sessionID,
+	})
+}
+
+// GetActiveChildForParent returns the most recently updated active delegated child.
+func (s *Service) GetActiveChildForParent(ctx context.Context, parentSessionID string) (Session, error) {
+	row, err := s.q.GetActiveChildForParent(ctx, sql.NullString{String: parentSessionID, Valid: true})
+	if err != nil {
+		return Session{}, err
+	}
+	return sessionFromDB(row), nil
+}
+
 // UpsertGatewaySession maps an external chat surface to a CometMind session.
 func (s *Service) UpsertGatewaySession(ctx context.Context, platform, userID, channelID, threadID, sessionID, workspaceID string) (db.GatewaySession, error) {
 	return s.q.UpsertGatewaySession(ctx, db.UpsertGatewaySessionParams{

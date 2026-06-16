@@ -38,6 +38,7 @@ func NewRegistry(workspaceRoot string, opts ...RegistryOptions) *Registry {
 			Workspace: ws,
 			Sessions:  opt.Sessions,
 			ACP:       opt.ACP,
+			ACPMgr:    opt.ACPMgr,
 		})
 	}
 

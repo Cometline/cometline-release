@@ -30,16 +30,15 @@ func TestDelegateCodingTaskWithFakeACP(t *testing.T) {
 		t.Fatalf("session: %v", err)
 	}
 
+	mgr := acp.NewSessionManager(acp.DefaultConfig())
+	mgr.ProcessStarter = func(ctx context.Context, cfg acp.Config) (io.WriteCloser, io.ReadCloser, io.Closer, error) {
+		return acp.StartFakeAgentPipes(ctx)
+	}
 	tool := DelegateCodingTask{
 		Workspace: Workspace{Root: ws.Path},
 		Sessions:  svc,
 		ACP:       acp.DefaultConfig(),
-		Runner: &acp.AgentRunner{
-			Config: acp.DefaultConfig(),
-			ProcessStarter: func(ctx context.Context, cfg acp.Config) (io.WriteCloser, io.ReadCloser, io.Closer, error) {
-				return acp.StartFakeAgentPipes(ctx)
-			},
-		},
+		ACPMgr:    mgr,
 	}
 
 	toolCtx := WithToolSession(ctx, parent.ID)

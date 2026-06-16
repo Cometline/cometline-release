@@ -23,6 +23,8 @@ type Session struct {
 	Purpose          string
 	DelegationStatus string
 	OutputSummary    string
+	ACPSessionID     string
+	PendingQuestion  string
 	CreatedAt        int64
 	UpdatedAt        int64
 }
@@ -64,6 +66,8 @@ func sessionFromDB(s db.Session) Session {
 		Purpose:          s.Purpose,
 		DelegationStatus: s.DelegationStatus,
 		OutputSummary:    s.OutputSummary,
+		ACPSessionID:     s.AcpSessionID,
+		PendingQuestion:  s.PendingQuestion,
 		CreatedAt:        s.CreatedAt,
 		UpdatedAt:        s.UpdatedAt,
 	}

@@ -19,10 +19,17 @@ const (
 	KindStepFinish         Kind = "step_finish"
 	KindSubagentStarted    Kind = "subagent_started"
 	KindSubagentProgress   Kind = "subagent_progress"
+	KindSubagentAwaitingInput Kind = "subagent_awaiting_input"
 	KindSubagentFinished   Kind = "subagent_finished"
 	KindError              Kind = "error"
 	KindDone           Kind = "done"
 )
+
+type PermissionOptionWire struct {
+	ID   string `json:"id"`
+	Kind string `json:"kind"`
+	Name string `json:"name"`
+}
 
 // Usage mirrors the SSE token-usage payload (one source of truth for the wire).
 type Usage struct {
@@ -60,6 +67,9 @@ type Event struct {
 	ProgressText   string
 	DelegationStatus string
 	Summary        string
+	AwaitingKind   string
+	Question       string
+	PermissionOptions []PermissionOptionWire
 	// error
 	Message string
 	Code    string
@@ -120,6 +130,14 @@ func (e Event) MarshalJSON() ([]byte, error) {
 			ProgressKind   string `json:"progress_kind"`
 			ProgressText   string `json:"progress_text"`
 		}{t, e.ChildSessionID, e.ProgressKind, e.ProgressText})
+	case KindSubagentAwaitingInput:
+		return json.Marshal(struct {
+			Type              string                 `json:"type"`
+			ChildSessionID    string                 `json:"child_session_id"`
+			Kind              string                 `json:"kind"`
+			Question          string                 `json:"question"`
+			PermissionOptions []PermissionOptionWire `json:"permission_options,omitempty"`
+		}{t, e.ChildSessionID, e.AwaitingKind, e.Question, e.PermissionOptions})
 	case KindSubagentFinished:
 		return json.Marshal(struct {
 			Type             string `json:"type"`
@@ -194,6 +212,17 @@ func SubagentProgress(childSessionID, progressKind, progressText string) Event {
 		ChildSessionID: childSessionID,
 		ProgressKind:   progressKind,
 		ProgressText:   progressText,
+	}
+}
+
+// SubagentAwaitingInput builds a subagent_awaiting_input event.
+func SubagentAwaitingInput(childSessionID, kind, question string, options []PermissionOptionWire) Event {
+	return Event{
+		Kind:              KindSubagentAwaitingInput,
+		ChildSessionID:    childSessionID,
+		AwaitingKind:      kind,
+		Question:          question,
+		PermissionOptions: options,
 	}
 }
 

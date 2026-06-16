@@ -2,10 +2,8 @@ package acp
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os/exec"
-	"strings"
 	"sync"
 	"time"
 
@@ -14,9 +12,10 @@ import (
 
 // Config controls how CometMind spawns an external ACP coding agent.
 type Config struct {
-	Command string
-	Args    []string
-	Timeout time.Duration
+	Command     string
+	Args        []string
+	Timeout     time.Duration
+	Interactive bool
 }
 
 // DefaultConfig returns defaults for OpenCode in ACP mode.
@@ -58,102 +57,16 @@ func (r *AgentRunner) Run(ctx context.Context, req TaskRequest) (TaskResult, err
 	if cfg.Command == "" {
 		cfg = DefaultConfig()
 	}
-	if cfg.Timeout <= 0 {
-		cfg.Timeout = DefaultConfig().Timeout
-	}
-	runCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
-	defer cancel()
-
-	start := r.ProcessStarter
-	if start == nil {
-		start = defaultProcessStarter
-	}
-	stdin, stdout, closer, err := start(runCtx, cfg)
-	if err != nil {
-		return TaskResult{Status: "failed", Summary: err.Error()}, err
-	}
-	defer closer.Close()
-
-	client := &WorkspaceClient{
+	mgr := NewSessionManager(cfg)
+	mgr.ProcessStarter = r.ProcessStarter
+	return mgr.Run(ctx, RunOptions{
 		WorkspaceRoot: req.WorkspaceRoot,
+		Task:          req.Task,
+		Context:       req.Context,
+		VerifyCommand: req.VerifyCommand,
+		Interactive:   cfg.Interactive,
 		OnProgress:    req.OnProgress,
-	}
-	conn := acpsdk.NewClientSideConnection(client, stdin, stdout)
-
-	initResp, err := conn.Initialize(runCtx, acpsdk.InitializeRequest{
-		ProtocolVersion: acpsdk.ProtocolVersionNumber,
-		ClientCapabilities: acpsdk.ClientCapabilities{
-			Fs: acpsdk.FileSystemCapabilities{
-				ReadTextFile:  true,
-				WriteTextFile: true,
-			},
-			Terminal: true,
-		},
 	})
-	if err != nil {
-		return TaskResult{Status: "failed", Summary: err.Error()}, err
-	}
-	agentName := "acp-agent"
-	if initResp.AgentInfo != nil && initResp.AgentInfo.Name != "" {
-		agentName = initResp.AgentInfo.Name
-	}
-
-	sess, err := conn.NewSession(runCtx, acpsdk.NewSessionRequest{
-		Cwd:        req.WorkspaceRoot,
-		McpServers: []acpsdk.McpServer{},
-	})
-	if err != nil {
-		return TaskResult{Status: "failed", Summary: err.Error()}, err
-	}
-
-	promptText := req.Task
-	if strings.TrimSpace(req.Context) != "" {
-		promptText = req.Context + "\n\nTask:\n" + req.Task
-	}
-
-	var chunks []string
-	prev := client.OnProgress
-	client.OnProgress = func(u ProgressUpdate) {
-		if prev != nil {
-			prev(u)
-		}
-		if u.Content != "" {
-			chunks = append(chunks, u.Content)
-		}
-	}
-
-	promptResp, err := conn.Prompt(runCtx, acpsdk.PromptRequest{
-		SessionId: sess.SessionId,
-		Prompt:    []acpsdk.ContentBlock{acpsdk.TextBlock(promptText)},
-	})
-	if err != nil {
-		return TaskResult{Status: "failed", Summary: err.Error(), AgentName: agentName}, err
-	}
-
-	verifyOut := ""
-	if strings.TrimSpace(req.VerifyCommand) != "" {
-		verifyOut, _ = runVerifyCommand(runCtx, req.WorkspaceRoot, req.VerifyCommand)
-	}
-
-	status := "completed"
-	if promptResp.StopReason == acpsdk.StopReasonCancelled {
-		status = "cancelled"
-	}
-
-	summary := strings.TrimSpace(strings.Join(chunks, "\n"))
-	if summary == "" {
-		summary = fmt.Sprintf("delegation finished (%s)", promptResp.StopReason)
-	}
-	if verifyOut != "" {
-		summary += "\n\nVerify output:\n" + verifyOut
-	}
-
-	return TaskResult{
-		Status:       status,
-		Summary:      summary,
-		VerifyOutput: verifyOut,
-		AgentName:    agentName,
-	}, nil
 }
 
 // Cancel sends session/cancel when a connection is active.

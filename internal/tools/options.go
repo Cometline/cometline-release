@@ -9,4 +9,5 @@ import (
 type RegistryOptions struct {
 	Sessions *session.Service
 	ACP      acp.Config
+	ACPMgr   *acp.SessionManager
 }

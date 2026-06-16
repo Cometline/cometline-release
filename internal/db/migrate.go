@@ -55,6 +55,25 @@ var alterStatements = [][]string{
 			platform, platform_user_id, platform_channel_id, thread_id
 		)`,
 	},
+	// v3 -> v4: interactive subagent ACP session fields
+	{
+		"ALTER TABLE sessions ADD COLUMN acp_session_id TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE sessions ADD COLUMN pending_question TEXT NOT NULL DEFAULT ''",
+	},
+}
+
+// execAlter runs one incremental DDL statement, tolerating idempotent failures
+// such as adding a column that already exists on a partially-migrated database.
+func execAlter(ctx context.Context, conn *sql.DB, stmt string) error {
+	_, err := conn.ExecContext(ctx, stmt)
+	if err == nil {
+		return nil
+	}
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "duplicate column name") || strings.Contains(msg, "already exists") {
+		return nil
+	}
+	return err
 }
 
 func splitStatements(sql string) []string {
@@ -79,7 +98,7 @@ func splitStatements(sql string) []string {
 	return out
 }
 
-const schemaVersion = 3
+const schemaVersion = 4
 
 // EnsureSchema runs [Migrate] once per database file using PRAGMA user_version.
 // For existing databases, it applies incremental ALTER statements to upgrade
@@ -102,7 +121,7 @@ func EnsureSchema(ctx context.Context, conn *sql.DB) error {
 	for i := v; i < schemaVersion && i < len(alterStatements)+1; i++ {
 		stmts := alterStatements[i-1]
 		for _, stmt := range stmts {
-			if _, err := conn.ExecContext(ctx, stmt); err != nil {
+			if err := execAlter(ctx, conn, stmt); err != nil {
 				return fmt.Errorf("migrate v%d->v%d exec: %w\nstatement: %s", i, i+1, err, stmt)
 			}
 		}

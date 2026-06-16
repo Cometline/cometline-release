@@ -41,6 +41,8 @@ type Session struct {
 	Purpose          string         `json:"purpose"`
 	DelegationStatus string         `json:"delegation_status"`
 	OutputSummary    string         `json:"output_summary"`
+	AcpSessionID     string         `json:"acp_session_id"`
+	PendingQuestion  string         `json:"pending_question"`
 	CreatedAt        int64          `json:"created_at"`
 	UpdatedAt        int64          `json:"updated_at"`
 }

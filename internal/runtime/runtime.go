@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	cometsdk "github.com/cometline/comet-sdk"
+	"github.com/cometline/cometmind/internal/acp"
 	"github.com/cometline/cometmind/internal/agent"
 	"github.com/cometline/cometmind/internal/config"
 	"github.com/cometline/cometmind/internal/paths"
@@ -28,6 +29,7 @@ type Runtime struct {
 	DB           *sql.DB
 	Sessions     *session.Service
 	SystemPrompt string
+	acpMgr       *acp.SessionManager
 }
 
 // New builds a Runtime from the environment and filesystem.
@@ -95,6 +97,14 @@ func (r *Runtime) ProviderForSession(sess session.Session) (cometsdk.Provider, e
 	return provider.NewFor(&cfg, sess.ProviderID)
 }
 
+// ACPManager returns the shared interactive ACP session manager.
+func (r *Runtime) ACPManager() *acp.SessionManager {
+	if r.acpMgr == nil {
+		r.acpMgr = acp.NewSessionManager(r.Config.ACPSettings())
+	}
+	return r.acpMgr
+}
+
 // RunnerFor returns an agent runner wired for a specific session and workspace.
 func (r *Runtime) RunnerFor(sess session.Session, workspacePath string) (*agent.Runner, error) {
 	p, err := r.ProviderForSession(sess)
@@ -105,7 +115,7 @@ func (r *Runtime) RunnerFor(sess session.Session, workspacePath string) (*agent.
 	return &agent.Runner{
 		Provider:     p,
 		Sessions:     r.Sessions,
-		Registry:     tools.NewRegistry(workspacePath, tools.RegistryOptions{Sessions: r.Sessions, ACP: r.Config.ACPSettings()}),
+		Registry:     tools.NewRegistry(workspacePath, tools.RegistryOptions{Sessions: r.Sessions, ACP: r.Config.ACPSettings(), ACPMgr: r.ACPManager()}),
 		MaxSteps:     r.Config.MaxSteps,
 		MaxTokens:    r.Config.MaxTokens,
 		SystemPrompt: r.SystemPrompt,

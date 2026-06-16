@@ -30,9 +30,10 @@ type ProviderEntry struct {
 
 // ACPConfig controls external coding agent delegation.
 type ACPConfig struct {
-	Command string   `mapstructure:"command"`
-	Args    []string `mapstructure:"args"`
-	Timeout string   `mapstructure:"timeout"`
+	Command     string   `mapstructure:"command"`
+	Args        []string `mapstructure:"args"`
+	Timeout     string   `mapstructure:"timeout"`
+	Interactive bool     `mapstructure:"interactive"`
 }
 
 // DiscordGatewayConfig configures the Discord messaging adapter.
@@ -73,6 +74,7 @@ func Defaults() *Config {
 		Model:     "claude-sonnet-4-5",
 		MaxTokens: 8192,
 		MaxSteps:  50,
+		ACP:       ACPConfig{Interactive: true},
 	}
 }
 
@@ -114,6 +116,9 @@ func Load() (*Config, error) {
 	var c Config
 	if err := v.Unmarshal(&c); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
+	}
+	if !v.IsSet("acp.interactive") {
+		c.ACP.Interactive = def.ACP.Interactive
 	}
 	if c.Provider == "" {
 		c.Provider = def.Provider

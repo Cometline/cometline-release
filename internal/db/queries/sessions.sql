@@ -33,6 +33,35 @@ SET
     updated_at = unixepoch ('now', 'subsec') * 1000
 WHERE id = ?;
 
+-- name: UpdateSessionDelegationState :exec
+UPDATE sessions
+SET
+    delegation_status = ?,
+    output_summary = ?,
+    pending_question = ?,
+    updated_at = unixepoch ('now', 'subsec') * 1000
+WHERE id = ?;
+
+-- name: UpdateSessionACP :exec
+UPDATE sessions
+SET
+    acp_session_id = ?,
+    updated_at = unixepoch ('now', 'subsec') * 1000
+WHERE id = ?;
+
+-- name: GetActiveChildForParent :one
+SELECT *
+FROM sessions
+WHERE
+    parent_session_id = ?
+    AND delegation_status IN (
+        'running',
+        'awaiting_user',
+        'awaiting_permission'
+    )
+ORDER BY updated_at DESC
+LIMIT 1;
+
 -- name: GetSession :one
 SELECT *
 FROM sessions

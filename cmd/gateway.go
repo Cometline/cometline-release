@@ -48,6 +48,7 @@ func runGateway(_ *cobra.Command, _ []string) error {
 	router := &gateway.Router{
 		Sessions: rt.Sessions,
 		Config:   rt.Config,
+		ACPMgr:   rt.ACPManager(),
 		Runner: gateway.AgentRunner{
 			NewRunner: func(sess session.Session, workspacePath string) (gateway.TurnRunner, error) {
 				return rt.RunnerFor(sess, workspacePath)

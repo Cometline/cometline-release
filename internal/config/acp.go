@@ -9,6 +9,7 @@ import (
 // ACPSettings converts config to runtime ACP settings.
 func (c *Config) ACPSettings() acp.Config {
 	out := acp.DefaultConfig()
+	out.Interactive = true
 	if c == nil {
 		return out
 	}
@@ -23,5 +24,6 @@ func (c *Config) ACPSettings() acp.Config {
 			out.Timeout = d
 		}
 	}
+	out.Interactive = c.ACP.Interactive
 	return out
 }

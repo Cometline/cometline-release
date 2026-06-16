@@ -12,15 +12,20 @@ import (
 
 // FakeAgent is a minimal ACP agent for tests.
 type FakeAgent struct {
-	conn     *acpsdk.AgentSideConnection
-	sessions map[string]struct{}
-	mu       sync.Mutex
+	conn         *acpsdk.AgentSideConnection
+	sessions     map[string]struct{}
+	promptCounts map[acpsdk.SessionId]int
+	Interactive  bool
+	mu           sync.Mutex
 }
 
 var _ acpsdk.Agent = (*FakeAgent)(nil)
 
 func NewFakeAgent() *FakeAgent {
-	return &FakeAgent{sessions: make(map[string]struct{})}
+	return &FakeAgent{
+		sessions:     make(map[string]struct{}),
+		promptCounts: make(map[acpsdk.SessionId]int),
+	}
 }
 
 func (a *FakeAgent) SetAgentConnection(conn *acpsdk.AgentSideConnection) { a.conn = conn }
@@ -49,6 +54,12 @@ func (a *FakeAgent) NewSession(ctx context.Context, params acpsdk.NewSessionRequ
 }
 
 func (a *FakeAgent) Prompt(ctx context.Context, params acpsdk.PromptRequest) (acpsdk.PromptResponse, error) {
+	a.mu.Lock()
+	count := a.promptCounts[params.SessionId]
+	a.promptCounts[params.SessionId] = count + 1
+	interactive := a.Interactive
+	a.mu.Unlock()
+
 	text := "done"
 	for _, block := range params.Prompt {
 		if block.Text != nil {
@@ -56,6 +67,20 @@ func (a *FakeAgent) Prompt(ctx context.Context, params acpsdk.PromptRequest) (ac
 			break
 		}
 	}
+
+	if interactive && count == 0 {
+		text = "Which branch should I use?"
+		_ = a.conn.SessionUpdate(ctx, acpsdk.SessionNotification{
+			SessionId: params.SessionId,
+			Update: acpsdk.SessionUpdate{
+				AgentMessageChunk: &acpsdk.SessionUpdateAgentMessageChunk{
+					Content: acpsdk.TextBlock(text),
+				},
+			},
+		})
+		return acpsdk.PromptResponse{StopReason: acpsdk.StopReasonEndTurn}, nil
+	}
+
 	_ = a.conn.SessionUpdate(ctx, acpsdk.SessionNotification{
 		SessionId: params.SessionId,
 		Update: acpsdk.SessionUpdate{
@@ -80,7 +105,12 @@ func (a *FakeAgent) ListSessions(ctx context.Context, params acpsdk.ListSessions
 }
 
 func (a *FakeAgent) ResumeSession(ctx context.Context, params acpsdk.ResumeSessionRequest) (acpsdk.ResumeSessionResponse, error) {
-	return acpsdk.ResumeSessionResponse{}, acpsdk.NewMethodNotFound(acpsdk.AgentMethodSessionResume)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if _, ok := a.sessions[string(params.SessionId)]; !ok {
+		return acpsdk.ResumeSessionResponse{}, acpsdk.NewMethodNotFound(acpsdk.AgentMethodSessionResume)
+	}
+	return acpsdk.ResumeSessionResponse{}, nil
 }
 
 func (a *FakeAgent) SetSessionConfigOption(ctx context.Context, params acpsdk.SetSessionConfigOptionRequest) (acpsdk.SetSessionConfigOptionResponse, error) {
@@ -107,10 +137,20 @@ func randomSessionID() string {
 
 // StartFakeAgentPipes returns pipes connected to a fake agent subprocess in-process.
 func StartFakeAgentPipes(ctx context.Context) (io.WriteCloser, io.ReadCloser, io.Closer, error) {
+	return startFakeAgentPipes(NewFakeAgent())
+}
+
+// StartInteractiveFakeAgentPipes returns pipes for a multi-turn fake agent.
+func StartInteractiveFakeAgentPipes(ctx context.Context) (io.WriteCloser, io.ReadCloser, io.Closer, error) {
+	agent := NewFakeAgent()
+	agent.Interactive = true
+	return startFakeAgentPipes(agent)
+}
+
+func startFakeAgentPipes(agent *FakeAgent) (io.WriteCloser, io.ReadCloser, io.Closer, error) {
 	clientReader, agentWriter := io.Pipe()
 	agentReader, clientWriter := io.Pipe()
 
-	agent := NewFakeAgent()
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
