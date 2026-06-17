@@ -76,7 +76,7 @@ async function runTurn(
 		deps.flight?.onFirstTurnComplete?.();
 	}
 
-	await deps.refreshSession();
+	void deps.refreshSession();
 }
 
 export function createConversationController(

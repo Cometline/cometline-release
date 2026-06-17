@@ -54,5 +54,5 @@ export async function startChat(
 		adapter.onFirstTurnComplete();
 	}
 
-	await adapter.refreshSession();
+	void adapter.refreshSession();
 }

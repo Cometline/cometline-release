@@ -190,26 +190,22 @@ describe('createConversationController', () => {
 		expect(refreshSession).not.toHaveBeenCalled();
 	});
 
-	it('keeps processing true while refreshSession is in flight after send completes', async () => {
+	it('does not keep processing true while refreshSession is in flight', async () => {
 		let releaseRefresh: (() => void) | undefined;
 		const refreshGate = new Promise<void>((resolve) => {
 			releaseRefresh = resolve;
 		});
 		const send = vi.fn().mockResolvedValue(undefined);
-		const refreshSession = vi.fn().mockImplementation(async () => {
-			await refreshGate;
-		});
+		const refreshSession = vi.fn().mockImplementation(() => refreshGate);
 		const { controller } = createDeps({ send, refreshSession });
 
 		const turn = controller.enqueue('hello');
 		await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1));
-		expect(controller.processing).toBe(true);
+		await vi.waitFor(() => expect(controller.processing).toBe(false));
+		expect(refreshSession).toHaveBeenCalled();
 
 		releaseRefresh!();
 		await turn;
-
-		expect(controller.processing).toBe(false);
-		expect(refreshSession).toHaveBeenCalled();
 	});
 });
 

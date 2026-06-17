@@ -76,11 +76,12 @@
 		) as Extract<ChatItem, { type: 'assistant' }> | undefined
 	);
 	let firstAssistantId = $derived(firstAssistantItem?.id ?? null);
-	let streamingAssistantId = $derived(
-		chatStore.isStreaming
-			? (threadItems.findLast((item) => item.type === 'assistant')?.id ?? null)
-			: null
-	);
+	let streamingAssistantId = $derived.by(() => {
+		if (!chatStore.isStreaming) return null;
+		const last = threadItems.at(-1);
+		if (last?.type === 'user') return null;
+		return threadItems.findLast((item) => item.type === 'assistant')?.id ?? null;
+	});
 	let firstUserId = $derived(threadItems.find((item) => item.type === 'user')?.id ?? null);
 	let showMessages = $derived(
 		threadItems.length > 0 || (isSessionSynced && awaitingFirstAssistant && !firstUserId)
@@ -357,17 +358,67 @@
 		return Boolean(item.output || item.error || item.pending);
 	}
 
-	function showAssistantRow(item: Extract<ChatItem, { type: 'assistant' }>) {
+	let heroGlowColor = $derived(settingsStore.settings.appearance.heroComposer.glowColor);
+
+	function showAssistantActivitySpinner(item: Extract<ChatItem, { type: 'assistant' }>) {
+		return chatStore.isStreaming && item.id === streamingAssistantId;
+	}
+
+	function hasVisibleThinkingBlock(itemId: string) {
+		const block = thinkingForAssistant.map.get(itemId);
 		return Boolean(
-			item.text ||
-			item.reasoning?.text ||
-			item.reasoning?.pending ||
-			(item.pending && chatStore.isStreaming && !item.reasoning)
+			block &&
+				(block.reasoning !== undefined || block.tools.length > 0 || block.memories.length > 0)
 		);
 	}
 
-	function showTypingBubble(item: Extract<ChatItem, { type: 'assistant' }>) {
-		return Boolean(chatStore.isStreaming && !item.text && !item.reasoning?.pending);
+	function showAssistantPending(item: Extract<ChatItem, { type: 'assistant' }>) {
+		if (!chatStore.isStreaming || item.id !== streamingAssistantId) return false;
+		if (item.text?.trim()) return false;
+		return !hasVisibleThinkingBlock(item.id);
+	}
+
+	function showAssistantRow(item: Extract<ChatItem, { type: 'assistant' }>) {
+		return Boolean(
+			item.text ||
+				item.reasoning?.text ||
+				item.reasoning?.pending ||
+				hasVisibleThinkingBlock(item.id) ||
+				showAssistantPending(item) ||
+				showAssistantActivitySpinner(item)
+		);
+	}
+
+	let showOrphanPendingAssistant = $derived(
+		isSessionSynced && isAwaitingVisibleStreamingReply()
+	);
+
+	function isAssistantPendingRenderedInThread(item: Extract<ChatItem, { type: 'assistant' }>) {
+		if (!showAssistantRow(item)) return false;
+		if (firstAssistantInNormalList(item)) return true;
+		return Boolean(
+			awaitingFirstAssistant && item.id === firstAssistantId && showFirstTurnAvatarSlot()
+		);
+	}
+
+	function isAwaitingVisibleStreamingReply() {
+		if (!chatStore.isStreaming) return false;
+		if (pendingAssistantRenderedInFirstTurnSlot()) return false;
+
+		const last = threadItems.at(-1);
+		if (!last) return false;
+		if (last.type === 'user') return true;
+
+		if (last.type === 'assistant' && showAssistantPending(last)) {
+			return !isAssistantPendingRenderedInThread(last);
+		}
+		return false;
+	}
+
+	function pendingAssistantRenderedInFirstTurnSlot() {
+		if (!chatStore.isStreaming || !awaitingFirstAssistant) return false;
+		if (!firstUserId) return true;
+		return showFirstTurnAvatarSlot();
 	}
 
 	function summarizeRenderItem(item: ChatItem, index: number) {
@@ -379,7 +430,7 @@
 			isFirstAssistant: item.id === firstAssistantId,
 			renderedInFirstTurnSlot: awaitingFirstAssistant && item.id === firstAssistantId,
 			excludedFromNormalList: awaitingFirstAssistant && item.id === firstAssistantId,
-			showTypingBubble: showTypingBubble(item)
+			showAssistantPending: showAssistantPending(item)
 		};
 	}
 
@@ -506,6 +557,40 @@
 	});
 </script>
 
+{#snippet assistantActivitySpinner()}
+	<div
+		class="assistant-activity-spinner"
+		role="status"
+		aria-label="Assistant is responding"
+		style:color={heroGlowColor}
+	>
+		<LoaderCircle size={16} class="spin" aria-hidden="true" />
+	</div>
+{/snippet}
+
+{#snippet assistantPendingRow()}
+	<div
+		class="row assistant-row gap-2.5 md:gap-3 lg:gap-4"
+		aria-live="polite"
+		aria-busy="true"
+		in:fly={rowIntro(ASSISTANT_ROW_IN)}
+	>
+		<div
+			class="avatar-mini size-9 shrink-0 rounded-full border border-gray-400 md:size-10 lg:size-11 xl:size-12"
+		>
+			<img
+				src={projectAvatarSrc(iconVariant, 96)}
+				srcset={projectAvatarSrcset(iconVariant)}
+				sizes="(min-width: 1280px) 48px, (min-width: 1024px) 44px, (min-width: 768px) 40px, 36px"
+				alt=""
+			/>
+		</div>
+		<div class="assistant-stack">
+			{@render assistantActivitySpinner()}
+		</div>
+	</div>
+{/snippet}
+
 {#snippet thinkingBlock(block: ThinkingBlock, hostId: string)}
 	<div class="fold-panel thinking-panel">
 		<button
@@ -516,7 +601,7 @@
 		>
 			<Brain size={13} />
 			<span>{thinkingLabel(block)}</span>
-			{#if thinkingPending(block)}
+			{#if thinkingPending(block) && !(hostId === streamingAssistantId && chatStore.isStreaming)}
 				<LoaderCircle size={12} class="spin" />
 			{/if}
 			<ChevronDown size={13} class={thinkingExpanded(hostId) ? 'expanded' : ''} />
@@ -623,10 +708,9 @@
 					</button>
 				</div>
 			{/if}
-		{:else if showTypingBubble(item)}
-			<div class="bubble assistant-bubble pending">
-				<span class="typing"><span></span><span></span><span></span></span>
-			</div>
+		{/if}
+		{#if showAssistantActivitySpinner(item)}
+			{@render assistantActivitySpinner()}
 		{/if}
 	</div>
 {/snippet}
@@ -654,6 +738,10 @@
 				</div>
 				{#if firstAssistantItem && showAssistantRow(firstAssistantItem)}
 					{@render assistantStack(firstAssistantItem)}
+				{:else if chatStore.isStreaming}
+					<div class="assistant-stack">
+						{@render assistantActivitySpinner()}
+					</div>
 				{:else}
 					<div class="assistant-stack"></div>
 				{/if}
@@ -700,6 +788,10 @@
 						</div>
 						{#if firstAssistantItem && showAssistantRow(firstAssistantItem)}
 							{@render assistantStack(firstAssistantItem)}
+						{:else if chatStore.isStreaming}
+							<div class="assistant-stack">
+								{@render assistantActivitySpinner()}
+							</div>
 						{:else}
 							<div class="assistant-stack"></div>
 						{/if}
@@ -942,6 +1034,9 @@
 				</div>
 			{/if}
 		{/each}
+		{#if showOrphanPendingAssistant}
+			{@render assistantPendingRow()}
+		{/if}
 			</div>
 		{/if}
 	</div>
@@ -1409,8 +1504,11 @@
 		color: var(--text-main);
 	}
 
-	.assistant-bubble.pending {
-		padding-block: 13px;
+	.assistant-activity-spinner {
+		display: flex;
+		align-items: center;
+		padding: 8px 2px 2px;
+		color: var(--hero-composer-glow-color);
 	}
 
 	.message-actions {
@@ -1698,40 +1796,5 @@
 	.subagent-summary p {
 		max-height: 220px;
 		overflow: auto;
-	}
-
-	.typing {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-	}
-
-	.typing span {
-		width: 5px;
-		height: 5px;
-		border-radius: 50%;
-		background: var(--text-soft);
-		animation: pulse 1s ease-in-out infinite;
-	}
-
-	.typing span:nth-child(2) {
-		animation-delay: 0.12s;
-	}
-
-	.typing span:nth-child(3) {
-		animation-delay: 0.24s;
-	}
-
-	@keyframes pulse {
-		0%,
-		80%,
-		100% {
-			opacity: 0.35;
-			transform: translateY(0);
-		}
-		40% {
-			opacity: 1;
-			transform: translateY(-2px);
-		}
 	}
 </style>

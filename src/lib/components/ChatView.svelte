@@ -67,6 +67,7 @@
 	let firstTurnFlightDone = $state(false);
 	let queuedCount = $state(0);
 	let queuedMessages = $state<QueuedMessage[]>([]);
+	let turnBusy = $state(false);
 
 	let snapshotItems = $state.raw<ChatItem[]>([]);
 	// Default to "loading" until the store binds this session so a freshly
@@ -108,6 +109,7 @@
 	let heroFrameExiting = $state(false);
 
 	function syncQueueState() {
+		turnBusy = conversation.processing;
 		queuedCount = conversation.pendingCount;
 		queuedMessages = [...conversation.pendingMessages];
 	}
@@ -255,7 +257,7 @@
 				streaming={chatStore.isStreaming}
 				{queuedCount}
 				{queuedMessages}
-				waitingForReply={chatStore.isStreaming || firstTurnActive}
+				waitingForReply={turnBusy || firstTurnActive}
 				variant={composerVariant}
 			/>
 		</HeroComposerFrame>
