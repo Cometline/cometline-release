@@ -107,6 +107,9 @@
 	let groupedSessions = $derived(
 		groupSessionsByWorkspace(filteredSessions, workspacePath)
 	);
+	let showWorkspaceDivider = $derived(
+		groupedSessions.length > 1 && groupedSessions[0].workspacePath === workspacePath
+	);
 	let totalSessions = $derived(filteredSessions.length);
 
 	function toggleGroup(path: string) {
@@ -154,7 +157,7 @@
 		</div>
 
 		<div class="session-list">
-			{#each groupedSessions as group (group.workspacePath)}
+			{#each groupedSessions as group, index (group.workspacePath)}
 				{@const collapsed = isGroupCollapsed(group.workspacePath)}
 				{@const isActive = group.workspacePath === workspacePath}
 				<div class="workspace-group" class:active={isActive}>
@@ -202,6 +205,9 @@
 						</div>
 					{/if}
 				</div>
+				{#if index === 0 && showWorkspaceDivider}
+					<div class="workspace-divider" role="separator" aria-hidden="true"></div>
+				{/if}
 			{/each}
 			{#if totalSessions === 0}
 				<p class="session-empty">
@@ -367,13 +373,15 @@
 		transition: background var(--duration-fast) var(--ease-smooth);
 	}
 
-	.workspace-group + .workspace-group {
-		margin-top: 6px;
+	.workspace-group:not(.active) {
+		border-left: 2px solid var(--workspace-inactive-color);
+		padding-left: 4px;
+		margin-left: -6px;
+		background: color-mix(in srgb, var(--workspace-inactive-color) 7%, transparent);
 	}
 
-	/* Hovering anywhere over a group darkens the whole group. */
-	.workspace-group:hover {
-		background: rgba(0, 0, 0, 0.05);
+	.workspace-group:not(.active):hover {
+		background: color-mix(in srgb, var(--workspace-inactive-color) 12%, transparent);
 	}
 
 	.workspace-group.active {
@@ -402,6 +410,13 @@
 	.workspace-group.active .workspace-chevron,
 	.workspace-group.active :global(.workspace-folder) {
 		color: var(--hero-composer-glow-color, var(--accent));
+	}
+
+	.workspace-divider {
+		height: 1px;
+		margin: 8px 6px 6px;
+		background: var(--border-soft);
+		flex-shrink: 0;
 	}
 
 	.workspace-header {
