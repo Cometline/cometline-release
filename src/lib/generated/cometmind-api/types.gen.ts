@@ -54,6 +54,10 @@ export type WorkspaceFileList = {
      * Workspace-relative file paths.
      */
     files: Array<string>;
+    /**
+     * True when more matching files exist than the limit returned. Narrow with the q query parameter to find files not in this page.
+     */
+    truncated?: boolean;
 };
 
 export type PostMessageRequest = {

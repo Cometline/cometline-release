@@ -13,8 +13,10 @@
 	import {
 		filterFileIndex,
 		getFileIndex,
+		isFileIndexFresh,
 		isFileIndexReady,
-		refreshFileIndex
+		refreshFileIndex,
+		searchWorkspaceFiles
 	} from '$lib/workspace/file-index';
 	import { sessionStore } from '$lib/stores/session.svelte';
 	import {
@@ -86,6 +88,13 @@
 	// The file-index cache lives outside Svelte's reactivity (a plain module
 	// Map), so bump this version after a refresh to recompute the derived state.
 	let mentionIndexVersion = $state(0);
+	// Server-side search results, used only when the workspace index is
+	// truncated (more files than the cached page) and the user is typing.
+	let mentionServerResults = $state<string[]>([]);
+	let mentionServerQuery = $state('');
+	let mentionServerLoading = $state(false);
+	let mentionSearchTimer: ReturnType<typeof setTimeout> | null = null;
+	let mentionSearchSeq = 0;
 	let dragDepth = $state(0);
 	let dropMessage = $state('');
 	let dropProcessing = $state(false);
@@ -123,7 +132,17 @@
 		void mentionIndexVersion;
 		return isFileIndexReady(shellStore.workspacePath);
 	});
+	let mentionTruncated = $derived(Boolean(fileIndex?.truncated));
+	// When the index is complete, filter the cached list locally (instant). When
+	// it is truncated and the user has typed, defer to server-side search so
+	// files outside the cached page are still findable.
+	let useServerSearch = $derived(mentionTruncated && mentionQuery.trim().length > 0);
 	let filteredMentionFiles = $derived.by(() => {
+		if (useServerSearch) {
+			// Only trust server results that match the current query.
+			if (mentionServerQuery === mentionQuery.trim()) return mentionServerResults;
+			return [];
+		}
 		const files = fileIndex?.files ?? [];
 		return filterFileIndex(files, mentionQuery);
 	});
@@ -169,7 +188,16 @@
 		const workspacePath = shellStore.workspacePath;
 		if (!workspacePath) return;
 		if (isFileIndexReady(workspacePath)) return;
-		void loadMentionIndex(workspacePath);
+		// Defer the (potentially expensive) workspace file walk until the
+		// browser is idle, so it never competes with the transcript/session
+		// loads that fire on the same session switch. The walk is only needed
+		// for the @-mention picker, which the user reaches later.
+		const handle = scheduleIdle(() => {
+			if (shellStore.workspacePath === workspacePath && !isFileIndexReady(workspacePath)) {
+				void loadMentionIndex(workspacePath);
+			}
+		});
+		return () => cancelIdle(handle);
 	});
 
 	$effect(() => {
@@ -204,6 +232,41 @@
 		if (mentionHighlight >= filteredMentionFiles.length) {
 			mentionHighlight = Math.max(0, filteredMentionFiles.length - 1);
 		}
+	});
+
+	// Debounced server-side search for truncated workspaces. Only runs while the
+	// picker is open, the index is truncated, and the user has typed a query.
+	$effect(() => {
+		const workspacePath = shellStore.workspacePath;
+		const query = mentionQuery.trim();
+		if (!mentionMenuOpen || !useServerSearch) {
+			if (mentionSearchTimer) clearTimeout(mentionSearchTimer);
+			mentionSearchTimer = null;
+			return;
+		}
+		if (mentionSearchTimer) clearTimeout(mentionSearchTimer);
+		const seq = ++mentionSearchSeq;
+		mentionServerLoading = true;
+		mentionSearchTimer = setTimeout(() => {
+			void searchWorkspaceFiles(workspacePath, query)
+				.then((files) => {
+					if (seq !== mentionSearchSeq) return; // stale
+					mentionServerResults = files;
+					mentionServerQuery = query;
+				})
+				.catch(() => {
+					if (seq !== mentionSearchSeq) return;
+					mentionServerResults = [];
+					mentionServerQuery = query;
+				})
+				.finally(() => {
+					if (seq === mentionSearchSeq) mentionServerLoading = false;
+				});
+		}, 150);
+		return () => {
+			if (mentionSearchTimer) clearTimeout(mentionSearchTimer);
+			mentionSearchTimer = null;
+		};
 	});
 
 	$effect(() => {
@@ -498,6 +561,12 @@
 	function closeMentionMenu() {
 		mentionMenuOpen = false;
 		mentionQuery = '';
+		mentionServerResults = [];
+		mentionServerQuery = '';
+		mentionServerLoading = false;
+		mentionSearchSeq += 1;
+		if (mentionSearchTimer) clearTimeout(mentionSearchTimer);
+		mentionSearchTimer = null;
 	}
 
 	async function scrollHighlightedMentionIntoView() {
@@ -520,8 +589,10 @@
 		}
 		if (!hasWorkspace) return;
 		// Open the picker even while indexing; it shows a loading state and
-		// fills in automatically once the file index is ready.
-		if (!fileIndexReady) {
+		// fills in automatically once the file index is ready. If the cached
+		// index is stale (TTL elapsed), refresh in the background — the cached
+		// list keeps the picker instant while fresh files load in.
+		if (!isFileIndexFresh(shellStore.workspacePath)) {
 			void loadMentionIndex(shellStore.workspacePath);
 		}
 		mentionQuery = payload.query;
@@ -713,6 +784,25 @@
 		await tick();
 		input?.focus();
 	}
+
+	type IdleHandle = { type: 'idle'; id: number } | { type: 'timeout'; id: ReturnType<typeof setTimeout> };
+
+	function scheduleIdle(cb: () => void): IdleHandle {
+		const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
+		if (typeof ric === 'function') {
+			return { type: 'idle', id: ric(cb, { timeout: 1500 }) };
+		}
+		return { type: 'timeout', id: setTimeout(cb, 400) };
+	}
+
+	function cancelIdle(handle: IdleHandle) {
+		if (handle.type === 'idle') {
+			const cic = (window as unknown as { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback;
+			cic?.(handle.id);
+		} else {
+			clearTimeout(handle.id);
+		}
+	}
 </script>
 
 <div
@@ -832,6 +922,11 @@
 					<Loader size={13} stroke-width={2} class="mention-spinner" />
 					<span>Indexing workspace…</span>
 				</p>
+			{:else if useServerSearch && mentionServerLoading && filteredMentionFiles.length === 0}
+				<p class="skill-command-loading">
+					<Loader size={13} stroke-width={2} class="mention-spinner" />
+					<span>Searching…</span>
+				</p>
 			{:else if fileIndex?.error && filteredMentionFiles.length === 0}
 				<p class="skill-command-empty">Could not index workspace.</p>
 			{:else if filteredMentionFiles.length === 0}
@@ -855,6 +950,9 @@
 						<span class="mention-path">{path}</span>
 					</button>
 				{/each}
+			{/if}
+			{#if mentionTruncated && !mentionQuery.trim()}
+				<p class="mention-hint">Showing first {fileIndex?.files.length ?? 0}. Type to search all files.</p>
 			{/if}
 		</div>
 	{/if}
@@ -1249,6 +1347,14 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+
+	.mention-hint {
+		margin: 2px 0 0;
+		padding: 6px 10px 2px;
+		font-size: 10px;
+		color: var(--text-soft);
+		border-top: 1px solid var(--border-soft);
 	}
 
 	.image-attachments {

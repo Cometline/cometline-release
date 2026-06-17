@@ -100,15 +100,20 @@ export function listWorkspaces(): Promise<Workspace[]> {
 	return listWorkspacesApi({ throwOnError: true }).then(({ data }) => data.workspaces);
 }
 
+export interface WorkspaceFiles {
+	files: string[];
+	truncated: boolean;
+}
+
 export function listWorkspaceFiles(
 	workspacePath: string,
 	query = '',
 	limit = 50
-): Promise<string[]> {
+): Promise<WorkspaceFiles> {
 	return listWorkspaceFilesApi({
 		query: { workspace_path: workspacePath, q: query, limit },
 		throwOnError: true
-	}).then(({ data }) => data.files);
+	}).then(({ data }) => ({ files: data.files, truncated: Boolean(data.truncated) }));
 }
 
 export function changeSessionWorkspace(sessionId: string, workspacePath: string): Promise<Session> {

@@ -31,10 +31,25 @@
 		}
 	});
 
+	let sessionsLoaded = false;
+	let lastEnsuredWorkspace = '';
+
 	$effect(() => {
 		const workspacePath = shellStore.workspacePath;
-		if (workspacePath && workspacePath !== '/') {
-			void loadSessions(workspacePath);
+		if (!workspacePath || workspacePath === '/') return;
+		// Register the workspace in the background (needed for forks / new
+		// chats) without blocking the session list or transcript loads. Only
+		// re-register when the path actually changes.
+		if (workspacePath !== lastEnsuredWorkspace) {
+			lastEnsuredWorkspace = workspacePath;
+			void ensureWorkspace(workspacePath).catch(() => {});
+		}
+		// The session list spans every workspace, so it does not depend on the
+		// current workspace path — load it once. Subsequent new/fork/delete
+		// mutate sessionStore locally and stay in sync without a refetch.
+		if (!sessionsLoaded) {
+			sessionsLoaded = true;
+			void loadSessions();
 		}
 	});
 
@@ -49,13 +64,15 @@
 		}
 	}
 
-	async function loadSessions(workspacePath: string) {
+	async function loadSessions() {
 		try {
-			await ensureWorkspace(workspacePath);
 			const result = await listAllSessions();
 			sessionStore.setSessions(result.sessions);
 			shellStore.setBootMessage('');
 		} catch (err) {
+			// Allow a later workspace/effect tick to retry (e.g. backend not
+			// healthy yet at startup).
+			sessionsLoaded = false;
 			shellStore.setBootMessage(
 				err instanceof Error ? err.message : 'Failed to load sessions'
 			);

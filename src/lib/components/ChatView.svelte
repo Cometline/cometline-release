@@ -69,12 +69,18 @@
 	let queuedMessages = $state<QueuedMessage[]>([]);
 
 	let snapshotItems = $state.raw<ChatItem[]>([]);
-	let snapshotLoading = $state(false);
+	// Default to "loading" until the store binds this session so a freshly
+	// mounted ChatView (e.g. switching sessions while a previous transcript is
+	// still in flight) shows the loading state instead of flashing the empty
+	// state and then getting stuck without messages.
+	let snapshotLoading = $state(true);
+	let snapshotSynced = $state(false);
 
 	$effect(() => {
 		if (chatStore.sessionID !== sessionId) return;
 		snapshotItems = chatStore.items;
 		snapshotLoading = chatStore.isLoading;
+		snapshotSynced = true;
 	});
 
 	let hasVisibleConversation = $derived.by(() => {
@@ -82,6 +88,9 @@
 		if (chatStore.sessionID === sessionId) {
 			return chatStore.items.length > 0 || chatStore.isLoading;
 		}
+		// Store is still bound to a previous session (mid-switch). Before our
+		// first sync, assume loading so we don't flash the empty state.
+		if (!snapshotSynced) return true;
 		return snapshotItems.length > 0 || snapshotLoading;
 	});
 	let composerSnap = $derived(

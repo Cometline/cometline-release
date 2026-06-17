@@ -198,7 +198,8 @@ function createChatStore() {
 					getSessionMessages(nextSessionID),
 					listChildSessions(nextSessionID).catch(() => ({ sessions: [] as Session[] }))
 				]);
-				if (run !== loadRun) return;
+				// A newer load for a DIFFERENT session superseded this one.
+				if (run !== loadRun && sessionID !== nextSessionID) return;
 				if (isStreaming && sessionID === nextSessionID) return;
 				// First-turn flight may stage a user message while this fetch was in flight.
 				if (sessionID === nextSessionID && items.length > 0) return;
@@ -209,18 +210,23 @@ function createChatStore() {
 					items: summarizeChatItems(items)
 				});
 			} catch (err) {
-				if (run !== loadRun) return;
+				if (run !== loadRun && sessionID !== nextSessionID) return;
 				if (isStreaming && sessionID === nextSessionID) return;
 				if (sessionID === nextSessionID && items.length > 0) return;
 				error = err instanceof Error ? err.message : 'Failed to load transcript';
 				items = [{ id: localID('error'), type: 'error', text: error }];
 			} finally {
-				if (run === loadRun) {
-					isLoading = false;
-					if (loadPromiseSession === nextSessionID) {
-						loadPromise = null;
-						loadPromiseSession = null;
+				// Always finish the loading state for the session this fetch
+				// owns, so a superseded run never leaves isLoading stuck on or
+				// an unresolved loadPromise lingering. We key the cleanup on
+				// loadPromiseSession (the latest request for this session id)
+				// rather than loadRun, which advances on every switch.
+				if (loadPromiseSession === nextSessionID) {
+					if (sessionID === nextSessionID) {
+						isLoading = false;
 					}
+					loadPromise = null;
+					loadPromiseSession = null;
 				}
 			}
 		})();

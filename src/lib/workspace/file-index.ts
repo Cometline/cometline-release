@@ -6,10 +6,21 @@ export interface FileIndexEntry {
 	loaded: boolean;
 	error: string | null;
 	loadedAt: number;
+	// True when the workspace has more matching files than the cached page, so
+	// type-to-filter must fall back to a server-side query to find them all.
+	truncated: boolean;
 }
+
+/** Page size for the warm cache used by the @-mention picker. */
+const INDEX_LIMIT = 500;
+/** Page size for an on-demand server-side search in a truncated workspace. */
+const SEARCH_LIMIT = 50;
 
 const cache = new Map<string, FileIndexEntry>();
 const inFlight = new Map<string, Promise<void>>();
+
+/** How long a loaded index is considered fresh before a background refresh. */
+export const FILE_INDEX_TTL_MS = 30_000;
 
 export function getFileIndex(workspacePath: string): FileIndexEntry | null {
 	return cache.get(workspacePath) ?? null;
@@ -18,6 +29,13 @@ export function getFileIndex(workspacePath: string): FileIndexEntry | null {
 export function isFileIndexReady(workspacePath: string): boolean {
 	const entry = cache.get(workspacePath);
 	return Boolean(entry?.loaded && !entry.loading);
+}
+
+/** True when the index is loaded and within its TTL (no refresh needed). */
+export function isFileIndexFresh(workspacePath: string, ttlMs = FILE_INDEX_TTL_MS): boolean {
+	const entry = cache.get(workspacePath);
+	if (!entry?.loaded || entry.loading) return false;
+	return Date.now() - entry.loadedAt < ttlMs;
 }
 
 export function clearFileIndex(workspacePath: string): void {
@@ -37,7 +55,8 @@ export async function refreshFileIndex(workspacePath: string): Promise<FileIndex
 			loading: false,
 			loaded: true,
 			error: null,
-			loadedAt: Date.now()
+			loadedAt: Date.now(),
+			truncated: false
 		};
 		cache.set(workspacePath, entry);
 		return entry;
@@ -50,7 +69,12 @@ export async function refreshFileIndex(workspacePath: string): Promise<FileIndex
 	}
 
 	const entry = cache.get(workspacePath);
-	if (entry) {
+	if (entry?.loaded) {
+		// Already have a usable list — refresh in the background without
+		// flipping into a loading state, so the picker keeps showing the
+		// current files while fresh ones load in.
+		entry.error = null;
+	} else if (entry) {
 		entry.loading = true;
 		entry.error = null;
 	} else {
@@ -59,7 +83,8 @@ export async function refreshFileIndex(workspacePath: string): Promise<FileIndex
 			loading: true,
 			loaded: false,
 			error: null,
-			loadedAt: 0
+			loadedAt: 0,
+			truncated: false
 		});
 	}
 
@@ -75,13 +100,14 @@ export async function refreshFileIndex(workspacePath: string): Promise<FileIndex
 
 async function load(workspacePath: string): Promise<void> {
 	try {
-		const files = await listWorkspaceFiles(workspacePath, '', 500);
+		const { files, truncated } = await listWorkspaceFiles(workspacePath, '', INDEX_LIMIT);
 		cache.set(workspacePath, {
 			files,
 			loading: false,
 			loaded: true,
 			error: null,
-			loadedAt: Date.now()
+			loadedAt: Date.now(),
+			truncated
 		});
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);
@@ -91,9 +117,31 @@ async function load(workspacePath: string): Promise<void> {
 			loading: false,
 			loaded: current?.loaded ?? false,
 			error: message,
-			loadedAt: current?.loadedAt ?? 0
+			loadedAt: current?.loadedAt ?? 0,
+			truncated: current?.truncated ?? false
 		});
 	}
+}
+
+/**
+ * Whether the cached index for this workspace is incomplete, meaning
+ * type-to-filter should query the backend to find files outside the cached page.
+ */
+export function isFileIndexTruncated(workspacePath: string): boolean {
+	return Boolean(cache.get(workspacePath)?.truncated);
+}
+
+/**
+ * Server-side filename search for a workspace, used when the cached index is
+ * truncated so the user can still find files beyond the cached page.
+ */
+export async function searchWorkspaceFiles(
+	workspacePath: string,
+	query: string
+): Promise<string[]> {
+	if (!workspacePath || !query.trim()) return [];
+	const { files } = await listWorkspaceFiles(workspacePath, query.trim(), SEARCH_LIMIT);
+	return files;
 }
 
 export function filterFileIndex(files: string[], query: string): string[] {
