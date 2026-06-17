@@ -106,7 +106,7 @@ func (m *SessionManager) Run(ctx context.Context, opts RunOptions) (TaskResult, 
 		Interactive:   opts.Interactive,
 	}
 	client.PermissionHandler = func(pctx context.Context, params acpsdk.RequestPermissionRequest) (acpsdk.PermissionOptionId, error) {
-		return m.handlePermissionRequest(opts.ChildSessionID, opts.OnAwaiting, params)
+		return m.handlePermissionRequest(pctx, opts.ChildSessionID, opts.OnAwaiting, params)
 	}
 
 	conn := acpsdk.NewClientSideConnection(client, stdin, stdout)
@@ -238,6 +238,7 @@ func (m *SessionManager) Run(ctx context.Context, opts RunOptions) (TaskResult, 
 }
 
 func (m *SessionManager) handlePermissionRequest(
+	ctx context.Context,
 	childID string,
 	onAwaiting AwaitingCallback,
 	params acpsdk.RequestPermissionRequest,
@@ -262,7 +263,11 @@ func (m *SessionManager) handlePermissionRequest(
 	if act == nil {
 		return "", fmt.Errorf("no active session for child %s", childID)
 	}
-	input, err := m.waitRespond(context.Background(), act)
+	// Use the caller-supplied context (the ACP SDK's per-request context,
+	// derived from runCtx) instead of context.Background(). This ensures
+	// the goroutine unblocks and exits when the parent run is cancelled or
+	// times out, preventing a goroutine leak when the user never responds.
+	input, err := m.waitRespond(ctx, act)
 	if err != nil {
 		return "", err
 	}
