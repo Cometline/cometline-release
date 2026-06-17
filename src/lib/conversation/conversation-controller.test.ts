@@ -1,7 +1,9 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, type Mock } from 'vitest';
 import {
 	createConversationController,
-	refreshConversationSession
+	refreshConversationSession,
+	type ConversationControllerDeps,
+	type ConversationFlightAdapter
 } from './conversation-controller';
 import { chatStore } from '$lib/stores/chat.svelte';
 import { sessionStore } from '$lib/stores/session.svelte';
@@ -19,13 +21,13 @@ describe('createConversationController', () => {
 
 	function createDeps(overrides?: {
 		hasVisibleConversation?: boolean;
-		send?: ReturnType<typeof vi.fn>;
-		refreshSession?: ReturnType<typeof vi.fn>;
+		send?: Mock<ConversationControllerDeps['send']>;
+		refreshSession?: Mock<ConversationControllerDeps['refreshSession']>;
 		flight?: {
-			onUserMessageFlight: ReturnType<typeof vi.fn>;
-			onFirstTurnComplete?: ReturnType<typeof vi.fn>;
+			onUserMessageFlight: Mock<ConversationFlightAdapter['onUserMessageFlight']>;
+			onFirstTurnComplete?: Mock<NonNullable<ConversationFlightAdapter['onFirstTurnComplete']>>;
 		};
-		onAwaitingFirstAssistantChange?: ReturnType<typeof vi.fn>;
+		onAwaitingFirstAssistantChange?: Mock<NonNullable<ConversationControllerDeps['onAwaitingFirstAssistantChange']>>;
 	}) {
 		const send = overrides?.send ?? vi.fn().mockResolvedValue(undefined);
 		const refreshSession = overrides?.refreshSession ?? vi.fn().mockResolvedValue(undefined);
