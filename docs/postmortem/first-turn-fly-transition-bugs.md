@@ -1,15 +1,17 @@
-# Chat row transitions missing after the first message
+# First-turn `transition:fly` bugs (missing transitions + hidden user message)
 
 **Date:** 2026-06-14  
-**Components:** `ChatView.svelte`, `ChatThread.svelte`
+**Components:** `ChatView.svelte`, `ChatThread.svelte`, `chat.svelte.ts`, `reducers/chat.ts`
 
-## Symptom
+## Symptom A: Row transitions missing after the first message
 
 After sending the first message and entering the chat thread, new rows (assistant replies, tool cards, follow-up user bubbles) appeared instantly with no fly-in animation. The hero → thread fade still worked; only per-row entrances in `ChatThread` were missing.
 
-## Root cause
+## Symptom B: User message hidden when reasoning starts
 
-Two separate issues combined:
+On the first turn, when the assistant began reasoning, the user's message briefly vanished or flickered out of view.
+
+## Root causes
 
 ### 1. First-turn layout stayed active for the whole stream
 
@@ -29,6 +31,14 @@ The first user bubble had already been fixed to use `in:fly` because `transition
 
 Using `in:fly` limits animation to mount-only, which is what we want for chat rows.
 
+### 3. `transition:fly` on user row re-ran when assistant slot mounted
+
+`transition:fly` on the user row re-ran when the first-turn assistant slot mounted as a sibling inside the same `{#each}` iteration. Svelte played outro + intro on the user row, making the bubble look like it disappeared.
+
+### 4. `revealStagedUser()` mutated items in place
+
+`revealStagedUser()` mutated items in place while the reducer replaced items with fresh clones on each stream event, which could reset `reveal: false` on the staged user.
+
 ## Fix
 
 1. **`ChatView.svelte`** — Do **not** clear `awaitingFirstAssistant` when the flight overlay completes. Keep that flag until the first stream finishes (`onFirstTurnComplete`). Flight completion only sets `firstTurnFlightDone`.
@@ -39,7 +49,11 @@ Using `in:fly` limits animation to mount-only, which is what we want for chat ro
 
 3. **`ChatThread.svelte`** — Replace row-level `transition:fly` with `in:fly` for assistant, tool, status, and error rows.
 
-User rows already used `in:fly` with `reveal === false ? undefined : USER_ROW_IN` for the staged first message.
+4. **User bubble** — Use **`in:fly`** on the user bubble only (mount once), not `transition:fly` on the row wrapper.
+
+5. **`revealStagedUser()`** — Replace the items array immutably.
+
+6. **`cloneItem`** — Preserve `reveal: false` until explicitly revealed (`reveal ?? true` for history items without the field).
 
 ### Avatar gap regression (same session)
 
@@ -53,10 +67,12 @@ An earlier attempt cleared `awaitingFirstAssistant` on flight done. That removed
 
 - **Chat row motion:** Prefer `in:fly` (or `in:fade`) on the element that should animate once when it enters the transcript. Avoid `transition:fly` on rows inside a keyed `{#each}` unless you explicitly need outro animation on remove.
 
-- **Dual render paths:** If an item can render in a “slot” and in the main list, document which path owns transitions. Do not leave the slot active for the full stream if the list path is the one that should animate.
+- **Dual render paths:** If an item can render in a "slot" and in the main list, document which path owns transitions. Do not leave the slot active for the full stream if the list path is the one that should animate.
+
+- **Do not put `transition:fly` on elements inside a keyed `{#each}` block** that gain new sibling DOM when streaming starts. Use `in:fly` for entrance-only motion.
 
 ## Verification
 
 1. New chat → send first message → after the flight, reasoning/tools/text should fly in as they arrive.
 2. Send a second message → user bubble and new assistant reply should fly in.
-3. First user bubble should not disappear when reasoning starts (see [user-message-hidden-during-reasoning.md](./user-message-hidden-during-reasoning.md)).
+3. First user bubble should not disappear when reasoning starts.
