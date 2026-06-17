@@ -204,7 +204,7 @@
 		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 		<main
 			class="main content-panel-surface max-[900px]:shadow-none"
-			class:pane-focus-active={shellStore.focusedPane === 'chat'}
+			class:pane-focus-active={shellStore.focusedPane === 'chat' && shellStore.webPanelOpen}
 			onmousedown={handleMainMouseDown}
 		>
 			{@render children()}
