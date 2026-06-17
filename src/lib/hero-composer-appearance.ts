@@ -14,7 +14,7 @@ export const HERO_COMPOSER_PRESET_ROSE: HeroComposerAppearance = {
 /** Soft Arc-style blue — default hero glow. */
 export const HERO_COMPOSER_PRESET_BLUE: HeroComposerAppearance = {
 	glowColor: '#72c0ff',
-	ringColor: '#9ed8ff'
+	ringColor: '#4a9de8'
 };
 
 export const HERO_COMPOSER_PRESETS: HeroComposerPreset[] = [
@@ -85,6 +85,8 @@ export function heroComposerCssVars(
 		'--hero-composer-glow-soft': hexToRgba(colors.glowColor, 0.24),
 		'--hero-composer-glow-ring': hexToRgba(colors.glowColor, 0.14),
 		'--hero-composer-ring': hexToRgba(colors.ringColor, 0.24),
+		'--pane-focus-border': hexToRgba(colors.ringColor, 0.42),
+		'--pane-focus-glow': hexToRgba(colors.glowColor, 0.06),
 		'--user-bubble-bg': `color-mix(in srgb, ${colors.glowColor} 70%, #1f2933)`,
 		'--user-bubble-shadow': hexToRgba(colors.glowColor, 0.22)
 	};

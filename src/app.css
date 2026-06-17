@@ -86,7 +86,9 @@
 	--hero-composer-glow-strong: rgba(114, 192, 255, 0.52);
 	--hero-composer-glow-soft: rgba(114, 192, 255, 0.24);
 	--hero-composer-glow-ring: rgba(114, 192, 255, 0.14);
-	--hero-composer-ring: rgba(158, 216, 255, 0.24);
+	--hero-composer-ring: rgba(74, 157, 232, 0.24);
+	--pane-focus-border: rgba(74, 157, 232, 0.42);
+	--pane-focus-glow: rgba(114, 192, 255, 0.06);
 	--user-bubble-bg: color-mix(in srgb, #72c0ff 70%, #1f2933);
 	--user-bubble-shadow: rgba(114, 192, 255, 0.22);
 }
@@ -135,10 +137,8 @@ body {
 }
 
 .pane-focus-active {
-	border-color: var(--hero-composer-ring) !important;
-	box-shadow:
-		0 0 0 1px var(--hero-composer-ring),
-		0 0 28px var(--hero-composer-glow-ring);
+	border-color: var(--pane-focus-border) !important;
+	box-shadow: var(--shadow-card);
 }
 
 .content-panel-surface {
