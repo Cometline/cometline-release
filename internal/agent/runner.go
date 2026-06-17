@@ -37,6 +37,13 @@ type Runner struct {
 	MaxTokens    int
 	SystemPrompt string
 	SkillIndex   string
+
+	// MemorySem is an optional semaphore that bounds the number of
+	// extractMemoryBackground goroutines that may run concurrently across all
+	// sessions. When non-nil, each background goroutine acquires one slot
+	// before starting and releases it on completion. A nil value means
+	// unlimited (the previous behaviour).
+	MemorySem chan struct{}
 }
 
 // Run streams CometMind-native events on ch until the turn completes or ctx is cancelled.
@@ -190,6 +197,17 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 func (r *Runner) extractMemoryBackground(ctx context.Context, turn session.AgentTurn) {
 	if r.Memory == nil || !r.Memory.Enabled() {
 		return
+	}
+	// Honour the optional concurrency cap: acquire a slot before doing any
+	// work and release it when done. This prevents N simultaneous session
+	// completions from spawning N unbounded LLM API calls and SQLite writes.
+	if r.MemorySem != nil {
+		select {
+		case r.MemorySem <- struct{}{}:
+			defer func() { <-r.MemorySem }()
+		case <-ctx.Done():
+			return
+		}
 	}
 	// Best-effort persistence only; the turn SSE stream has already closed.
 	_, _ = r.Memory.ExtractAfterTurn(ctx, turn.ID, turn.ModelID, r.Provider)

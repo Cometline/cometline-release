@@ -27,6 +27,12 @@ import (
 	"github.com/cometline/cometmind/internal/tools"
 )
 
+// memoryExtractionConcurrency is the maximum number of extractMemoryBackground
+// goroutines that may run simultaneously across all sessions. Each completed
+// turn spawns one such goroutine; without a cap, N simultaneous completions
+// would fire N concurrent LLM API calls and contend on the SQLite write lock.
+const memoryExtractionConcurrency = 3
+
 // Runtime is the composition root shared by the CLI and server.
 type Runtime struct {
 	Config       *config.Config
@@ -35,6 +41,7 @@ type Runtime struct {
 	Memory       *memory.Service
 	SystemPrompt string
 	acpMgr       *acp.SessionManager
+	memorySem    chan struct{} // bounds concurrent memory-extraction goroutines
 }
 
 // New builds a Runtime from the environment and filesystem.
@@ -63,6 +70,7 @@ func New(ctx context.Context) (*Runtime, error) {
 		DB:           sqlDB,
 		Sessions:     sessions,
 		SystemPrompt: systemPrompt,
+		memorySem:    make(chan struct{}, memoryExtractionConcurrency),
 	}
 	if cfg.MemoryRuntimeEnabled() {
 		p, err := provider.New(cfg)
@@ -153,6 +161,7 @@ func (r *Runtime) RunnerFor(sess session.Session, workspacePath string) (*agent.
 		MaxTokens:    r.Config.MaxTokens,
 		SystemPrompt: r.SystemPrompt,
 		SkillIndex:   skillRegistry.PromptIndex(),
+		MemorySem:    r.memorySem,
 	}, nil
 }
 
