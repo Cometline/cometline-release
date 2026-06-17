@@ -338,15 +338,11 @@ func (s *Service) WorkspacePath(ctx context.Context, workspaceID string) (string
 }
 
 // SetTitleIfEmpty updates session title once (used after first user turn).
+// The update is expressed as a single atomic SQL statement whose WHERE clause
+// checks for a blank title, eliminating the read-check-write TOCTOU race that
+// would occur if two concurrent callers both observed an empty title.
 func (s *Service) SetTitleIfEmpty(ctx context.Context, sessionID, title string) error {
-	sess, err := s.q.GetSession(ctx, sessionID)
-	if err != nil {
-		return mapNotFound(err, ErrSessionNotFound)
-	}
-	if strings.TrimSpace(sess.Title) != "" {
-		return nil
-	}
-	return s.q.UpdateSessionTitle(ctx, db.UpdateSessionTitleParams{
+	return s.q.SetTitleIfEmpty(ctx, db.SetTitleIfEmptyParams{
 		ID:    sessionID,
 		Title: title,
 	})

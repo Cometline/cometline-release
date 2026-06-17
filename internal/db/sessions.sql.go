@@ -413,6 +413,28 @@ func (q *Queries) ListStaleSessionIDs(ctx context.Context, arg ListStaleSessionI
 	return items, nil
 }
 
+const setTitleIfEmpty = `-- name: SetTitleIfEmpty :exec
+UPDATE sessions
+SET
+    title = ?,
+    updated_at = unixepoch ('now', 'subsec') * 1000
+WHERE id = ?
+  AND trim(title) = ''
+`
+
+type SetTitleIfEmptyParams struct {
+	Title string `json:"title"`
+	ID    string `json:"id"`
+}
+
+// Atomically sets title only when the current title is blank.
+// The WHERE condition collapses the read-check-write into a single
+// SQLite statement, eliminating the TOCTOU race in SetTitleIfEmpty.
+func (q *Queries) SetTitleIfEmpty(ctx context.Context, arg SetTitleIfEmptyParams) error {
+	_, err := q.db.ExecContext(ctx, setTitleIfEmpty, arg.Title, arg.ID)
+	return err
+}
+
 const touchSession = `-- name: TouchSession :exec
 UPDATE sessions
 SET updated_at = unixepoch ('now', 'subsec') * 1000

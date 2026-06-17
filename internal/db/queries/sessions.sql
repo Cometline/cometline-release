@@ -111,6 +111,17 @@ SET
     updated_at = unixepoch ('now', 'subsec') * 1000
 WHERE id = ?;
 
+-- name: SetTitleIfEmpty :exec
+-- Atomically sets title only when the current title is blank.
+-- The WHERE condition collapses the read-check-write into a single
+-- SQLite statement, eliminating the TOCTOU race in SetTitleIfEmpty.
+UPDATE sessions
+SET
+    title = ?,
+    updated_at = unixepoch ('now', 'subsec') * 1000
+WHERE id = ?
+  AND trim(title) = '';
+
 -- name: UpdateSessionTokenUsage :exec
 UPDATE sessions
 SET
