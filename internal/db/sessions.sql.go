@@ -196,6 +196,52 @@ func (q *Queries) GetSession(ctx context.Context, id string) (Session, error) {
 	return i, err
 }
 
+const listAllSessions = `-- name: ListAllSessions :many
+SELECT id, workspace_id, title, model_id, provider_id, status, token_usage, parent_session_id, purpose, delegation_status, output_summary, acp_session_id, pending_question, created_at, updated_at
+FROM sessions
+WHERE parent_session_id IS NULL
+ORDER BY updated_at DESC
+`
+
+func (q *Queries) ListAllSessions(ctx context.Context) ([]Session, error) {
+	rows, err := q.db.QueryContext(ctx, listAllSessions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Session{}
+	for rows.Next() {
+		var i Session
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Title,
+			&i.ModelID,
+			&i.ProviderID,
+			&i.Status,
+			&i.TokenUsage,
+			&i.ParentSessionID,
+			&i.Purpose,
+			&i.DelegationStatus,
+			&i.OutputSummary,
+			&i.AcpSessionID,
+			&i.PendingQuestion,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listChildSessions = `-- name: ListChildSessions :many
 SELECT id, workspace_id, title, model_id, provider_id, status, token_usage, parent_session_id, purpose, delegation_status, output_summary, acp_session_id, pending_question, created_at, updated_at
 FROM sessions

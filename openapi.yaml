@@ -202,6 +202,12 @@ paths:
           schema:
             type: string
           description: Absolute workspace path for an already-registered workspace.
+        - name: all
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: When true, returns top-level sessions across all workspaces and ignores workspace scope.
       responses:
         '200':
           description: Sessions for the requested workspace
@@ -312,6 +318,37 @@ paths:
       responses:
         '200':
           description: Updated session resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/sessions/{id}/fork:
+    post:
+      tags: [Sessions]
+      summary: Fork a session into a different workspace
+      description: |
+        Creates a new session in the target workspace, copying the source session's
+        title, model, and full message/tool-call transcript. The original session is
+        left untouched. Returns the newly created session.
+      operationId: forkSession
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForkSessionRequest'
+      responses:
+        '201':
+          description: Forked session resource
           content:
             application/json:
               schema:
@@ -922,6 +959,15 @@ components:
         workspace_path:
           type: string
           description: Absolute filesystem path for the new workspace root.
+
+    ForkSessionRequest:
+      type: object
+      additionalProperties: false
+      required: [workspace_path]
+      properties:
+        workspace_path:
+          type: string
+          description: Absolute filesystem path for the forked session's workspace root.
 
     WorkspaceListResponse:
       type: object

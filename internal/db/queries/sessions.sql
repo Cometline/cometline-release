@@ -98,6 +98,12 @@ FROM sessions
 WHERE workspace_id = ?
 ORDER BY updated_at DESC;
 
+-- name: ListAllSessions :many
+SELECT *
+FROM sessions
+WHERE parent_session_id IS NULL
+ORDER BY updated_at DESC;
+
 -- name: UpdateSessionTitle :exec
 UPDATE sessions
 SET

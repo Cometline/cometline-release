@@ -98,6 +98,7 @@ func New(deps Deps) (*gin.Engine, error) {
 	api.GET("/sessions/:id", app.handleGetSession)
 	api.PATCH("/sessions/:id", app.handlePatchSession)
 	api.PATCH("/sessions/:id/workspace", app.handleChangeSessionWorkspace)
+	api.POST("/sessions/:id/fork", app.handleForkSession)
 	api.DELETE("/sessions/:id", app.handleDeleteSession)
 	api.GET("/sessions/:id/messages", app.handleGetMessages)
 	api.GET("/sessions/:id/children", app.handleListChildSessions)
@@ -173,6 +174,10 @@ type patchSessionRequest struct {
 }
 
 type changeSessionWorkspaceRequest struct {
+	WorkspacePath string `json:"workspace_path"`
+}
+
+type forkSessionRequest struct {
 	WorkspacePath string `json:"workspace_path"`
 }
 
@@ -488,6 +493,11 @@ func (a *App) handleCreateSession(c *gin.Context) {
 }
 
 func (a *App) handleListSessions(c *gin.Context) {
+	if strings.EqualFold(strings.TrimSpace(c.Query("all")), "true") {
+		a.listAllSessions(c)
+		return
+	}
+
 	ws, ok := a.resolveReadWorkspace(c, c.Query("workspace_id"), c.Query("workspace_path"))
 	if !ok {
 		return
@@ -502,6 +512,37 @@ func (a *App) handleListSessions(c *gin.Context) {
 	items := make([]sessionResource, 0, len(list))
 	for _, sess := range list {
 		res, err := sessionResourceFromModel(sess, ws.Path)
+		if err != nil {
+			writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
+			return
+		}
+		items = append(items, res)
+	}
+
+	c.JSON(http.StatusOK, listSessionsResponse{Sessions: items})
+}
+
+func (a *App) listAllSessions(c *gin.Context) {
+	ctx := c.Request.Context()
+	workspaces, err := a.sessions.ListWorkspaces(ctx)
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	pathByID := make(map[string]string, len(workspaces))
+	for _, ws := range workspaces {
+		pathByID[ws.ID] = ws.Path
+	}
+
+	list, err := a.sessions.ListAllSessions(ctx)
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+
+	items := make([]sessionResource, 0, len(list))
+	for _, sess := range list {
+		res, err := sessionResourceFromModel(sess, pathByID[sess.WorkspaceID])
 		if err != nil {
 			writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
 			return
@@ -633,6 +674,47 @@ func (a *App) handleChangeSessionWorkspace(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, res)
+}
+
+func (a *App) handleForkSession(c *gin.Context) {
+	var req forkSessionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "bad_request", "invalid JSON body")
+		return
+	}
+
+	clean, ok := cleanWorkspacePath(c, req.WorkspacePath)
+	if !ok {
+		return
+	}
+	if !validateWorkspaceDirectory(c, clean) {
+		return
+	}
+
+	sessID := c.Param("id")
+	forked, err := a.sessions.ForkSession(c.Request.Context(), sessID, clean)
+	if errors.Is(err, session.ErrSessionNotFound) {
+		writeError(c, http.StatusNotFound, "session_not_found", "session was not found")
+		return
+	}
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+
+	wsPath, err := a.sessions.WorkspacePath(c.Request.Context(), forked.WorkspaceID)
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+
+	res, err := sessionResourceFromModel(forked, wsPath)
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+
+	c.JSON(http.StatusCreated, res)
 }
 
 func (a *App) handleDeleteSession(c *gin.Context) {

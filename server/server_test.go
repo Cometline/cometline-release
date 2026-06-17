@@ -939,6 +939,131 @@ func TestChangeSessionWorkspaceRejectsMissingDirectory(t *testing.T) {
 	}
 }
 
+func TestForkSessionCopiesTranscript(t *testing.T) {
+	t.Parallel()
+
+	engine, svc, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
+		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
+			ch <- event.Done()
+			return nil
+		}), nil
+	})
+	defer cleanup()
+
+	ctx := context.Background()
+	ws1 := t.TempDir()
+	ws2 := t.TempDir()
+
+	srcWs, err := svc.EnsureWorkspace(ctx, ws1)
+	if err != nil {
+		t.Fatalf("EnsureWorkspace() error = %v", err)
+	}
+	src, err := svc.NewSession(ctx, srcWs.ID, "test-model", "test-provider")
+	if err != nil {
+		t.Fatalf("NewSession() error = %v", err)
+	}
+	if _, err := svc.AppendUserMessage(ctx, src.ID, "original message"); err != nil {
+		t.Fatalf("AppendUserMessage() error = %v", err)
+	}
+	if err := svc.SetTitleIfEmpty(ctx, src.ID, "Original title"); err != nil {
+		t.Fatalf("SetTitleIfEmpty() error = %v", err)
+	}
+
+	forkRec := httptest.NewRecorder()
+	forkReq := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+src.ID+"/fork", bytes.NewBufferString(`{"workspace_path":`+mustJSON(ws2)+`}`))
+	forkReq.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(forkRec, forkReq)
+	if forkRec.Code != http.StatusCreated {
+		t.Fatalf("fork status = %d, want %d body=%s", forkRec.Code, http.StatusCreated, forkRec.Body.String())
+	}
+
+	var forked sessionResource
+	decodeJSON(t, forkRec.Body.Bytes(), &forked)
+	if forked.ID == src.ID {
+		t.Fatalf("forked session must have a new id")
+	}
+	if forked.WorkspacePath != filepath.Clean(ws2) {
+		t.Fatalf("forked workspace_path = %q, want %q", forked.WorkspacePath, filepath.Clean(ws2))
+	}
+	if forked.Title != "Original title" {
+		t.Fatalf("forked title = %q, want %q", forked.Title, "Original title")
+	}
+
+	// Original session is untouched.
+	original, err := svc.GetSession(ctx, src.ID)
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if original.WorkspaceID != srcWs.ID {
+		t.Fatalf("original workspace changed: %q", original.WorkspaceID)
+	}
+
+	// Forked transcript carries the copied message plus a system fork notice.
+	forkedMsgs, err := svc.BuildSDKMessages(ctx, forked.ID)
+	if err != nil {
+		t.Fatalf("BuildSDKMessages() error = %v", err)
+	}
+	found := false
+	for _, msg := range forkedMsgs {
+		for _, block := range msg.Content {
+			if text, ok := block.(cometsdk.TextBlock); ok && strings.Contains(text.Text, "original message") {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("forked transcript missing original message: %+v", forkedMsgs)
+	}
+}
+
+func TestListAllSessionsAcrossWorkspaces(t *testing.T) {
+	t.Parallel()
+
+	engine, svc, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
+		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
+			ch <- event.Done()
+			return nil
+		}), nil
+	})
+	defer cleanup()
+
+	ctx := context.Background()
+	ws1, err := svc.EnsureWorkspace(ctx, t.TempDir())
+	if err != nil {
+		t.Fatalf("EnsureWorkspace() error = %v", err)
+	}
+	ws2, err := svc.EnsureWorkspace(ctx, t.TempDir())
+	if err != nil {
+		t.Fatalf("EnsureWorkspace() error = %v", err)
+	}
+	if _, err := svc.NewSession(ctx, ws1.ID, "m", "p"); err != nil {
+		t.Fatalf("NewSession() error = %v", err)
+	}
+	if _, err := svc.NewSession(ctx, ws2.ID, "m", "p"); err != nil {
+		t.Fatalf("NewSession() error = %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sessions?all=true", nil)
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var got listSessionsResponse
+	decodeJSON(t, rec.Body.Bytes(), &got)
+	if len(got.Sessions) != 2 {
+		t.Fatalf("sessions len = %d, want 2", len(got.Sessions))
+	}
+	paths := map[string]bool{}
+	for _, sess := range got.Sessions {
+		paths[sess.WorkspacePath] = true
+	}
+	if !paths[ws1.Path] || !paths[ws2.Path] {
+		t.Fatalf("expected sessions for both workspaces, got %+v", got.Sessions)
+	}
+}
+
 func newTestEngine(t *testing.T, newRunner RunnerFactory) (*gin.Engine, *session.Service, func()) {
 	t.Helper()
 

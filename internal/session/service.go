@@ -152,6 +152,82 @@ func (s *Service) ChangeSessionWorkspace(ctx context.Context, sessionID, absPath
 	return s.GetSession(ctx, sessionID)
 }
 
+// ForkSession creates a new session in the target workspace, copying the
+// originating session's metadata and full message/tool-call transcript. The
+// original session is left untouched.
+func (s *Service) ForkSession(ctx context.Context, sessionID, absPath string) (Session, error) {
+	src, err := s.GetSession(ctx, sessionID)
+	if err != nil {
+		return Session{}, err
+	}
+
+	ws, err := s.EnsureWorkspace(ctx, absPath)
+	if err != nil {
+		return Session{}, err
+	}
+
+	forked, err := s.q.CreateSession(ctx, db.CreateSessionParams{
+		ID:          id.New(),
+		WorkspaceID: ws.ID,
+		Title:       src.Title,
+		ModelID:     src.ModelID,
+		ProviderID:  src.ProviderID,
+		Status:      "active",
+	})
+	if err != nil {
+		return Session{}, err
+	}
+
+	msgs, err := s.q.ListMessagesBySession(ctx, sessionID)
+	if err != nil {
+		return Session{}, err
+	}
+	for _, msg := range msgs {
+		newMsg, err := s.q.CreateMessage(ctx, db.CreateMessageParams{
+			ID:               id.New(),
+			SessionID:        forked.ID,
+			Role:             msg.Role,
+			Content:          msg.Content,
+			ReasoningContent: msg.ReasoningContent,
+			TokenCount:       msg.TokenCount,
+		})
+		if err != nil {
+			return Session{}, err
+		}
+		calls, err := s.q.ListToolCallsByMessage(ctx, msg.ID)
+		if err != nil {
+			return Session{}, err
+		}
+		for _, call := range calls {
+			if _, err := s.q.CreateToolCall(ctx, db.CreateToolCallParams{
+				ID:         id.New(),
+				MessageID:  newMsg.ID,
+				ToolName:   call.ToolName,
+				Arguments:  call.Arguments,
+				Result:     call.Result,
+				DurationMs: call.DurationMs,
+				ExitCode:   call.ExitCode,
+			}); err != nil {
+				return Session{}, err
+			}
+		}
+	}
+
+	oldPath, err := s.WorkspacePath(ctx, src.WorkspaceID)
+	if err == nil && oldPath != ws.Path {
+		note := fmt.Sprintf(
+			"Forked from a session in %s. File tools now operate under %s.",
+			oldPath,
+			ws.Path,
+		)
+		if _, err := s.AppendSystemMessage(ctx, forked.ID, note); err != nil {
+			return Session{}, err
+		}
+	}
+
+	return s.GetSession(ctx, forked.ID)
+}
+
 // AppendSystemMessage persists a system notice in the transcript.
 func (s *Service) AppendSystemMessage(ctx context.Context, sessionID, text string) (Message, error) {
 	msg, err := s.q.CreateMessage(ctx, db.CreateMessageParams{
@@ -198,6 +274,16 @@ func (s *Service) GetSession(ctx context.Context, sessionID string) (Session, er
 // ListSessions lists sessions for a workspace ordered by recent activity.
 func (s *Service) ListSessions(ctx context.Context, workspaceID string) ([]Session, error) {
 	rows, err := s.q.ListSessionsByWorkspace(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	return sessionsFromDB(rows), nil
+}
+
+// ListAllSessions lists top-level sessions across every workspace, ordered by
+// recent activity. Delegated child sessions are excluded.
+func (s *Service) ListAllSessions(ctx context.Context) ([]Session, error) {
+	rows, err := s.q.ListAllSessions(ctx)
 	if err != nil {
 		return nil, err
 	}

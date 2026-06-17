@@ -196,6 +196,12 @@ type ErrorResponse struct {
 	} `json:"error"`
 }
 
+// ForkSessionRequest defines model for ForkSessionRequest.
+type ForkSessionRequest struct {
+	// WorkspacePath Absolute filesystem path for the forked session's workspace root.
+	WorkspacePath string `json:"workspace_path"`
+}
+
 // HealthResponse defines model for HealthResponse.
 type HealthResponse struct {
 	Status string `json:"status"`
@@ -588,6 +594,9 @@ type ListSessionsParams struct {
 
 	// WorkspacePath Absolute workspace path for an already-registered workspace.
 	WorkspacePath *string `form:"workspace_path,omitempty" json:"workspace_path,omitempty"`
+
+	// All When true, returns top-level sessions across all workspaces and ignores workspace scope.
+	All *bool `form:"all,omitempty" json:"all,omitempty"`
 }
 
 // ListSkillsParams defines parameters for ListSkills.
@@ -648,6 +657,9 @@ type CreateSessionJSONRequestBody = CreateSessionRequest
 
 // PatchSessionJSONRequestBody defines body for PatchSession for application/json ContentType.
 type PatchSessionJSONRequestBody = UpdateSessionRequest
+
+// ForkSessionJSONRequestBody defines body for ForkSession for application/json ContentType.
+type ForkSessionJSONRequestBody = ForkSessionRequest
 
 // PostSessionMessageJSONRequestBody defines body for PostSessionMessage for application/json ContentType.
 type PostSessionMessageJSONRequestBody = PostMessageRequest
