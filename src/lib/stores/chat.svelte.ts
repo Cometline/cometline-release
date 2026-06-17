@@ -207,6 +207,32 @@ function createChatStore() {
 		return streamingSessionIds.has(targetSessionID);
 	}
 
+	function hasInFlightTurn(targetSessionID: string) {
+		if (isStreamingFor(targetSessionID)) return true;
+		if (streamHandles.has(targetSessionID)) return true;
+		return getCachedItems(targetSessionID).some(
+			(item) =>
+				item.type === 'assistant' &&
+				(item.pending === true || item.reasoning?.pending === true)
+		);
+	}
+
+	function isAwaitingFirstAssistant(targetSessionID: string) {
+		if (!hasInFlightTurn(targetSessionID) && !isStreamingFor(targetSessionID)) return false;
+		const cached = getCachedItems(targetSessionID);
+		const hasUser = cached.some((item) => item.type === 'user');
+		const pendingAssistant = cached.some(
+			(item) => item.type === 'assistant' && item.pending === true
+		);
+		const hasCompletedAssistant = cached.some(
+			(item) =>
+				item.type === 'assistant' &&
+				item.pending !== true &&
+				(item.text.length > 0 || item.reasoning?.text)
+		);
+		return hasUser && pendingAssistant && !hasCompletedAssistant;
+	}
+
 	function abortAllStreams() {
 		for (const [, handle] of streamHandles) {
 			handle.abort.abort();
@@ -259,7 +285,7 @@ function createChatStore() {
 			if (handle) {
 				flushBatchForSession(sessionID, handle.ctx, handle);
 			}
-			sessionCache.set(sessionID, items);
+			sessionCache.set(sessionID, getCachedItems(sessionID));
 		}
 
 		loadRun += 1;
@@ -273,7 +299,7 @@ function createChatStore() {
 
 	async function loadTranscript(nextSessionID: string) {
 		if (sessionID === nextSessionID && items.length > 0) return;
-		if (isStreamingFor(nextSessionID) && cachedItemCount(nextSessionID) > 0) return;
+		if (hasInFlightTurn(nextSessionID) && cachedItemCount(nextSessionID) > 0) return;
 		if (sessionID === nextSessionID && isLoading && loadPromise) return loadPromise;
 
 		const run = ++loadRun;
@@ -284,7 +310,7 @@ function createChatStore() {
 				if (handle) {
 					flushBatchForSession(sessionID, handle.ctx, handle);
 				}
-				sessionCache.set(sessionID, items);
+				sessionCache.set(sessionID, getCachedItems(sessionID));
 			}
 			sessionID = nextSessionID;
 			items = sessionCache.get(nextSessionID) ?? [];
@@ -301,7 +327,7 @@ function createChatStore() {
 					listChildSessions(nextSessionID).catch(() => ({ sessions: [] as Session[] }))
 				]);
 				if (run !== loadRun && sessionID !== nextSessionID) return;
-				if (isStreamingFor(nextSessionID) && cachedItemCount(nextSessionID) > 0) return;
+				if (hasInFlightTurn(nextSessionID) && cachedItemCount(nextSessionID) > 0) return;
 				if (sessionID === nextSessionID && items.length > 0) return;
 				const loaded = mergeSubagents(
 					itemsFromTranscript(transcript.items),
@@ -317,7 +343,7 @@ function createChatStore() {
 				});
 			} catch (err) {
 				if (run !== loadRun && sessionID !== nextSessionID) return;
-				if (isStreamingFor(nextSessionID) && cachedItemCount(nextSessionID) > 0) return;
+				if (hasInFlightTurn(nextSessionID) && cachedItemCount(nextSessionID) > 0) return;
 				if (sessionID === nextSessionID && items.length > 0) return;
 				const message = err instanceof Error ? err.message : 'Failed to load transcript';
 				sessionErrors.set(nextSessionID, message);
@@ -464,7 +490,7 @@ function createChatStore() {
 				reason: 'session-already-streaming',
 				textLength: text.length
 			});
-			return;
+			throw new Error('Session is already streaming');
 		}
 
 		const handle: SessionStream = {
@@ -510,7 +536,10 @@ function createChatStore() {
 				handle.abort.signal
 			)) {
 				const current = streamHandles.get(nextSessionID);
-				if (!current || current.run !== handle.run) return;
+				if (!current || current.run !== handle.run) {
+					handle.abort.abort();
+					return;
+				}
 				eventIndex += 1;
 				const before = summarizeChatItems(getCachedItems(nextSessionID));
 				applyStreamEventForSession(nextSessionID, event, ctx, handle);
@@ -528,7 +557,10 @@ function createChatStore() {
 			}
 		} catch (err) {
 			const current = streamHandles.get(nextSessionID);
-			if (!current || current.run !== handle.run) return;
+			if (!current || current.run !== handle.run) {
+				handle.abort.abort();
+				return;
+			}
 			if (isAbortError(err)) {
 				chatDebug('store:send-aborted', { sessionID: nextSessionID, run: handle.run });
 				return;
@@ -543,8 +575,7 @@ function createChatStore() {
 				handle
 			);
 		} finally {
-			const current = streamHandles.get(nextSessionID);
-			if (current?.run === handle.run) {
+			if (streamHandles.get(nextSessionID) === handle) {
 				flushBatchForSession(nextSessionID, ctx, handle);
 				const beforeDone = summarizeChatItems(getCachedItems(nextSessionID));
 				applyEventToSession(nextSessionID, { type: 'done' }, ctx);
@@ -665,6 +696,8 @@ function createChatStore() {
 			return error;
 		},
 		isStreamingFor,
+		hasInFlightTurn,
+		isAwaitingFirstAssistant,
 		clear,
 		bindSession,
 		loadTranscript,

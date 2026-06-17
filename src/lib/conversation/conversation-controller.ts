@@ -28,8 +28,12 @@ export interface ConversationFlightAdapter {
 export interface ConversationControllerDeps {
 	getSessionId: () => string;
 	getHasVisibleConversation: () => boolean;
-	send: (payload: ChatTurnPayload | string, opts?: { skipUser?: boolean }) => Promise<void>;
-	refreshSession: () => Promise<void>;
+	send: (
+		sessionId: string,
+		payload: ChatTurnPayload | string,
+		opts?: { skipUser?: boolean }
+	) => Promise<void>;
+	refreshSession: (sessionId: string) => Promise<void>;
 	flight?: ConversationFlightAdapter;
 	onQueueChange?: () => void;
 	onAwaitingFirstAssistantChange?: (value: boolean) => void;
@@ -55,6 +59,7 @@ export interface ConversationController {
 
 async function runTurn(
 	deps: ConversationControllerDeps,
+	turnSessionId: string,
 	payloadOrText: ChatTurnPayload | string,
 	getHasVisibleConversation: () => boolean
 ): Promise<void> {
@@ -69,14 +74,14 @@ async function runTurn(
 		);
 	}
 
-	await deps.send(payloadOrText, { skipUser: usesFlight ? true : firstTurn });
+	await deps.send(turnSessionId, payloadOrText, { skipUser: usesFlight ? true : firstTurn });
 
 	if (firstTurn) {
 		deps.onAwaitingFirstAssistantChange?.(false);
 		deps.flight?.onFirstTurnComplete?.();
 	}
 
-	void deps.refreshSession();
+	void deps.refreshSession(turnSessionId);
 }
 
 export function createConversationController(
@@ -88,15 +93,26 @@ export function createConversationController(
 	function ensureQueue(): ChatTurnQueue {
 		const sessionId = deps.getSessionId();
 		if (!turnQueue || queueSessionId !== sessionId) {
+			const queueForSessionId = sessionId;
 			queueSessionId = sessionId;
 			turnQueue = createChatTurnQueue(
 				async (text, images, filePaths) => {
 					if (images === undefined && filePaths === undefined) {
-						await runTurn(deps, text, deps.getHasVisibleConversation);
+						await runTurn(deps, queueForSessionId, text, deps.getHasVisibleConversation);
 					} else if (filePaths === undefined) {
-						await runTurn(deps, { text, images }, deps.getHasVisibleConversation);
+						await runTurn(
+							deps,
+							queueForSessionId,
+							{ text, images },
+							deps.getHasVisibleConversation
+						);
 					} else {
-						await runTurn(deps, { text, images, filePaths }, deps.getHasVisibleConversation);
+						await runTurn(
+							deps,
+							queueForSessionId,
+							{ text, images, filePaths },
+							deps.getHasVisibleConversation
+						);
 					}
 				},
 				deps.onQueueChange
@@ -130,7 +146,7 @@ export function createConversationController(
 		shouldSkipTranscriptLoad() {
 			const sessionId = deps.getSessionId();
 			if (sessionStore.hasPendingMessage(sessionId)) return true;
-			if (chatStore.isStreamingFor(sessionId) && chatStore.items.length > 0) return true;
+			if (chatStore.hasInFlightTurn(sessionId)) return true;
 			if (chatStore.sessionID === sessionId && chatStore.items.length > 0) return true;
 			return false;
 		},
@@ -142,7 +158,9 @@ export function createConversationController(
 				void ensureQueue().enqueue(pending.text, pending.images, pending.filePaths);
 				return;
 			}
-			void chatStore.loadTranscript(sessionId);
+			if (!this.shouldSkipTranscriptLoad()) {
+				void chatStore.loadTranscript(sessionId);
+			}
 		},
 
 		syncComposerPhase(opts) {

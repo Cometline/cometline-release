@@ -29,8 +29,8 @@
 	const conversation = createConversationController({
 		getSessionId: () => sessionId,
 		getHasVisibleConversation: () => hasVisibleConversation,
-		send: (payload, opts) => chatStore.send(sessionId, payload, opts),
-		refreshSession: () => refreshConversationSession(sessionId),
+		send: (sid, payload, opts) => chatStore.send(sid, payload, opts),
+		refreshSession: (sid) => refreshConversationSession(sid),
 		onQueueChange: syncQueueState,
 		onAwaitingFirstAssistantChange: (value) => {
 			awaitingFirstAssistant = value;
@@ -129,12 +129,12 @@
 
 	$effect(() => {
 		sessionId;
-		awaitingFirstAssistant = false;
 		firstTurnActive = false;
 		firstTurnFlightDone = false;
 		heroFrameExiting = false;
 		snapshotSynced = false;
 		snapshotLoading = true;
+		awaitingFirstAssistant = chatStore.isAwaitingFirstAssistant(sessionId);
 		syncQueueState();
 	});
 

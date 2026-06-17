@@ -59,8 +59,8 @@ describe('createConversationController', () => {
 		await controller.enqueue('hello');
 
 		expect(onUserMessageFlight).toHaveBeenCalledWith('hello', { firstTurn: true });
-		expect(send).toHaveBeenCalledWith('hello', { skipUser: true });
-		expect(refreshSession).toHaveBeenCalled();
+		expect(send).toHaveBeenCalledWith('sess-1', 'hello', { skipUser: true });
+		expect(refreshSession).toHaveBeenCalledWith('sess-1');
 	});
 
 	it('skips user item on subsequent turns when flight is enabled', async () => {
@@ -73,7 +73,7 @@ describe('createConversationController', () => {
 		await controller.enqueue('hello again');
 
 		expect(onUserMessageFlight).toHaveBeenCalledWith('hello again', { firstTurn: false });
-		expect(send).toHaveBeenCalledWith('hello again', { skipUser: true });
+		expect(send).toHaveBeenCalledWith('sess-1', 'hello again', { skipUser: true });
 	});
 
 	it('does not skip user on subsequent turns without flight', async () => {
@@ -81,7 +81,7 @@ describe('createConversationController', () => {
 
 		await controller.enqueue('hello again');
 
-		expect(send).toHaveBeenCalledWith('hello again', { skipUser: false });
+		expect(send).toHaveBeenCalledWith('sess-1', 'hello again', { skipUser: false });
 	});
 
 	it('passes file paths through to send', async () => {
@@ -91,6 +91,7 @@ describe('createConversationController', () => {
 		await controller.enqueue('review', images, ['README.md']);
 
 		expect(send).toHaveBeenCalledWith(
+			'sess-1',
 			{ text: 'review', images, filePaths: ['README.md'] },
 			{ skipUser: false }
 		);
@@ -119,11 +120,11 @@ describe('createConversationController', () => {
 		const firstGate = new Promise<void>((resolve) => {
 			releaseFirst = resolve;
 		});
-		const send = vi.fn().mockImplementation(async (payload: string | { text: string }) => {
+		const send = vi.fn().mockImplementation(async (sessionId: string, payload: string | { text: string }) => {
 			const text = typeof payload === 'string' ? payload : payload.text;
-			order.push(`start:${text}`);
+			order.push(`start:${sessionId}:${text}`);
 			if (text === 'first') await firstGate;
-			order.push(`end:${text}`);
+			order.push(`end:${sessionId}:${text}`);
 		});
 		const { controller } = createDeps({ send });
 
@@ -137,7 +138,12 @@ describe('createConversationController', () => {
 		await first;
 		await second;
 
-		expect(order).toEqual(['start:first', 'end:first', 'start:second', 'end:second']);
+		expect(order).toEqual([
+			'start:sess-1:first',
+			'end:sess-1:first',
+			'start:sess-1:second',
+			'end:sess-1:second'
+		]);
 	});
 
 	it('consumes pending first message on mount', async () => {
@@ -148,11 +154,11 @@ describe('createConversationController', () => {
 		controller.onMount();
 
 		await vi.waitFor(() => expect(send).toHaveBeenCalled());
-		expect(send).toHaveBeenCalledWith('from home', { skipUser: true });
+		expect(send).toHaveBeenCalledWith('sess-1', 'from home', { skipUser: true });
 		expect(sessionStore.hasPendingMessage('sess-1')).toBe(false);
 	});
 
-	it('loads transcript on mount when no pending message', async () => {
+	it('loads transcript on mount when no pending message and cache is empty', async () => {
 		const loadSpy = vi.spyOn(chatStore, 'loadTranscript').mockResolvedValue(undefined);
 		const { controller } = createDeps();
 
@@ -160,6 +166,48 @@ describe('createConversationController', () => {
 
 		expect(loadSpy).toHaveBeenCalledWith('sess-1');
 		loadSpy.mockRestore();
+	});
+
+	it('skips transcript load on mount when session has in-flight turn', async () => {
+		const loadSpy = vi.spyOn(chatStore, 'loadTranscript').mockResolvedValue(undefined);
+		vi.spyOn(chatStore, 'hasInFlightTurn').mockReturnValue(true);
+		const { controller } = createDeps();
+
+		controller.onMount();
+
+		expect(loadSpy).not.toHaveBeenCalled();
+		loadSpy.mockRestore();
+	});
+
+	it('sends to the session that enqueued the turn even if getSessionId changes during flight', async () => {
+		let currentSessionId = 'sess-a';
+		let releaseFlight: (() => void) | undefined;
+		const flightGate = new Promise<void>((resolve) => {
+			releaseFlight = resolve;
+		});
+		const send = vi.fn().mockResolvedValue(undefined);
+		const onUserMessageFlight = vi.fn().mockImplementation(async () => {
+			currentSessionId = 'sess-b';
+			await flightGate;
+		});
+
+		const controller = createConversationController({
+			getSessionId: () => currentSessionId,
+			getHasVisibleConversation: () => true,
+			send,
+			refreshSession: vi.fn().mockResolvedValue(undefined),
+			flight: { onUserMessageFlight }
+		});
+
+		const turn = controller.enqueue('question A');
+		await vi.waitFor(() => expect(onUserMessageFlight).toHaveBeenCalled());
+		expect(currentSessionId).toBe('sess-b');
+		expect(send).not.toHaveBeenCalled();
+
+		releaseFlight!();
+		await turn;
+
+		expect(send).toHaveBeenCalledWith('sess-a', 'question A', { skipUser: true });
 	});
 
 	it('shouldSkipTranscriptLoad when pending message exists', () => {

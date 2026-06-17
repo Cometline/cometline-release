@@ -16,6 +16,23 @@ import {
 } from '$lib/client/cometmind';
 import { chatStore } from './chat.svelte';
 
+async function flushAnimationFrames() {
+	await new Promise<void>((resolve) => {
+		if (typeof requestAnimationFrame === 'function') {
+			requestAnimationFrame(() => resolve());
+		} else {
+			resolve();
+		}
+	});
+}
+
+async function waitForStore(predicate: () => boolean) {
+	await vi.waitFor(async () => {
+		await flushAnimationFrames();
+		expect(predicate()).toBe(true);
+	});
+}
+
 async function* eventsOf(...events: StreamEvent[]) {
 	for (const event of events) {
 		yield event;
@@ -34,6 +51,10 @@ describe('chatStore session switching', () => {
 		chatStore.clear();
 		vi.clearAllMocks();
 		vi.mocked(listChildSessions).mockResolvedValue({ sessions: [] });
+		vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+			cb(0);
+			return 0;
+		});
 	});
 
 	it('loads session B transcript when switching from session A with partial stream', async () => {
@@ -160,9 +181,106 @@ describe('chatStore session switching', () => {
 		void chatStore.send('sess-a', 'first');
 		await vi.waitFor(() => expect(chatStore.isStreamingFor('sess-a')).toBe(true));
 
-		await chatStore.send('sess-a', 'second');
+		await expect(chatStore.send('sess-a', 'second')).rejects.toThrow(
+			'Session is already streaming'
+		);
 		expect(vi.mocked(streamMessage)).toHaveBeenCalledTimes(1);
 
 		releaseA!();
+	});
+
+	it('does not clobber in-flight cache when loadTranscript returns user-only server data', async () => {
+		let releaseA: (() => void) | undefined;
+		const aGate = new Promise<void>((resolve) => {
+			releaseA = resolve;
+		});
+
+		vi.mocked(streamMessage).mockImplementation(async function* (sessionId) {
+			if (sessionId === 'sess-a') {
+				yield { type: 'reasoning_start' };
+				yield { type: 'reasoning_delta', text: 'thinking about jokes' };
+				await aGate;
+				yield { type: 'done' };
+			}
+		});
+
+		vi.mocked(getSessionMessages).mockImplementation(async (sessionId) =>
+			mockTranscript(sessionId, `server-only ${sessionId}`)
+		);
+
+		chatStore.bindSession('sess-a');
+		void chatStore.send('sess-a', 'write a joke');
+		await waitForStore(() =>
+			chatStore.items.some(
+				(item) =>
+					item.type === 'assistant' &&
+					item.reasoning?.text.includes('thinking about jokes')
+			)
+		);
+
+		chatStore.bindSession('sess-b');
+		await chatStore.loadTranscript('sess-b');
+
+		chatStore.bindSession('sess-a');
+		await chatStore.loadTranscript('sess-a');
+
+		expect(
+			chatStore.items.some(
+				(item) =>
+					item.type === 'assistant' &&
+					item.reasoning?.text.includes('thinking about jokes')
+			)
+		).toBe(true);
+
+		releaseA!();
+		await vi.waitFor(() => expect(chatStore.isStreamingFor('sess-a')).toBe(false));
+	});
+
+	it('preserves partial reasoning when switching back during stream', async () => {
+		let releaseA: (() => void) | undefined;
+		const aGate = new Promise<void>((resolve) => {
+			releaseA = resolve;
+		});
+
+		vi.mocked(streamMessage).mockImplementation(async function* (sessionId) {
+			if (sessionId === 'sess-a') {
+				yield { type: 'reasoning_start' };
+				yield { type: 'reasoning_delta', text: 'live reasoning' };
+				await aGate;
+				yield { type: 'done' };
+			}
+			if (sessionId === 'sess-b') {
+				yield { type: 'text_delta', delta: 'answer B' };
+				yield { type: 'done' };
+			}
+		});
+
+		vi.mocked(getSessionMessages).mockImplementation(async (sessionId) =>
+			mockTranscript(sessionId, `history ${sessionId}`)
+		);
+
+		chatStore.bindSession('sess-a');
+		void chatStore.send('sess-a', 'question A');
+		await waitForStore(() =>
+			chatStore.items.some(
+				(item) =>
+					item.type === 'assistant' && item.reasoning?.text.includes('live reasoning')
+			)
+		);
+
+		chatStore.bindSession('sess-b');
+		void chatStore.send('sess-b', 'question B');
+		await vi.waitFor(() => expect(chatStore.isStreamingFor('sess-b')).toBe(true));
+
+		chatStore.bindSession('sess-a');
+		expect(
+			chatStore.items.some(
+				(item) =>
+					item.type === 'assistant' && item.reasoning?.text.includes('live reasoning')
+			)
+		).toBe(true);
+
+		releaseA!();
+		await vi.waitFor(() => expect(chatStore.isStreamingFor('sess-a')).toBe(false));
 	});
 });
