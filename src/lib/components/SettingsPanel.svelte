@@ -389,6 +389,9 @@
 			: saved.activeProviderId || draft.providers[0]?.id || '';
 		modelSearch = preservedModelSearch;
 		status = saveStatusMessage(preservedSection, restartCometMind, iconVariantChanged);
+		if (iconVariantChanged) {
+			setTimeout(replayIntro, 600);
+		}
 	}
 
 	function setSelectedMethod(method: ProviderMethod) {
