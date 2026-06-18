@@ -44,6 +44,18 @@ const BUILTIN_PROVIDER_NAMES: Record<string, string> = {
 	'opencode-go': 'OpenCode Go'
 };
 
+function providerNameOrDefault(
+	provider: Partial<ProviderConfig>,
+	fallback: ProviderConfig | undefined,
+	id: string
+) {
+	const name = String(provider.name ?? '').trim();
+	if (name) return name;
+	const fallbackName = String(fallback?.name ?? '').trim();
+	if (fallbackName) return fallbackName;
+	return BUILTIN_PROVIDER_NAMES[id] ?? 'Provider';
+}
+
 export interface CometMindACPSettings {
 	command: string;
 	args: string[];
@@ -439,11 +451,10 @@ export function normalizeProvider(
 	const id = String(
 		provider.id || fallback?.id || `provider-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 	).trim();
-	const builtInName = BUILTIN_PROVIDER_NAMES[id];
 
 	return {
 		id,
-		name: builtInName ?? String(provider.name || fallback?.name || 'Provider').trim(),
+		name: providerNameOrDefault(provider, fallback, id),
 		method,
 		enabled:
 			typeof provider.enabled === 'boolean' ? provider.enabled : Boolean(fallback?.enabled),

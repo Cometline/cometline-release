@@ -45,6 +45,21 @@ describe('settings schema', () => {
 		expect(migrated?.activeProviderId).toBe('openai');
 	});
 
+	it('preserves renamed built-in provider names', () => {
+		const settings = normalizeSettings({
+			...defaultSettings(),
+			providers: defaultSettings().providers.map((provider) =>
+				provider.id === 'openai-compatible'
+					? { ...provider, name: 'Local Ollama' }
+					: provider
+			)
+		});
+
+		expect(settings.providers.find((p) => p.id === 'openai-compatible')?.name).toBe(
+			'Local Ollama'
+		);
+	});
+
 	it('parseAndNormalizeSettings applies systemPromptPath option', () => {
 		const settings = parseAndNormalizeSettings({}, { systemPromptPath: '/tmp/SOUL.md' });
 		expect(settings.cometmind.systemPromptPath).toBe('/tmp/SOUL.md');
