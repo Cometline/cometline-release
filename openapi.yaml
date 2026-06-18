@@ -159,6 +159,26 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '500':
           $ref: '#/components/responses/InternalError'
+    put:
+      tags: [Files]
+      summary: Write a workspace file for preview editing
+      description: |
+        Writes UTF-8 text content back to an existing workspace-relative file.
+        Image files, binary content, and files larger than 256 KB are rejected.
+      operationId: writeWorkspaceFileContent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WriteWorkspaceFileRequest'
+      responses:
+        '204':
+          description: File saved
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /api/v1/sessions:
     post:
@@ -1090,6 +1110,25 @@ components:
       oneOf:
         - $ref: '#/components/schemas/WorkspaceFileTextContent'
         - $ref: '#/components/schemas/WorkspaceFileImageContent'
+
+    WriteWorkspaceFileRequest:
+      type: object
+      additionalProperties: false
+      required: [path, content]
+      properties:
+        workspace_id:
+          type: string
+          description: Registered workspace identifier.
+        workspace_path:
+          type: string
+          description: Absolute filesystem path for the workspace.
+        path:
+          type: string
+          description: Workspace-relative file path.
+        content:
+          type: string
+          description: UTF-8 text content to write.
+      description: Provide either `workspace_id` or `workspace_path`.
 
     PostMessageRequest:
       type: object

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -236,6 +237,105 @@ func TestReadWorkspaceFileContent(t *testing.T) {
 	if got.Kind != "text" || got.Content != "package main" || got.Extension != ".go" {
 		t.Fatalf("got = %+v", got)
 	}
+}
+
+func TestWriteWorkspaceFileContent(t *testing.T) {
+	t.Parallel()
+
+	engine, _, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
+		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
+			ch <- event.Done()
+			return nil
+		}), nil
+	})
+	defer cleanup()
+
+	workspacePath := t.TempDir()
+	filePath := filepath.Join(workspacePath, "main.go")
+	mustWrite(t, filePath, "package main")
+
+	body := bytes.NewBufferString(fmt.Sprintf(`{"workspace_path":%q,"path":"main.go","content":"package main\n\nfunc main() {}"}`, workspacePath))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/workspaces/files/content", body)
+	req.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusNoContent, rec.Body.String())
+	}
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("read updated file: %v", err)
+	}
+	if string(data) != "package main\n\nfunc main() {}" {
+		t.Fatalf("file content = %q", string(data))
+	}
+
+	readRec := httptest.NewRecorder()
+	readReq := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces/files/content?workspace_path="+workspacePath+"&path=main.go", nil)
+	engine.ServeHTTP(readRec, readReq)
+	if readRec.Code != http.StatusOK {
+		t.Fatalf("read status = %d, want %d body=%s", readRec.Code, http.StatusOK, readRec.Body.String())
+	}
+
+	var got workspaceFileTextContent
+	decodeJSON(t, readRec.Body.Bytes(), &got)
+	if got.Content != "package main\n\nfunc main() {}" {
+		t.Fatalf("round trip content = %q", got.Content)
+	}
+}
+
+func TestWriteWorkspaceFileContentRejectsInvalidRequests(t *testing.T) {
+	t.Parallel()
+
+	engine, _, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
+		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
+			ch <- event.Done()
+			return nil
+		}), nil
+	})
+	defer cleanup()
+
+	workspacePath := t.TempDir()
+	mustWrite(t, filepath.Join(workspacePath, "main.go"), "package main")
+
+	t.Run("path escape", func(t *testing.T) {
+		body := bytes.NewBufferString(fmt.Sprintf(`{"workspace_path":%q,"path":"../outside.go","content":"package main"}`, workspacePath))
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/workspaces/files/content", body)
+		req.Header.Set("Content-Type", "application/json")
+		engine.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+		}
+	})
+
+	t.Run("oversized content", func(t *testing.T) {
+		content := strings.Repeat("a", maxMessageFileBytes+1)
+		body := bytes.NewBufferString(fmt.Sprintf(`{"workspace_path":%q,"path":"main.go","content":%q}`, workspacePath, content))
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/workspaces/files/content", body)
+		req.Header.Set("Content-Type", "application/json")
+		engine.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+		}
+	})
+
+	t.Run("missing file", func(t *testing.T) {
+		body := bytes.NewBufferString(fmt.Sprintf(`{"workspace_path":%q,"path":"missing.go","content":"package main"}`, workspacePath))
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/workspaces/files/content", body)
+		req.Header.Set("Content-Type", "application/json")
+		engine.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+		}
+	})
 }
 
 func TestListWorkspaceFilesFiltersByQuery(t *testing.T) {

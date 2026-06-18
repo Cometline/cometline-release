@@ -101,6 +101,7 @@ func New(deps Deps) (*gin.Engine, error) {
 	api.POST("/workspaces", app.handleCreateWorkspace)
 	api.GET("/workspaces/files", app.handleListWorkspaceFiles)
 	api.GET("/workspaces/files/content", app.handleReadWorkspaceFileContent)
+	api.PUT("/workspaces/files/content", app.handleWriteWorkspaceFileContent)
 
 	// Sessions
 	api.POST("/sessions", app.handleCreateSession)
@@ -196,6 +197,13 @@ type changeSessionWorkspaceRequest struct {
 
 type forkSessionRequest struct {
 	WorkspacePath string `json:"workspace_path"`
+}
+
+type writeWorkspaceFileRequest struct {
+	WorkspaceID   string `json:"workspace_id"`
+	WorkspacePath string `json:"workspace_path"`
+	Path          string `json:"path"`
+	Content       string `json:"content"`
 }
 
 type listWorkspacesResponse struct {
@@ -486,6 +494,26 @@ func (a *App) handleReadWorkspaceFileContent(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, result)
+}
+
+func (a *App) handleWriteWorkspaceFileContent(c *gin.Context) {
+	var req writeWorkspaceFileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "bad_request", "invalid JSON body")
+		return
+	}
+
+	ws, ok := a.resolveCreateWorkspace(c, req.WorkspaceID, req.WorkspacePath)
+	if !ok {
+		return
+	}
+
+	if err := writeWorkspaceFileContent(ws.Path, req.Path, req.Content); err != nil {
+		writeError(c, http.StatusBadRequest, "bad_request", err.Error())
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }
 
 func (a *App) handleCreateSession(c *gin.Context) {

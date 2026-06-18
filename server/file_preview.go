@@ -70,7 +70,7 @@ func readWorkspaceFilePreview(workspacePath, relativePath string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot read file as text")
 	}
-	if strings.Contains(string(data), "\x00") {
+	if containsBinaryContent(data) {
 		return nil, fmt.Errorf("binary file cannot be previewed")
 	}
 
@@ -79,4 +79,50 @@ func readWorkspaceFilePreview(workspacePath, relativePath string) (any, error) {
 		Content:   string(data),
 		Extension: ext,
 	}, nil
+}
+
+func writeWorkspaceFileContent(workspacePath, relativePath, content string) error {
+	rel := strings.TrimSpace(relativePath)
+	if rel == "" {
+		return fmt.Errorf("path is required")
+	}
+
+	abs, err := sandbox.ResolveWorkspacePath(workspacePath, rel)
+	if err != nil {
+		return err
+	}
+
+	info, err := os.Stat(abs)
+	if err != nil {
+		return fmt.Errorf("file not found")
+	}
+	if info.IsDir() {
+		return fmt.Errorf("not a file")
+	}
+
+	if _, ok := workspaceFileImageMIME[strings.ToLower(filepath.Ext(abs))]; ok {
+		return fmt.Errorf("image files cannot be edited")
+	}
+
+	data := []byte(content)
+	if len(data) > maxMessageFileBytes {
+		return fmt.Errorf("file exceeds %d KB preview limit", maxMessageFileBytes/1024)
+	}
+	if containsBinaryContent(data) {
+		return fmt.Errorf("binary file cannot be previewed")
+	}
+
+	mode := info.Mode().Perm()
+	if mode == 0 {
+		mode = 0o644
+	}
+	if err := os.WriteFile(abs, data, mode); err != nil {
+		return fmt.Errorf("cannot write file")
+	}
+
+	return nil
+}
+
+func containsBinaryContent(data []byte) bool {
+	return strings.Contains(string(data), "\x00")
 }
