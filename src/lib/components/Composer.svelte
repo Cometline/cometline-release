@@ -2,7 +2,18 @@
 	import { onDestroy, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { fade, fly } from 'svelte/transition';
-	import { Check, ChevronDown, FileText, Loader, Search, Send, Sparkles, Square, X } from '@lucide/svelte';
+	import {
+		Check,
+		ChevronDown,
+		FileText,
+		Folder,
+		Loader,
+		Search,
+		Send,
+		Sparkles,
+		Square,
+		X
+	} from '@lucide/svelte';
 	import type { QueuedMessage } from '$lib/actions/chat-turn-queue';
 	import { modelStore, type ModelOption } from '$lib/stores/model.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
@@ -31,6 +42,7 @@
 		type WorkspaceMenuOption
 	} from '$lib/skills/slash-commands';
 	import { formatDroppedFiles, readDroppedTextFiles } from '$lib/files/dropped-files';
+	import { workspaceLabel } from '$lib/sessions/group-by-workspace';
 	import { imageDataURL, isSupportedImageFile, readImageAttachments } from '$lib/files/images';
 	import type { ImageAttachment, SkillResource } from '$lib/types';
 
@@ -165,6 +177,9 @@
 	// Mentions are available whenever there is a workspace to index. The picker
 	// itself shows an "indexing" state while the file list is still loading.
 	let hasWorkspace = $derived(Boolean(shellStore.workspacePath) && shellStore.workspacePath !== '/');
+	let currentWorkspaceLabel = $derived(
+		hasWorkspace ? workspaceLabel(shellStore.workspacePath) : ''
+	);
 	let fileIndexReady = $derived.by(() => {
 		void mentionIndexVersion;
 		return isFileIndexReady(shellStore.workspacePath);
@@ -717,15 +732,20 @@
 		}
 	}
 
+	function openChangeWorkspace() {
+		const next = '/change ';
+		input?.setText(next);
+		value = next;
+		dismissedSkillCommand = '';
+		skillHighlight = 0;
+		workspaceHighlight = 0;
+		void ensureWorkspacePathsLoaded();
+		void focusInput();
+	}
+
 	function selectSlashOption(option: SlashMenuOption) {
 		if (option.kind === 'builtin' && option.name === 'change') {
-			const next = '/change ';
-			input?.setText(next);
-			value = next;
-			dismissedSkillCommand = '';
-			skillHighlight = 0;
-			workspaceHighlight = 0;
-			void ensureWorkspacePathsLoaded();
+			openChangeWorkspace();
 			return;
 		}
 		const next = `/${option.name} `;
@@ -1258,6 +1278,19 @@
 					</div>
 				{/if}
 			</div>
+			{#if hasWorkspace}
+				<button
+					type="button"
+					class="workspace-indicator"
+					title={shellStore.workspacePath}
+					aria-label="Change workspace"
+					aria-expanded={workspaceMenuOpen}
+					onclick={openChangeWorkspace}
+				>
+					<Folder size={14} stroke-width={1.8} />
+					<span>{currentWorkspaceLabel}</span>
+				</button>
+			{/if}
 		</div>
 
 		<div class="composer-actions">
@@ -1723,22 +1756,21 @@
 		background: rgba(180, 35, 24, 0.08);
 	}
 
-	.model-picker {
-		position: relative;
-		min-width: 0;
-	}
-
+	.workspace-indicator,
 	.model-button {
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
 		max-width: 100%;
 		padding: 5px 8px;
+		font-size: 13px;
 		font-weight: 500;
 		line-height: 1;
+		color: var(--text-muted);
 		white-space: nowrap;
 	}
 
+	.workspace-indicator span,
 	.model-button span {
 		min-width: 0;
 		max-width: 150px;
@@ -1746,8 +1778,30 @@
 		text-overflow: ellipsis;
 	}
 
+	.workspace-indicator span {
+		text-transform: uppercase;
+	}
+
+	.workspace-indicator :global(svg),
+	.model-button :global(svg:first-child) {
+		flex-shrink: 0;
+	}
+
 	.model-button svg:last-child {
 		flex-shrink: 0;
+	}
+
+	.model-picker {
+		position: relative;
+		min-width: 0;
+	}
+
+	.model-button,
+	.workspace-indicator {
+		border: none;
+		background: transparent;
+		border-radius: 7px;
+		cursor: pointer;
 	}
 
 	.model-menu {
