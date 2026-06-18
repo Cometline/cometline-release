@@ -78,13 +78,11 @@ func (s *Service) RetrieveForTurn(ctx context.Context, query string) ([]ScoredMe
 		logging.L().Info("memory.retrieve.skipped", "enabled", s.settings.Enabled, "auto_retrieve", s.settings.AutoRetrieve)
 		return nil, nil
 	}
-	started := time.Now()
 	mems, err := s.retriever.retrieve(ctx, query, s.settings.MaxRetrieved, s.settings.SimilarityThreshold)
 	if err != nil {
-		logging.L().Error("memory.retrieve.failed", "duration_ms", time.Since(started).Milliseconds(), "error", err)
+		logging.L().Error("memory.retrieve.failed", "error", err)
 		return nil, err
 	}
-	logging.L().Info("memory.retrieve.completed", "count", len(mems), "max", s.settings.MaxRetrieved, "threshold", s.settings.SimilarityThreshold, "duration_ms", time.Since(started).Milliseconds())
 	return mems, nil
 }
 

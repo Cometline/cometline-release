@@ -3,9 +3,11 @@ package agent
 import (
 	"context"
 	"testing"
+	"time"
 
 	cometsdk "github.com/cometline/comet-sdk"
 	"github.com/cometline/cometmind/internal/event"
+	"github.com/cometline/cometmind/internal/memory"
 	"github.com/cometline/cometmind/internal/session"
 	"github.com/cometline/cometmind/internal/tools"
 )
@@ -64,6 +66,26 @@ func (p *fakeProvider) Stream(ctx context.Context, req *cometsdk.Request) (<-cha
 	return ch, nil
 }
 
+type fakeMemory struct {
+	retrieveCalls int
+	waitForCancel bool
+}
+
+func (m *fakeMemory) Enabled() bool { return true }
+
+func (m *fakeMemory) RetrieveForTurn(ctx context.Context, query string) ([]memory.ScoredMemory, error) {
+	m.retrieveCalls++
+	if m.waitForCancel {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	return nil, nil
+}
+
+func (m *fakeMemory) ExtractAfterTurn(ctx context.Context, sessionID, model string, llmProvider cometsdk.Provider) ([]memory.Change, error) {
+	return nil, nil
+}
+
 // drain collects events the runner emits until it sends its terminal done
 // event. The runner sends done but does not close the channel, so we stop there.
 func drain(ch <-chan event.Event) []event.Event {
@@ -86,8 +108,8 @@ func TestRunner_TextOnlyTurnPersistsAndStops(t *testing.T) {
 	}}
 
 	r := &Runner{
-		Provider:      provider,
-		Sessions:      store,
+		Provider: provider,
+		Sessions: store,
 		Registry: tools.NewRegistry(t.TempDir()),
 	}
 
@@ -126,5 +148,94 @@ func TestRunner_TextOnlyTurnPersistsAndStops(t *testing.T) {
 	}
 	if !sawText {
 		t.Errorf("expected a text_delta 'hello' event, got %+v", events)
+	}
+}
+
+func TestRunner_SkipsMemoryRetrievalForLowValueTurn(t *testing.T) {
+	store := &fakeStore{history: []cometsdk.Message{{
+		Role:    cometsdk.RoleUser,
+		Content: []cometsdk.Block{cometsdk.TextBlock{Text: "hihi"}},
+	}}}
+	mem := &fakeMemory{}
+	provider := &fakeProvider{events: []cometsdk.Event{
+		cometsdk.TextDeltaEvent{Text: "hi"},
+		cometsdk.StepFinishEvent{FinishReason: cometsdk.FinishStop},
+		cometsdk.DoneEvent{},
+	}}
+
+	r := &Runner{Provider: provider, Sessions: store, Memory: mem, Registry: tools.NewRegistry(t.TempDir())}
+	ch := make(chan event.Event, 16)
+	var runErr error
+	go func() { runErr = r.Run(context.Background(), session.AgentTurn{ID: "s1", ModelID: "m"}, ch) }()
+	_ = drain(ch)
+
+	if runErr != nil {
+		t.Fatalf("Run returned error: %v", runErr)
+	}
+	if mem.retrieveCalls != 0 {
+		t.Fatalf("RetrieveForTurn called %d times, want 0", mem.retrieveCalls)
+	}
+}
+
+func TestRunner_RetrievesMemoryForSubstantiveTurn(t *testing.T) {
+	store := &fakeStore{history: []cometsdk.Message{{
+		Role:    cometsdk.RoleUser,
+		Content: []cometsdk.Block{cometsdk.TextBlock{Text: "remember my preferred model"}},
+	}}}
+	mem := &fakeMemory{}
+	provider := &fakeProvider{events: []cometsdk.Event{
+		cometsdk.TextDeltaEvent{Text: "ok"},
+		cometsdk.StepFinishEvent{FinishReason: cometsdk.FinishStop},
+		cometsdk.DoneEvent{},
+	}}
+
+	r := &Runner{Provider: provider, Sessions: store, Memory: mem, Registry: tools.NewRegistry(t.TempDir())}
+	ch := make(chan event.Event, 16)
+	var runErr error
+	go func() { runErr = r.Run(context.Background(), session.AgentTurn{ID: "s1", ModelID: "m"}, ch) }()
+	_ = drain(ch)
+
+	if runErr != nil {
+		t.Fatalf("Run returned error: %v", runErr)
+	}
+	if mem.retrieveCalls != 1 {
+		t.Fatalf("RetrieveForTurn called %d times, want 1", mem.retrieveCalls)
+	}
+}
+
+func TestRunner_MemoryRetrievalTimeoutDoesNotEmitError(t *testing.T) {
+	store := &fakeStore{history: []cometsdk.Message{{
+		Role:    cometsdk.RoleUser,
+		Content: []cometsdk.Block{cometsdk.TextBlock{Text: "remember my preferred model"}},
+	}}}
+	mem := &fakeMemory{waitForCancel: true}
+	provider := &fakeProvider{events: []cometsdk.Event{
+		cometsdk.TextDeltaEvent{Text: "ok"},
+		cometsdk.StepFinishEvent{FinishReason: cometsdk.FinishStop},
+		cometsdk.DoneEvent{},
+	}}
+
+	r := &Runner{
+		Provider:               provider,
+		Sessions:               store,
+		Memory:                 mem,
+		Registry:               tools.NewRegistry(t.TempDir()),
+		MemoryRetrievalTimeout: 10 * time.Millisecond,
+	}
+	ch := make(chan event.Event, 16)
+	var runErr error
+	go func() { runErr = r.Run(context.Background(), session.AgentTurn{ID: "s1", ModelID: "m"}, ch) }()
+	events := drain(ch)
+
+	if runErr != nil {
+		t.Fatalf("Run returned error: %v", runErr)
+	}
+	if mem.retrieveCalls != 1 {
+		t.Fatalf("RetrieveForTurn called %d times, want 1", mem.retrieveCalls)
+	}
+	for _, ev := range events {
+		if ev.Kind == event.KindError {
+			t.Fatalf("timeout should not emit error event: %+v", ev)
+		}
 	}
 }

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -15,6 +16,8 @@ import (
 	"github.com/cometline/cometmind/internal/tools"
 )
 
+const memoryRetrievalTimeout = 3 * time.Second
+
 // TurnStore is the narrow persistence seam the agent loop drives. It is the
 // subset of session.Service the Runner actually needs, declared here on the
 // consumer side so the loop can be unit-tested with an in-memory fake instead
@@ -27,17 +30,24 @@ type TurnStore interface {
 	AppendToolResultMessage(ctx context.Context, sessionID, toolCallID, output string, isErr bool) (session.Message, error)
 }
 
+type MemoryStore interface {
+	Enabled() bool
+	RetrieveForTurn(ctx context.Context, query string) ([]memory.ScoredMemory, error)
+	ExtractAfterTurn(ctx context.Context, sessionID, model string, llmProvider cometsdk.Provider) ([]memory.Change, error)
+}
+
 // Runner executes the persisted agent loop for one user turn (which may span many tool steps).
 type Runner struct {
 	Provider cometsdk.Provider
 	Sessions TurnStore
-	Memory   *memory.Service
+	Memory   MemoryStore
 	Registry *tools.Registry
 
-	MaxSteps     int
-	MaxTokens    int
-	SystemPrompt string
-	SkillIndex   string
+	MaxSteps               int
+	MaxTokens              int
+	MemoryRetrievalTimeout time.Duration
+	SystemPrompt           string
+	SkillIndex             string
 
 	// MemorySem is an optional semaphore that bounds the number of
 	// extractMemoryBackground goroutines that may run concurrently across all
@@ -72,6 +82,10 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 	if r.MaxTokens <= 0 {
 		r.MaxTokens = 2048
 	}
+	retrievalTimeout := r.MemoryRetrievalTimeout
+	if retrievalTimeout <= 0 {
+		retrievalTimeout = memoryRetrievalTimeout
+	}
 
 	steps := 0
 	for steps < r.MaxSteps {
@@ -84,27 +98,39 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 
 		system := r.systemPrompt()
 		if r.Memory != nil && r.Memory.Enabled() && steps == 0 {
-			query := memory.BuildRetrievalQuery(memory.RetrievalQueryInput{
-				Messages: msgs,
-			})
-			mems, memErr := r.Memory.RetrieveForTurn(ctx, query)
-			if memErr != nil {
-				logging.L().Error("memory.retrieve.failed", "session", turn.ID, "error", memErr)
-				ch <- event.Errorf(memErr.Error(), "memory")
-			} else if len(mems) > 0 {
-				logging.L().Info("memory.injected", "session", turn.ID, "count", len(mems))
-				system += memory.FormatForPrompt(mems)
-				wire := make([]event.MemoryWire, len(mems))
-				for i, m := range mems {
-					wire[i] = event.MemoryWire{
-						ID:              m.ID,
-						Content:         m.Content,
-						Kind:            m.Kind,
-						Similarity:      m.Similarity,
-						EffectiveWeight: m.EffectiveWeight,
+			decision := memory.DecideRetrieval(msgs)
+			logging.L().Info("memory.retrieve.policy", "session", turn.ID, "retrieve", decision.Retrieve, "reason", decision.Reason, "score", decision.Score, "text_bytes", decision.TextBytes)
+			if !decision.Retrieve {
+				logging.L().Info("memory.retrieve.skipped", "session", turn.ID, "reason", decision.Reason, "score", decision.Score, "text_bytes", decision.TextBytes)
+			} else {
+				query := memory.BuildRetrievalQuery(memory.RetrievalQueryInput{
+					Messages: msgs,
+				})
+				retrieveCtx, cancel := context.WithTimeout(ctx, retrievalTimeout)
+				mems, memErr := r.Memory.RetrieveForTurn(retrieveCtx, query)
+				cancel()
+				if memErr != nil {
+					if errors.Is(memErr, context.DeadlineExceeded) {
+						logging.L().Warn("memory.retrieve.timeout", "session", turn.ID, "budget_ms", retrievalTimeout.Milliseconds())
+					} else {
+						logging.L().Error("memory.retrieve.failed", "session", turn.ID, "error", memErr)
+						ch <- event.Errorf(memErr.Error(), "memory")
 					}
+				} else if len(mems) > 0 {
+					logging.L().Info("memory.injected", "session", turn.ID, "count", len(mems))
+					system += memory.FormatForPrompt(mems)
+					wire := make([]event.MemoryWire, len(mems))
+					for i, m := range mems {
+						wire[i] = event.MemoryWire{
+							ID:              m.ID,
+							Content:         m.Content,
+							Kind:            m.Kind,
+							Similarity:      m.Similarity,
+							EffectiveWeight: m.EffectiveWeight,
+						}
+					}
+					ch <- event.MemoryInjected(wire)
 				}
-				ch <- event.MemoryInjected(wire)
 			}
 		}
 

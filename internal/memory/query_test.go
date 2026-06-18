@@ -91,3 +91,98 @@ func TestBuildRetrievalQuery_TruncatesLongSnippet(t *testing.T) {
 		t.Fatalf("expected truncation marker: %q", got)
 	}
 }
+
+func TestDecideRetrieval_SkipsLowValueTurn(t *testing.T) {
+	decision := DecideRetrieval([]cometsdk.Message{{
+		Role:    cometsdk.RoleUser,
+		Content: []cometsdk.Block{cometsdk.TextBlock{Text: "hihi!"}},
+	}})
+	if decision.Retrieve {
+		t.Fatalf("Retrieve = true, want false: %+v", decision)
+	}
+	if decision.Reason != "ack_or_reaction" {
+		t.Fatalf("reason = %q, want ack_or_reaction", decision.Reason)
+	}
+	if decision.TextBytes != len("hihi!") {
+		t.Fatalf("textBytes = %d, want %d", decision.TextBytes, len("hihi!"))
+	}
+}
+
+func TestDecideRetrieval_RetrievesShortQuestion(t *testing.T) {
+	decision := DecideRetrieval([]cometsdk.Message{{
+		Role:    cometsdk.RoleUser,
+		Content: []cometsdk.Block{cometsdk.TextBlock{Text: "Tom?"}},
+	}})
+	if !decision.Retrieve {
+		t.Fatalf("Retrieve = false, want true: %+v", decision)
+	}
+	if decision.Reason != "question" {
+		t.Fatalf("reason = %q, want question", decision.Reason)
+	}
+}
+
+func TestDecideRetrieval_RetrievesImageTurn(t *testing.T) {
+	decision := DecideRetrieval([]cometsdk.Message{{
+		Role: cometsdk.RoleUser,
+		Content: []cometsdk.Block{
+			cometsdk.TextBlock{Text: "hihi"},
+			cometsdk.ImageBlock{MediaType: "image/png", Data: "aGVsbG8="},
+		},
+	}})
+	if !decision.Retrieve {
+		t.Fatalf("Retrieve = false, want true: %+v", decision)
+	}
+	if decision.Reason != "media_turn" {
+		t.Fatalf("reason = %q, want media_turn", decision.Reason)
+	}
+}
+
+func TestDecideRetrieval_SkipsAckAndReaction(t *testing.T) {
+	for _, text := range []string{"收到", "了解", "好喔", "嗯嗯", "哈哈", "lol", "XD", "👍"} {
+		decision := DecideRetrieval([]cometsdk.Message{{
+			Role:    cometsdk.RoleUser,
+			Content: []cometsdk.Block{cometsdk.TextBlock{Text: text}},
+		}})
+		if decision.Retrieve {
+			t.Fatalf("%q Retrieve = true, want false: %+v", text, decision)
+		}
+	}
+}
+
+func TestDecideRetrieval_RetrievesPreferenceAndLanguageMemory(t *testing.T) {
+	for _, text := range []string{"我偏好用 OpenAI embedding", "我偏好中文", "請之後用繁體中文回答"} {
+		decision := DecideRetrieval([]cometsdk.Message{{
+			Role:    cometsdk.RoleUser,
+			Content: []cometsdk.Block{cometsdk.TextBlock{Text: text}},
+		}})
+		if !decision.Retrieve {
+			t.Fatalf("%q Retrieve = false, want true: %+v", text, decision)
+		}
+		if decision.Reason != "memory_keyword" {
+			t.Fatalf("%q reason = %q, want memory_keyword", text, decision.Reason)
+		}
+	}
+}
+
+func TestDecideRetrieval_RetrievesTaskAndContextReference(t *testing.T) {
+	for _, tc := range []struct {
+		text   string
+		reason string
+	}{
+		{text: "幫我看一下這段 code", reason: "task_request"},
+		{text: "我想改後端 memory retrieval", reason: "task_request"},
+		{text: "之前那件事", reason: "context_reference"},
+		{text: "上次說的", reason: "context_reference"},
+	} {
+		decision := DecideRetrieval([]cometsdk.Message{{
+			Role:    cometsdk.RoleUser,
+			Content: []cometsdk.Block{cometsdk.TextBlock{Text: tc.text}},
+		}})
+		if !decision.Retrieve {
+			t.Fatalf("%q Retrieve = false, want true: %+v", tc.text, decision)
+		}
+		if decision.Reason != tc.reason {
+			t.Fatalf("%q reason = %q, want %q", tc.text, decision.Reason, tc.reason)
+		}
+	}
+}

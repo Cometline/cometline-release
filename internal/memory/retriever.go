@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/cometline/cometmind/internal/logging"
 )
 
 type retriever struct {
@@ -14,15 +16,18 @@ type retriever struct {
 }
 
 func (r *retriever) retrieve(ctx context.Context, query string, maxN int, threshold float64) ([]ScoredMemory, error) {
+	started := time.Now()
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return nil, nil
 	}
 
+	phaseStarted := time.Now()
 	memories, err := r.store.listActive(ctx)
 	if err != nil {
 		return nil, err
 	}
+	logging.L().Info("memory.retrieve.list_active.completed", "active_count", len(memories), "duration_ms", time.Since(phaseStarted).Milliseconds())
 	if len(memories) == 0 {
 		return nil, nil
 	}
@@ -33,11 +38,14 @@ func (r *retriever) retrieve(ctx context.Context, query string, maxN int, thresh
 	}
 
 	simByID := make(map[string]float64)
+	phaseStarted = time.Now()
 	vecs, err := r.embedder.Embed(ctx, query)
 	if err != nil {
 		return nil, err
 	}
+	logging.L().Info("memory.retrieve.embed.completed", "duration_ms", time.Since(phaseStarted).Milliseconds(), "query_bytes", len(query), "model", r.embedder.Model())
 	if len(vecs) > 0 {
+		phaseStarted = time.Now()
 		qvec := vecs[0]
 		for _, m := range memories {
 			if len(m.Embedding) == 0 {
@@ -45,14 +53,17 @@ func (r *retriever) retrieve(ctx context.Context, query string, maxN int, thresh
 			}
 			simByID[m.ID] = cosineSimilarity(qvec, m.Embedding)
 		}
+		logging.L().Info("memory.retrieve.vector_rank.completed", "candidates", len(simByID), "duration_ms", time.Since(phaseStarted).Milliseconds())
 	}
 
 	vectorRanked := topNBySimilarity(simByID, retrievalPoolSize)
 
+	phaseStarted = time.Now()
 	ftsRanked, err := r.store.searchFTS(ctx, query, retrievalPoolSize)
 	if err != nil {
 		return nil, err
 	}
+	logging.L().Info("memory.retrieve.fts.completed", "hits", len(ftsRanked), "duration_ms", time.Since(phaseStarted).Milliseconds())
 	ftsHit := make(map[string]struct{}, len(ftsRanked))
 	for _, id := range ftsRanked {
 		ftsHit[id] = struct{}{}
@@ -95,10 +106,13 @@ func (r *retriever) retrieve(ctx context.Context, query string, maxN int, thresh
 		scored = scored[:maxN]
 	}
 
+	phaseStarted = time.Now()
 	for _, sm := range scored {
 		_ = r.store.touchAccess(ctx, sm.ID)
 		_ = r.store.logEvent(ctx, sm.ID, "inject", "")
 	}
+	logging.L().Info("memory.retrieve.touch_completed", "count", len(scored), "duration_ms", time.Since(phaseStarted).Milliseconds())
+	logging.L().Info("memory.retrieve.completed", "count", len(scored), "max", maxN, "threshold", threshold, "duration_ms", time.Since(started).Milliseconds())
 	return scored, nil
 }
 
