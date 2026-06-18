@@ -10,7 +10,7 @@ export interface PendingMessage {
 function createSessionStore() {
 	let sessions = $state<Session[]>([]);
 	let current = $state<Session | null>(null);
-	let pendingMessage = $state<PendingMessage | null>(null);
+	let pendingMessages = $state.raw(new Map<string, Omit<PendingMessage, 'sessionId'>>());
 
 	function selectSession(session: Session | null) {
 		current = session;
@@ -35,27 +35,34 @@ function createSessionStore() {
 		if (current?.id === id) current = null;
 	}
 
+	function discardSession(id: string) {
+		removeSession(id);
+		if (pendingMessages.has(id)) {
+			const next = new Map(pendingMessages);
+			next.delete(id);
+			pendingMessages = next;
+		}
+	}
+
 	function queuePendingMessage(
 		sessionId: string,
 		text: string,
 		images?: ImageAttachment[],
 		filePaths?: string[]
 	) {
-		pendingMessage = { sessionId, text, images, filePaths };
+		pendingMessages = new Map(pendingMessages).set(sessionId, { text, images, filePaths });
 	}
 
 	function hasPendingMessage(sessionId: string) {
-		return pendingMessage?.sessionId === sessionId;
+		return pendingMessages.has(sessionId);
 	}
 
 	function takePendingMessage(sessionId: string): Omit<PendingMessage, 'sessionId'> | null {
-		if (pendingMessage?.sessionId !== sessionId) return null;
-		const message = {
-			text: pendingMessage.text,
-			images: pendingMessage.images,
-			filePaths: pendingMessage.filePaths
-		};
-		pendingMessage = null;
+		const message = pendingMessages.get(sessionId);
+		if (!message) return null;
+		const next = new Map(pendingMessages);
+		next.delete(sessionId);
+		pendingMessages = next;
 		return message;
 	}
 
@@ -71,6 +78,7 @@ function createSessionStore() {
 		appendSession,
 		updateSession,
 		removeSession,
+		discardSession,
 		queuePendingMessage,
 		hasPendingMessage,
 		takePendingMessage

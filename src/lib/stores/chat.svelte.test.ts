@@ -1,8 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StreamEvent } from '$lib/types';
 
+const { goto } = vi.hoisted(() => ({ goto: vi.fn() }));
+
+vi.mock('$app/environment', () => ({ browser: true }));
+vi.mock('$app/navigation', () => ({ goto }));
+
 vi.mock('$lib/client/cometmind', () => ({
 	getSessionMessages: vi.fn(),
+	isSessionNotFoundError: vi.fn((err) => err?.code === 'session_not_found'),
 	listChildSessions: vi.fn(),
 	streamMessage: vi.fn(),
 	abortSession: vi.fn(),
@@ -15,6 +21,8 @@ import {
 	streamMessage
 } from '$lib/client/cometmind';
 import { chatStore } from './chat.svelte';
+import { sessionStore } from './session.svelte';
+import { startNewChat } from '$lib/actions/new-chat';
 
 async function flushAnimationFrames() {
 	await new Promise<void>((resolve) => {
@@ -49,12 +57,40 @@ function mockTranscript(sessionId: string, text: string) {
 describe('chatStore session switching', () => {
 	beforeEach(() => {
 		chatStore.clear();
+		sessionStore.setSessions([]);
+		goto.mockClear();
 		vi.clearAllMocks();
 		vi.mocked(listChildSessions).mockResolvedValue({ sessions: [] });
 		vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
 			cb(0);
 			return 0;
 		});
+	});
+
+	it('discards missing sessions without requesting children', async () => {
+		sessionStore.setSessions([
+			{
+				id: 'missing-session',
+				workspace_id: 'workspace-1',
+				workspace_path: '/tmp/workspace',
+				title: 'Missing',
+				model_id: 'model',
+				provider_id: 'provider',
+				status: 'active',
+				token_usage: { input_tokens: 0, output_tokens: 0, cache_read: 0, cache_write: 0 },
+				created_at: 0,
+				updated_at: 0
+			}
+		]);
+		vi.mocked(getSessionMessages).mockRejectedValue({ code: 'session_not_found' });
+
+		chatStore.bindSession('missing-session');
+		await chatStore.loadTranscript('missing-session');
+
+		expect(listChildSessions).not.toHaveBeenCalled();
+		expect(sessionStore.sessions).toEqual([]);
+		expect(chatStore.sessionID).toBe(null);
+		expect(goto).toHaveBeenCalledWith('/');
 	});
 
 	it('loads session B transcript when switching from session A with partial stream', async () => {
@@ -163,6 +199,78 @@ describe('chatStore session switching', () => {
 				(item) => item.type === 'assistant' && item.text.includes('answer B')
 			)
 		).toBe(true);
+	});
+
+	it('detaches active session without aborting background stream', async () => {
+		let releaseA: (() => void) | undefined;
+		const aGate = new Promise<void>((resolve) => {
+			releaseA = resolve;
+		});
+
+		vi.mocked(streamMessage).mockImplementation(async function* (sessionId) {
+			if (sessionId === 'sess-a') {
+				yield { type: 'text_delta', delta: 'background A' };
+				await aGate;
+				yield { type: 'done' };
+			}
+		});
+
+		chatStore.bindSession('sess-a');
+		const sendA = chatStore.send('sess-a', 'question A');
+		await vi.waitFor(() => expect(chatStore.isStreamingFor('sess-a')).toBe(true));
+
+		chatStore.detachActiveSession();
+
+		expect(chatStore.sessionID).toBe(null);
+		expect(chatStore.isStreamingFor('sess-a')).toBe(true);
+
+		releaseA!();
+		await sendA;
+
+		chatStore.bindSession('sess-a');
+		expect(
+			chatStore.items.some(
+				(item) => item.type === 'assistant' && item.text.includes('background A')
+			)
+		).toBe(true);
+	});
+
+	it('starts pending first turn in background when new chat is opened before activation', async () => {
+		sessionStore.appendSession({
+			id: 'sess-a',
+			workspace_id: 'workspace-1',
+			workspace_path: '/tmp/workspace',
+			title: 'Pending',
+			model_id: 'model',
+			provider_id: 'provider',
+			status: 'active',
+			token_usage: { input_tokens: 0, output_tokens: 0, cache_read: 0, cache_write: 0 },
+			created_at: 0,
+			updated_at: 0
+		});
+		sessionStore.queuePendingMessage('sess-a', 'question A', undefined);
+		vi.mocked(streamMessage).mockImplementation(async function* (sessionId) {
+			if (sessionId === 'sess-a') {
+				yield { type: 'text_delta', delta: 'answer A' };
+				yield { type: 'done' };
+			}
+		});
+
+		startNewChat();
+
+		await vi.waitFor(() => expect(streamMessage).toHaveBeenCalledWith(
+			'sess-a',
+			expect.objectContaining({ text: 'question A' }),
+			expect.any(AbortSignal)
+		));
+		await vi.waitFor(() => expect(chatStore.isStreamingFor('sess-a')).toBe(false));
+		expect(sessionStore.hasPendingMessage('sess-a')).toBe(false);
+
+		chatStore.bindSession('sess-a');
+		expect(chatStore.items).toEqual([
+			expect.objectContaining({ type: 'user', text: 'question A' }),
+			expect.objectContaining({ type: 'assistant', text: 'answer A' })
+		]);
 	});
 
 	it('blocks duplicate send in the same session', async () => {

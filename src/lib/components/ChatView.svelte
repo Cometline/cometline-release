@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { fade } from 'svelte/transition';
+	import { tick } from 'svelte';
 	import EmptyChatState from '$lib/components/EmptyChatState.svelte';
 	import Composer from '$lib/components/Composer.svelte';
 	import HeroComposerFrame from '$lib/components/HeroComposerFrame.svelte';
@@ -48,13 +49,6 @@
 					origin: 'above-composer'
 				});
 			}
-		}
-	});
-
-	$effect.pre(() => {
-		conversation.bindSession();
-		if (!conversation.shouldSkipTranscriptLoad()) {
-			void chatStore.loadTranscript(sessionId);
 		}
 	});
 
@@ -139,13 +133,22 @@
 	});
 
 	let activatedSessionId = $state<string | null>(null);
+	let activationRun = 0;
+
+	async function activateSession(id: string, run: number) {
+		await tick();
+		if (activationRun !== run || sessionId !== id) return;
+		conversation.onMount();
+	}
 
 	$effect(() => {
 		if (!sessionId) return;
 		if (activatedSessionId === sessionId) return;
 		activatedSessionId = sessionId;
+		const run = ++activationRun;
+		conversation.bindSession();
 		syncSessionFromStore();
-		conversation.onMount();
+		void activateSession(sessionId, run);
 	});
 
 	$effect(() => {

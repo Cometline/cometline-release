@@ -413,7 +413,8 @@
 		};
 	}
 
-	function speakerFor(item: ChatItem): 'user' | 'assistant' | null {
+	function speakerFor(item: ChatItem | undefined): 'user' | 'assistant' | null {
+		if (!item) return null;
 		if (item.type === 'user') return 'user';
 		if (item.type === 'assistant' || item.type === 'tool') return 'assistant';
 		return null;
@@ -438,7 +439,7 @@
 
 	function startsSpeakerRun(index: number, speaker: 'user' | 'assistant') {
 		for (let i = index - 1; i >= 0; i--) {
-			const previousSpeaker = speakerFor(chatStore.items[i]);
+			const previousSpeaker = speakerFor(threadItems[i]);
 			if (!previousSpeaker) continue;
 			return previousSpeaker !== speaker;
 		}

@@ -85,6 +85,67 @@ const BASE_URL = 'http://127.0.0.1:7700';
 
 client.setConfig({ baseUrl: BASE_URL });
 
+export class CometMindApiError extends Error {
+	status: number;
+	code: string;
+
+	constructor(status: number, code: string, message: string) {
+		super(message);
+		this.name = 'CometMindApiError';
+		this.status = status;
+		this.code = code;
+	}
+}
+
+function parseErrorBody(raw: string): { code: string; message: string } {
+	try {
+		const parsed = JSON.parse(raw);
+		return {
+			code: parsed?.error?.code ?? parsed?.code ?? '',
+			message: parsed?.error?.message ?? parsed?.message ?? raw
+		};
+	} catch {
+		return { code: '', message: raw };
+	}
+}
+
+function normalizeCometMindError(err: unknown): never {
+	if (err instanceof CometMindApiError) throw err;
+	if (err && typeof err === 'object') {
+		const candidate = err as {
+			status?: number;
+			response?: { status?: number };
+			error?:
+				| { error?: { code?: string; message?: string }; code?: string; message?: string }
+				| string;
+			data?: { error?: { code?: string; message?: string }; code?: string; message?: string };
+			message?: string;
+		};
+		const status = candidate.status ?? candidate.response?.status;
+		const payload = typeof candidate.error === 'string' ? undefined : (candidate.error ?? candidate.data);
+		const code = payload?.error?.code ?? payload?.code ?? '';
+		const message = payload?.error?.message ?? payload?.message ?? candidate.message ?? '';
+		if (status) throw new CometMindApiError(status, code, message || `HTTP ${status}`);
+	}
+	if (err instanceof Error) {
+		const match = err.message.match(/^(\d+):\s*(.*)$/s);
+		if (match) {
+			const status = Number(match[1]);
+			const parsed = parseErrorBody(match[2]);
+			throw new CometMindApiError(status, parsed.code, parsed.message);
+		}
+	}
+	throw err;
+}
+
+function withApiError<T>(promise: Promise<T>): Promise<T> {
+	return promise.catch(normalizeCometMindError);
+}
+
+export function isSessionNotFoundError(err: unknown): boolean {
+	return err instanceof CometMindApiError && err.status === 404 && err.code === 'session_not_found';
+}
+
 function skillQuery(workspacePath: string) {
 	return workspacePath ? { workspace_path: workspacePath } : undefined;
 }
@@ -188,10 +249,12 @@ export function listAllSessions(): Promise<SessionListResponse> {
 }
 
 export function getSession(id: string): Promise<Session> {
-	return getSessionApi({
-		path: { id },
-		throwOnError: true
-	}).then(({ data }) => data);
+	return withApiError(
+		getSessionApi({
+			path: { id },
+			throwOnError: true
+		}).then(({ data }) => data)
+	);
 }
 
 export function updateSession(id: string, req: UpdateSessionRequest): Promise<Session> {
@@ -203,17 +266,21 @@ export function updateSession(id: string, req: UpdateSessionRequest): Promise<Se
 }
 
 export function listChildSessions(id: string): Promise<SessionListResponse> {
-	return listChildSessionsApi({
-		path: { id },
-		throwOnError: true
-	}).then(({ data }) => data);
+	return withApiError(
+		listChildSessionsApi({
+			path: { id },
+			throwOnError: true
+		}).then(({ data }) => data)
+	);
 }
 
 export function getSessionMessages(id: string): Promise<TranscriptResponse> {
-	return getSessionMessagesApi({
-		path: { id },
-		throwOnError: true
-	}).then(({ data }) => data);
+	return withApiError(
+		getSessionMessagesApi({
+			path: { id },
+			throwOnError: true
+		}).then(({ data }) => data)
+	);
 }
 
 export async function deleteSession(id: string): Promise<void> {
@@ -260,7 +327,8 @@ async function* streamSse(
 
 	if (!res.ok || !res.body) {
 		const text = await res.text();
-		throw new Error(`${res.status}: ${text || res.statusText}`);
+		const parsed = parseErrorBody(text || res.statusText);
+		throw new CometMindApiError(res.status, parsed.code, parsed.message);
 	}
 
 	const reader = res.body.getReader();

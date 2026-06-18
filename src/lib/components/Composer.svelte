@@ -552,8 +552,8 @@
 				await goto(`/session/${forkedId}`);
 			} else {
 				setDropMessage(`Switched workspace to ${clean}`);
+				await onWorkspaceChanged?.();
 			}
-			await onWorkspaceChanged?.();
 		} catch (err) {
 			setDropMessage(err instanceof Error ? err.message : 'Failed to fork session');
 		}

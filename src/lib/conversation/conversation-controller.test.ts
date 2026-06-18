@@ -20,6 +20,7 @@ describe('createConversationController', () => {
 	});
 
 	function createDeps(overrides?: {
+		sessionId?: string;
 		hasVisibleConversation?: boolean;
 		send?: Mock<ConversationControllerDeps['send']>;
 		refreshSession?: Mock<ConversationControllerDeps['refreshSession']>;
@@ -32,9 +33,10 @@ describe('createConversationController', () => {
 		const send = overrides?.send ?? vi.fn().mockResolvedValue(undefined);
 		const refreshSession = overrides?.refreshSession ?? vi.fn().mockResolvedValue(undefined);
 		let hasVisible = overrides?.hasVisibleConversation ?? false;
+		const sessionId = overrides?.sessionId ?? 'sess-1';
 
 		const controller = createConversationController({
-			getSessionId: () => 'sess-1',
+			getSessionId: () => sessionId,
 			getHasVisibleConversation: () => hasVisible,
 			send,
 			refreshSession,
@@ -158,6 +160,23 @@ describe('createConversationController', () => {
 		await vi.waitFor(() => expect(send).toHaveBeenCalled());
 		expect(send).toHaveBeenCalledWith('sess-1', 'from home', { skipUser: true });
 		expect(sessionStore.hasPendingMessage('sess-1')).toBe(false);
+	});
+
+	it('keeps pending first messages isolated by session', async () => {
+		sessionStore.queuePendingMessage('sess-1', 'first session', undefined);
+		sessionStore.queuePendingMessage('sess-2', 'second session', undefined);
+		const send1 = vi.fn().mockResolvedValue(undefined);
+		const send2 = vi.fn().mockResolvedValue(undefined);
+
+		createDeps({ sessionId: 'sess-1', send: send1 }).controller.onMount();
+		createDeps({ sessionId: 'sess-2', send: send2 }).controller.onMount();
+
+		await vi.waitFor(() => expect(send1).toHaveBeenCalled());
+		await vi.waitFor(() => expect(send2).toHaveBeenCalled());
+		expect(send1).toHaveBeenCalledWith('sess-1', 'first session', { skipUser: true });
+		expect(send2).toHaveBeenCalledWith('sess-2', 'second session', { skipUser: true });
+		expect(sessionStore.hasPendingMessage('sess-1')).toBe(false);
+		expect(sessionStore.hasPendingMessage('sess-2')).toBe(false);
 	});
 
 	it('loads transcript on mount when no pending message and cache is empty', async () => {

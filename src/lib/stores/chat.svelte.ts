@@ -1,7 +1,17 @@
-import { abortSession, getSessionMessages, listChildSessions, respondToSubagent, streamMessage } from '$lib/client/cometmind';
+import { browser } from '$app/environment';
+import { goto } from '$app/navigation';
+import {
+	abortSession,
+	getSessionMessages,
+	isSessionNotFoundError,
+	listChildSessions,
+	respondToSubagent,
+	streamMessage
+} from '$lib/client/cometmind';
 import type { ChatItem, ImageAttachment, Session, StreamEvent, TranscriptItem } from '$lib/types';
 import type { ChatTurnPayload } from '$lib/actions/start-chat';
 import { reduceChatState } from '$lib/reducers/chat';
+import { sessionStore } from '$lib/stores/session.svelte';
 import { chatDebug, summarizeChatItems, summarizeStreamEvent } from '../debug/chat';
 
 export type { ChatItem } from '$lib/types';
@@ -194,6 +204,22 @@ function createChatStore() {
 		}
 	}
 
+	function discardMissingSession(targetSessionID: string) {
+		const handle = streamHandles.get(targetSessionID);
+		if (handle) handle.abort.abort();
+		unmarkStreaming(targetSessionID);
+		sessionCache.delete(targetSessionID);
+		sessionErrors.delete(targetSessionID);
+		sessionStore.discardSession(targetSessionID);
+		if (sessionID === targetSessionID) {
+			sessionID = null;
+			items = [];
+			error = '';
+			isLoading = false;
+		}
+		if (browser) void goto('/');
+	}
+
 	function markStreaming(targetSessionID: string, handle: SessionStream) {
 		streamHandles.set(targetSessionID, handle);
 		streamingSessionIds.add(targetSessionID);
@@ -257,6 +283,23 @@ function createChatStore() {
 		loadRun += 1;
 		loadPromise = null;
 		loadPromiseSession = null;
+	}
+
+	function detachActiveSession() {
+		if (sessionID) {
+			const handle = streamHandles.get(sessionID);
+			if (handle) {
+				flushBatchForSession(sessionID, handle.ctx, handle);
+			}
+			sessionCache.set(sessionID, getCachedItems(sessionID));
+		}
+		loadRun += 1;
+		loadPromise = null;
+		loadPromiseSession = null;
+		sessionID = null;
+		items = [];
+		isLoading = false;
+		error = '';
 	}
 
 	function reconcileStreamCtx(targetSessionID: string, ctx: StreamCtx) {
@@ -326,10 +369,10 @@ function createChatStore() {
 		loadPromiseSession = nextSessionID;
 		loadPromise = (async () => {
 			try {
-				const [transcript, children] = await Promise.all([
-					getSessionMessages(nextSessionID),
-					listChildSessions(nextSessionID).catch(() => ({ sessions: [] as Session[] }))
-				]);
+				const transcript = await getSessionMessages(nextSessionID);
+				const children = await listChildSessions(nextSessionID).catch(() => ({
+					sessions: [] as Session[]
+				}));
 				if (run !== loadRun && sessionID !== nextSessionID) return;
 				if (hasInFlightTurn(nextSessionID) && cachedItemCount(nextSessionID) > 0) return;
 				if (sessionID === nextSessionID && items.length > 0) return;
@@ -346,6 +389,10 @@ function createChatStore() {
 					items: summarizeChatItems(getCachedItems(nextSessionID))
 				});
 			} catch (err) {
+				if (isSessionNotFoundError(err)) {
+					discardMissingSession(nextSessionID);
+					return;
+				}
 				if (run !== loadRun && sessionID !== nextSessionID) return;
 				if (hasInFlightTurn(nextSessionID) && cachedItemCount(nextSessionID) > 0) return;
 				if (sessionID === nextSessionID && items.length > 0) return;
@@ -569,6 +616,10 @@ function createChatStore() {
 				chatDebug('store:send-aborted', { sessionID: nextSessionID, run: handle.run });
 				return;
 			}
+			if (isSessionNotFoundError(err)) {
+				discardMissingSession(nextSessionID);
+				return;
+			}
 			applyStreamEventForSession(
 				nextSessionID,
 				{
@@ -704,6 +755,7 @@ function createChatStore() {
 		isAwaitingFirstAssistant,
 		getCachedItemCount,
 		clear,
+		detachActiveSession,
 		bindSession,
 		loadTranscript,
 		stageUser,
