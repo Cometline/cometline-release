@@ -2,7 +2,6 @@
 	import { ArrowLeft, ArrowRight, RotateCcw, RotateCw, Save, X } from '@lucide/svelte';
 	import FilePreview from '$lib/components/FilePreview.svelte';
 	import { shellStore } from '$lib/stores/shell.svelte';
-	import { getActiveSessionId } from '$lib/active-session';
 	import { isWebPanelUrl, normalizeUserUrl, openLink } from '$lib/open-link';
 	import { openExternalLink } from '$lib/external-link';
 
@@ -43,7 +42,7 @@
 	const panelMode = $derived(shellStore.webPanelMode);
 	const panelUrl = $derived(shellStore.webPanelUrl);
 	const panelFilePath = $derived(shellStore.webPanelFilePath);
-	const activeSessionId = $derived(getActiveSessionId());
+	const panelSessionKey = $derived(shellStore.webPanelSessionKey);
 	const showWebview = $derived(panelMode === 'url' && Boolean(shellStore.hasWebPanelForSession && panelUrl));
 	const showFilePreview = $derived(
 		panelMode === 'file' && Boolean(shellStore.hasWebPanelForSession && displayedFilePath)
@@ -212,13 +211,13 @@
 
 	$effect(() => {
 		const el = webviewEl;
-		const sessionId = activeSessionId;
+		const sessionKey = panelSessionKey;
 		const url = panelUrl;
 		const open = panelOpen;
-		if (!el || !open || !sessionId || !url) return;
-		if (webviewSessionId !== sessionId || webviewLoadedUrl !== url) {
+		if (!el || !open || !sessionKey || !url) return;
+		if (webviewSessionId !== sessionKey || webviewLoadedUrl !== url) {
 			el.src = url;
-			webviewSessionId = sessionId;
+			webviewSessionId = sessionKey;
 			webviewLoadedUrl = url;
 			if (!addressEditing) {
 				addressInput = url;

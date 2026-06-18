@@ -8,6 +8,13 @@ export type SessionWebPanel =
 
 export type FocusedPane = 'chat' | 'web';
 
+/**
+ * Sentinel key for the web panel state of a not-yet-created session (the home
+ * route / new chat). Lets the panel open before a session exists; on first send
+ * the draft panel is migrated onto the real session id via `migrateDraftPanel`.
+ */
+const DRAFT_SESSION_KEY = '__draft__';
+
 function createShellStore() {
 	let sidebarOpen = $state(true);
 	let settingsOpen = $state(false);
@@ -24,10 +31,13 @@ function createShellStore() {
 		return getActiveSessionId();
 	}
 
+	/** Resolves the storage key for the active session, or the draft sentinel. */
+	function panelSessionKey(): string {
+		return activeSessionId() ?? DRAFT_SESSION_KEY;
+	}
+
 	function panelForActiveSession(): SessionWebPanel | null {
-		const id = activeSessionId();
-		if (!id) return null;
-		return webPanelsBySession[id] ?? null;
+		return webPanelsBySession[panelSessionKey()] ?? null;
 	}
 
 	function syncWebPanelOpen(open: boolean) {
@@ -81,6 +91,14 @@ function createShellStore() {
 		},
 		get hasWebPanelForSession() {
 			return panelForActiveSession() !== null;
+		},
+		/**
+		 * Storage key for the active session's panel, or the draft sentinel when
+		 * no session exists yet. Used to scope webview load tracking so the panel
+		 * works on the home route before a session is created.
+		 */
+		get webPanelSessionKey() {
+			return panelSessionKey();
 		},
 		get addressBarFocusRequestId() {
 			return addressBarFocusRequestId;
@@ -145,8 +163,7 @@ function createShellStore() {
 			syncWebPanelOpen(true);
 		},
 		openWebPanelEmpty() {
-			const sessionId = activeSessionId();
-			if (!sessionId) return;
+			const sessionId = panelSessionKey();
 			webPanelsBySession = {
 				...webPanelsBySession,
 				[sessionId]: { mode: 'url', url: '', visible: true }
@@ -156,8 +173,7 @@ function createShellStore() {
 			addressBarFocusRequestId += 1;
 		},
 		navigateWebPanel(url: string) {
-			const sessionId = activeSessionId();
-			if (!sessionId) return;
+			const sessionId = panelSessionKey();
 			webPanelsBySession = {
 				...webPanelsBySession,
 				[sessionId]: { mode: 'url', url, visible: true }
@@ -166,8 +182,7 @@ function createShellStore() {
 			syncWebPanelOpen(true);
 		},
 		requestAddressBarFocus() {
-			const sessionId = activeSessionId();
-			if (!sessionId) return;
+			const sessionId = panelSessionKey();
 			const panel = webPanelsBySession[sessionId];
 			if (!panel) return;
 			if (!panel.visible) {
@@ -181,8 +196,6 @@ function createShellStore() {
 			addressBarFocusRequestId += 1;
 		},
 		openWebPanelFromShortcut() {
-			const sessionId = activeSessionId();
-			if (!sessionId) return;
 			if (panelForActiveSession()) {
 				this.requestAddressBarFocus();
 				return;
@@ -190,8 +203,7 @@ function createShellStore() {
 			this.openWebPanelEmpty();
 		},
 		toggleWebPanel() {
-			const sessionId = activeSessionId();
-			if (!sessionId) return;
+			const sessionId = panelSessionKey();
 			const panel = webPanelsBySession[sessionId];
 			if (!panel) return;
 			const visible = !panel.visible;
@@ -203,8 +215,8 @@ function createShellStore() {
 			syncWebPanelOpen(visible);
 		},
 		closeWebPanel() {
-			const sessionId = activeSessionId();
-			if (!sessionId || !webPanelsBySession[sessionId]) return;
+			const sessionId = panelSessionKey();
+			if (!webPanelsBySession[sessionId]) return;
 			const next = { ...webPanelsBySession };
 			delete next[sessionId];
 			webPanelsBySession = next;
@@ -220,6 +232,38 @@ function createShellStore() {
 				focusedPane = 'chat';
 				syncWebPanelOpen(false);
 			}
+		},
+		/**
+		 * Opens a workspace file in the panel for the active session, falling back
+		 * to the draft sentinel when no session exists yet (home / new chat).
+		 */
+		openFilePreviewForActive(filePath: string) {
+			this.openFilePreview(filePath, panelSessionKey());
+		},
+		/**
+		 * Opens a URL in the panel for the active session, falling back to the
+		 * draft sentinel when no session exists yet (home / new chat).
+		 */
+		openWebPanelForActive(url: string) {
+			this.openWebPanel(url, panelSessionKey());
+		},
+		/**
+		 * Moves any draft panel (opened before a session existed) onto the newly
+		 * created session id. Called on first send from the home route.
+		 */
+		migrateDraftPanel(sessionId: string) {
+			const draft = webPanelsBySession[DRAFT_SESSION_KEY];
+			if (!draft) return;
+			const next = { ...webPanelsBySession, [sessionId]: draft };
+			delete next[DRAFT_SESSION_KEY];
+			webPanelsBySession = next;
+		},
+		/** Discards a draft panel without migrating it. */
+		clearDraftPanel() {
+			if (!webPanelsBySession[DRAFT_SESSION_KEY]) return;
+			const next = { ...webPanelsBySession };
+			delete next[DRAFT_SESSION_KEY];
+			webPanelsBySession = next;
 		}
 	};
 }

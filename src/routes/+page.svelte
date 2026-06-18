@@ -20,6 +20,7 @@ import type { ImageAttachment } from '$lib/types';
 	onMount(() => {
 		sessionStore.selectSession(null);
 		chatStore.clear();
+		shellStore.clearDraftPanel();
 		shellStore.centerComposer();
 		modelStore.selectDefault();
 	});
@@ -38,6 +39,7 @@ import type { ImageAttachment } from '$lib/types';
 		});
 		sessionStore.appendSession(session);
 		sessionStore.queuePendingMessage(session.id, text, images, filePaths);
+		shellStore.migrateDraftPanel(session.id);
 		await goto(`/session/${session.id}`);
 	}
 </script>

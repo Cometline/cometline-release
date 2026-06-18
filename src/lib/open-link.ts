@@ -1,7 +1,5 @@
 import { openExternalLink } from '$lib/external-link';
-import { getActiveSessionId } from '$lib/active-session';
 import { shellStore } from '$lib/stores/shell.svelte';
-import { isWebPanelUrl } from '$lib/web-panel-url';
 
 export { isWebPanelUrl, normalizeUserUrl } from '$lib/web-panel-url';
 
@@ -15,9 +13,10 @@ export function openLink(rawUrl: string): void {
 			return;
 		}
 		if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-			const sessionId = getActiveSessionId();
-			if (sessionId && window.electronAPI?.setWebPanelOpen) {
-				shellStore.openWebPanel(String(rawUrl), sessionId);
+			// Works on the home route too: with no session yet the panel opens
+			// under a draft key and is migrated onto the real session on first send.
+			if (window.electronAPI?.setWebPanelOpen) {
+				shellStore.openWebPanelForActive(String(rawUrl));
 				return;
 			}
 			openExternalLink(rawUrl);
