@@ -13,10 +13,10 @@ import (
 )
 
 type CompactPreview struct {
-	ToForget  []ScoredMemory `json:"to_forget"`
-	ToMerge   [][]Record     `json:"to_merge"`
-	Active    int64          `json:"active"`
-	MaxMemories int          `json:"max_memories"`
+	ToForget    []ScoredMemory `json:"to_forget"`
+	ToMerge     [][]Record     `json:"to_merge"`
+	Active      int64          `json:"active"`
+	MaxMemories int            `json:"max_memories"`
 }
 
 type compactor struct {
@@ -249,7 +249,7 @@ Memories:
 		Content string `json:"content"`
 	}
 	req := &cometsdk.Request{
-		Model: extractionModel(c.settings),
+		Model:  extractionModel(c.settings),
 		System: "You consolidate memories. Output JSON only.",
 		Messages: []cometsdk.Message{{
 			Role:    cometsdk.RoleUser,

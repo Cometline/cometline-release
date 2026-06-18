@@ -9,38 +9,40 @@ import (
 
 // Record is the domain view of a memory row.
 type Record struct {
-	ID              string
-	Scope           string
-	Kind            string
-	Content         string
-	Embedding       []float32
-	EmbeddingModel  string
-	Source          string
-	BaseWeight      float64
-	AccessCount     int64
-	Pinned          bool
-	SourceSessionID string
-	Archived        bool
-	ArchivedReason  string
-	LastAccessedAt  *time.Time
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID                 string
+	Scope              string
+	Kind               string
+	PreferenceCategory string
+	Content            string
+	Embedding          []float32
+	EmbeddingModel     string
+	Source             string
+	BaseWeight         float64
+	AccessCount        int64
+	Pinned             bool
+	SourceSessionID    string
+	Archived           bool
+	ArchivedReason     string
+	LastAccessedAt     *time.Time
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 func recordFromDB(row db.Memory) Record {
 	r := Record{
-		ID:         row.ID,
-		Scope:      row.Scope,
-		Kind:       row.Kind,
-		Content:    row.Content,
-		Embedding:  decodeEmbedding(row.Embedding),
-		Source:     row.Source,
-		BaseWeight: row.BaseWeight,
-		AccessCount: row.AccessCount,
-		Pinned:     row.Pinned == 1,
-		Archived:   row.Archived == 1,
-		CreatedAt:  time.UnixMilli(row.CreatedAt),
-		UpdatedAt:  time.UnixMilli(row.UpdatedAt),
+		ID:                 row.ID,
+		Scope:              row.Scope,
+		Kind:               row.Kind,
+		PreferenceCategory: row.PreferenceCategory,
+		Content:            row.Content,
+		Embedding:          decodeEmbedding(row.Embedding),
+		Source:             row.Source,
+		BaseWeight:         row.BaseWeight,
+		AccessCount:        row.AccessCount,
+		Pinned:             row.Pinned == 1,
+		Archived:           row.Archived == 1,
+		CreatedAt:          time.UnixMilli(row.CreatedAt),
+		UpdatedAt:          time.UnixMilli(row.UpdatedAt),
 	}
 	if row.EmbeddingModel.Valid {
 		r.EmbeddingModel = row.EmbeddingModel.String

@@ -100,6 +100,16 @@ var alterStatements = [][]string{
 		`INSERT INTO memories_fts (memory_id, content)
 		 SELECT id, content FROM memories WHERE archived = 0`,
 	},
+	// v6 -> v7: categorize preference memories for lifecycle management
+	{
+		"ALTER TABLE memories ADD COLUMN preference_category TEXT NOT NULL DEFAULT ''",
+		`CREATE INDEX IF NOT EXISTS idx_memories_preference_category ON memories (
+			archived,
+			kind,
+			preference_category,
+			updated_at DESC
+		)`,
+	},
 }
 
 // execAlter runs one incremental DDL statement, tolerating idempotent failures
@@ -138,7 +148,7 @@ func splitStatements(sql string) []string {
 	return out
 }
 
-const schemaVersion = 6
+const schemaVersion = 7
 
 // EnsureSchema runs [Migrate] once per database file using PRAGMA user_version.
 // For existing databases, it applies incremental ALTER statements to upgrade

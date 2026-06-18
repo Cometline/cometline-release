@@ -98,6 +98,7 @@ CREATE TABLE memories (
     id                  TEXT PRIMARY KEY,
     scope               TEXT NOT NULL DEFAULT 'global',
     kind                TEXT NOT NULL DEFAULT 'fact',
+    preference_category TEXT NOT NULL DEFAULT '',
     content             TEXT NOT NULL,
     embedding           BLOB,
     embedding_model     TEXT,
@@ -117,6 +118,13 @@ CREATE TABLE memories (
 CREATE INDEX idx_memories_active ON memories (archived, scope);
 
 CREATE INDEX idx_memories_weight ON memories (archived, base_weight);
+
+CREATE INDEX idx_memories_preference_category ON memories (
+    archived,
+    kind,
+    preference_category,
+    updated_at DESC
+);
 
 CREATE TABLE memory_events (
     id          TEXT PRIMARY KEY,

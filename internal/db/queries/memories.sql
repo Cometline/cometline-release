@@ -3,6 +3,7 @@ INSERT INTO memories (
     id,
     scope,
     kind,
+    preference_category,
     content,
     embedding,
     embedding_model,
@@ -34,6 +35,7 @@ INSERT INTO memories (
     ?,
     ?,
     ?,
+    ?,
     ?
 );
 
@@ -41,6 +43,7 @@ INSERT INTO memories (
 UPDATE memories
 SET
     kind = ?,
+    preference_category = ?,
     content = ?,
     embedding = ?,
     embedding_model = ?,
@@ -77,6 +80,22 @@ SELECT *
 FROM memories
 WHERE archived = 0
 ORDER BY created_at DESC;
+
+-- name: ListBaselinePreferences :many
+SELECT *
+FROM memories
+WHERE archived = 0
+  AND kind = 'preference'
+ORDER BY pinned DESC, updated_at DESC, base_weight DESC, access_count DESC
+LIMIT ?;
+
+-- name: ListActivePreferencesByCategory :many
+SELECT *
+FROM memories
+WHERE archived = 0
+  AND kind = 'preference'
+  AND preference_category = ?
+ORDER BY pinned DESC, updated_at DESC, base_weight DESC, access_count DESC;
 
 -- name: CountActiveMemories :one
 SELECT COUNT(*)

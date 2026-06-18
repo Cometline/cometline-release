@@ -76,6 +76,7 @@ Return JSON: {"action":"update|supersede|skip","content":"merged or replacement 
 func (u *updater) merge(ctx context.Context, existing Record, content string, pm proposedMemory, vec []float32) (Change, error) {
 	now := time.Now()
 	existing.Content = strings.TrimSpace(content)
+	existing.PreferenceCategory = normalizePreferenceCategory(existing.Kind, existing.Content, existing.PreferenceCategory)
 	existing.Embedding = vec
 	existing.EmbeddingModel = u.embedder.Model()
 	if pm.Confidence > existing.BaseWeight {
@@ -90,10 +91,11 @@ func (u *updater) merge(ctx context.Context, existing Record, content string, pm
 		return Change{}, err
 	}
 	return Change{
-		Action:  "update",
-		Kind:    existing.Kind,
-		Content: existing.Content,
-		ID:      existing.ID,
+		Action:             "update",
+		Kind:               existing.Kind,
+		PreferenceCategory: existing.PreferenceCategory,
+		Content:            existing.Content,
+		ID:                 existing.ID,
 	}, nil
 }
 
@@ -106,18 +108,19 @@ func (u *updater) supersede(ctx context.Context, existing Record, content string
 	_ = u.store.logEvent(ctx, existing.ID, "supersede", encodeDetail(map[string]string{"superseded_by": newID}))
 
 	rec := Record{
-		ID:              newID,
-		Scope:           existing.Scope,
-		Kind:            normalizeKind(pm.Kind),
-		Content:         strings.TrimSpace(content),
-		Embedding:       vec,
-		EmbeddingModel:  u.embedder.Model(),
-		Source:          "auto",
-		BaseWeight:      pm.Confidence,
-		SourceSessionID: sessionID,
-		LastAccessedAt:  &now,
-		CreatedAt:       now,
-		UpdatedAt:       now,
+		ID:                 newID,
+		Scope:              existing.Scope,
+		Kind:               normalizeKind(pm.Kind),
+		PreferenceCategory: normalizePreferenceCategory(pm.Kind, content, pm.PreferenceCategory),
+		Content:            strings.TrimSpace(content),
+		Embedding:          vec,
+		EmbeddingModel:     u.embedder.Model(),
+		Source:             "auto",
+		BaseWeight:         pm.Confidence,
+		SourceSessionID:    sessionID,
+		LastAccessedAt:     &now,
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 	if rec.BaseWeight <= 0 {
 		rec.BaseWeight = 0.7
@@ -129,9 +132,10 @@ func (u *updater) supersede(ctx context.Context, existing Record, content string
 		return Change{}, err
 	}
 	return Change{
-		Action:  "supersede",
-		Kind:    rec.Kind,
-		Content: rec.Content,
-		ID:      rec.ID,
+		Action:             "supersede",
+		Kind:               rec.Kind,
+		PreferenceCategory: rec.PreferenceCategory,
+		Content:            rec.Content,
+		ID:                 rec.ID,
 	}, nil
 }

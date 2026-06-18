@@ -22,10 +22,11 @@ const (
 )
 
 type proposedMemory struct {
-	Content    string  `json:"content"`
-	Kind       string  `json:"kind"`
-	Confidence float64 `json:"confidence"`
-	ShouldSave bool    `json:"should_save"`
+	Content            string  `json:"content"`
+	Kind               string  `json:"kind"`
+	PreferenceCategory string  `json:"preference_category"`
+	Confidence         float64 `json:"confidence"`
+	ShouldSave         bool    `json:"should_save"`
 }
 
 type extractionResult struct {
@@ -79,7 +80,9 @@ func (e *extractor) extractAfterTurn(ctx context.Context, sessionID, model strin
 
 	prompt := fmt.Sprintf(`Review this conversation and extract durable facts, preferences, or project knowledge worth remembering across future sessions.
 Skip transient instructions, tool output, greetings, and one-off tasks.
-Return JSON: {"memories":[{"content":"...","kind":"fact|preference|project","confidence":0.0-1.0,"should_save":true|false}]}
+Use kind="preference" for durable user preferences about language, tone, verbosity, tools, workflow, models, or coding style.
+For preference memories, include preference_category as one of: language, tone, verbosity, workflow, model, tooling, coding_style, other.
+Return JSON: {"memories":[{"content":"...","kind":"fact|preference|project","preference_category":"language|tone|verbosity|workflow|model|tooling|coding_style|other","confidence":0.0-1.0,"should_save":true|false}]}
 
 Conversation:
 %s`, transcript.String())
@@ -151,18 +154,19 @@ func (e *extractor) ingestProposal(ctx context.Context, sessionID string, pm pro
 func (e *extractor) create(ctx context.Context, sessionID string, pm proposedMemory, vec []float32) (Change, error) {
 	now := time.Now()
 	rec := Record{
-		ID:              ulid.Make().String(),
-		Scope:           "global",
-		Kind:            normalizeKind(pm.Kind),
-		Content:         strings.TrimSpace(pm.Content),
-		Embedding:       vec,
-		EmbeddingModel:  e.retriever.embedder.Model(),
-		Source:          "auto",
-		BaseWeight:      pm.Confidence,
-		SourceSessionID: sessionID,
-		LastAccessedAt:  &now,
-		CreatedAt:       now,
-		UpdatedAt:       now,
+		ID:                 ulid.Make().String(),
+		Scope:              "global",
+		Kind:               normalizeKind(pm.Kind),
+		PreferenceCategory: normalizePreferenceCategory(pm.Kind, pm.Content, pm.PreferenceCategory),
+		Content:            strings.TrimSpace(pm.Content),
+		Embedding:          vec,
+		EmbeddingModel:     e.retriever.embedder.Model(),
+		Source:             "auto",
+		BaseWeight:         pm.Confidence,
+		SourceSessionID:    sessionID,
+		LastAccessedAt:     &now,
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 	if rec.BaseWeight <= 0 {
 		rec.BaseWeight = 0.7
@@ -174,10 +178,11 @@ func (e *extractor) create(ctx context.Context, sessionID string, pm proposedMem
 		return Change{}, err
 	}
 	return Change{
-		Action:  "create",
-		Kind:    rec.Kind,
-		Content: rec.Content,
-		ID:      rec.ID,
+		Action:             "create",
+		Kind:               rec.Kind,
+		PreferenceCategory: rec.PreferenceCategory,
+		Content:            rec.Content,
+		ID:                 rec.ID,
 	}, nil
 }
 

@@ -5,7 +5,7 @@ import (
 )
 
 const (
-	rrfK            = 60
+	rrfK              = 60
 	retrievalPoolSize = 20
 )
 

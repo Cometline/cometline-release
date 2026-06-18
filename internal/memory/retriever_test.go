@@ -23,9 +23,9 @@ func TestRetrieverRanksByRetrievalScore(t *testing.T) {
 
 	embedder := stubEmbedder{
 		vectors: map[string][]float32{
-			"query":  {1, 0},
-			"alpha":  {1, 0},
-			"beta":   {0.9, 0.1},
+			"query": {1, 0},
+			"alpha": {1, 0},
+			"beta":  {0.9, 0.1},
 		},
 	}
 	st := newStore(conn)

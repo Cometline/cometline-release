@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -102,6 +103,92 @@ func (s *Service) Search(ctx context.Context, query string, maxN int) ([]ScoredM
 	return mems, nil
 }
 
+// BaselinePreferences returns a small, cheap-to-load set of user preferences
+// that should be injected for substantive turns regardless of semantic match.
+func (s *Service) BaselinePreferences(ctx context.Context, limit int) ([]ScoredMemory, error) {
+	if !s.settings.Enabled {
+		logging.L().Info("memory.preferences.skipped", "enabled", false)
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = defaultBaselinePreferenceLimit
+	}
+	started := time.Now()
+	recs, err := s.store.listBaselinePreferences(ctx, limit)
+	if err != nil {
+		logging.L().Error("memory.preferences.failed", "limit", limit, "error", err)
+		return nil, err
+	}
+	now := time.Now()
+	out := make([]ScoredMemory, len(recs))
+	for i, rec := range recs {
+		out[i] = ScoredMemory{Record: rec, EffectiveWeight: EffectiveWeight(rec, now, s.settings.Lifecycle)}
+		_ = s.store.touchAccess(ctx, rec.ID)
+		_ = s.store.logEvent(ctx, rec.ID, "preference_inject", "")
+	}
+	logging.L().Info("memory.preferences.loaded", "count", len(out), "limit", limit, "duration_ms", time.Since(started).Milliseconds())
+	return out, nil
+}
+
+func (s *Service) CompactPreferenceCategory(ctx context.Context, category string) error {
+	category = normalizePreferenceCategory("preference", "", category)
+	active, err := s.store.listActive(ctx)
+	if err != nil {
+		logging.L().Error("memory.preference_category.failed", "category", category, "error", err)
+		return err
+	}
+	var recs []Record
+	for _, rec := range active {
+		if rec.Kind != "preference" {
+			continue
+		}
+		normalized := normalizePreferenceCategory(rec.Kind, rec.Content, rec.PreferenceCategory)
+		if normalized != category {
+			continue
+		}
+		if rec.PreferenceCategory != normalized {
+			rec.PreferenceCategory = normalized
+			if err := s.store.update(ctx, rec); err != nil {
+				logging.L().Error("memory.preference_category_backfill.failed", "category", category, "memory_id", rec.ID, "error", err)
+				return err
+			}
+		}
+		recs = append(recs, rec)
+	}
+	sort.Slice(recs, func(i, j int) bool {
+		if recs[i].Pinned != recs[j].Pinned {
+			return recs[i].Pinned
+		}
+		if !recs[i].UpdatedAt.Equal(recs[j].UpdatedAt) {
+			return recs[i].UpdatedAt.After(recs[j].UpdatedAt)
+		}
+		if recs[i].BaseWeight != recs[j].BaseWeight {
+			return recs[i].BaseWeight > recs[j].BaseWeight
+		}
+		return recs[i].AccessCount > recs[j].AccessCount
+	})
+	cap := preferenceCategoryCap(category)
+	kept := 0
+	archived := 0
+	for _, rec := range recs {
+		if rec.Pinned {
+			continue
+		}
+		kept++
+		if kept <= cap {
+			continue
+		}
+		if err := s.store.archive(ctx, rec.ID, "preference_category_cap", ""); err != nil {
+			logging.L().Error("memory.preference_category_archive.failed", "category", category, "memory_id", rec.ID, "error", err)
+			return err
+		}
+		_ = s.store.logEvent(ctx, rec.ID, "preference_category_cap", category)
+		archived++
+	}
+	logging.L().Info("memory.preference_category.completed", "category", category, "active", len(recs), "cap", cap, "archived", archived)
+	return nil
+}
+
 // ExtractAfterTurn proposes and stores memories from a completed turn.
 // llmProvider should match the session provider used for the turn; when nil,
 // the service's default provider is used.
@@ -117,6 +204,11 @@ func (s *Service) ExtractAfterTurn(ctx context.Context, sessionID, model string,
 		return changes, err
 	}
 	logging.L().Info("memory.extract.completed", "session", sessionID, "changes", len(changes), "duration_ms", time.Since(started).Milliseconds())
+	for _, change := range changes {
+		if change.Kind == "preference" {
+			_ = s.CompactPreferenceCategory(ctx, change.PreferenceCategory)
+		}
+	}
 	if s.settings.Lifecycle.CompactionOnExtract {
 		if err := s.RunLifecycle(ctx); err != nil {
 			return changes, err
@@ -228,24 +320,28 @@ func (s *Service) CreateManual(ctx context.Context, content, kind string, pinned
 		baseWeight = 1.0
 	}
 	rec := Record{
-		ID:             ulid.Make().String(),
-		Scope:          "global",
-		Kind:           normalizeKind(kind),
-		Content:        content,
-		Embedding:      vecs[0],
-		EmbeddingModel: s.retriever.embedder.Model(),
-		Source:         "manual",
-		BaseWeight:     baseWeight,
-		Pinned:         pinned,
-		LastAccessedAt: &now,
-		CreatedAt:      now,
-		UpdatedAt:      now,
+		ID:                 ulid.Make().String(),
+		Scope:              "global",
+		Kind:               normalizeKind(kind),
+		PreferenceCategory: normalizePreferenceCategory(kind, content, ""),
+		Content:            content,
+		Embedding:          vecs[0],
+		EmbeddingModel:     s.retriever.embedder.Model(),
+		Source:             "manual",
+		BaseWeight:         baseWeight,
+		Pinned:             pinned,
+		LastAccessedAt:     &now,
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 	if err := s.store.insert(ctx, rec); err != nil {
 		logging.L().Error("memory.manual_create.failed", "kind", rec.Kind, "pinned", rec.Pinned, "error", err)
 		return Record{}, err
 	}
 	_ = s.store.logEvent(ctx, rec.ID, "create", "manual")
+	if rec.Kind == "preference" {
+		_ = s.CompactPreferenceCategory(ctx, rec.PreferenceCategory)
+	}
 	logging.L().Info("memory.manual_create.completed", "memory_id", rec.ID, "kind", rec.Kind, "pinned", rec.Pinned, "base_weight", rec.BaseWeight)
 	return rec, nil
 }
@@ -273,6 +369,7 @@ func (s *Service) UpdateManual(ctx context.Context, id, content, kind string, pi
 	if kind != "" {
 		rec.Kind = normalizeKind(kind)
 	}
+	rec.PreferenceCategory = normalizePreferenceCategory(rec.Kind, rec.Content, rec.PreferenceCategory)
 	if pinned != nil {
 		rec.Pinned = *pinned
 	}
@@ -285,6 +382,9 @@ func (s *Service) UpdateManual(ctx context.Context, id, content, kind string, pi
 		return Record{}, err
 	}
 	_ = s.store.logEvent(ctx, rec.ID, "manual_update", "")
+	if rec.Kind == "preference" {
+		_ = s.CompactPreferenceCategory(ctx, rec.PreferenceCategory)
+	}
 	logging.L().Info("memory.manual_update.completed", "memory_id", rec.ID, "kind", rec.Kind, "pinned", rec.Pinned, "base_weight", rec.BaseWeight)
 	return rec, nil
 }
@@ -303,15 +403,48 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// FormatForPrompt renders injected memories for the system prompt.
-func FormatForPrompt(mems []ScoredMemory) string {
-	if len(mems) == 0 {
+type PromptMemories struct {
+	Preferences []ScoredMemory
+	Relevant    []ScoredMemory
+}
+
+func FormatPromptMemories(mems PromptMemories) string {
+	if len(mems.Preferences) == 0 && len(mems.Relevant) == 0 {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("\n\n## Relevant memories\n")
-	for i, m := range mems {
+	if len(mems.Preferences) > 0 {
+		b.WriteString("\n\n## User preferences\n")
+		for i, m := range mems.Preferences {
+			fmt.Fprintf(&b, "%d. %s\n", i+1, m.Content)
+		}
+	}
+	relevant := dedupeRelevantMemories(mems.Preferences, mems.Relevant)
+	if len(relevant) > 0 {
+		b.WriteString("\n\n## Relevant memories\n")
+	}
+	for i, m := range relevant {
 		fmt.Fprintf(&b, "%d. [%s] %s\n", i+1, m.Kind, m.Content)
 	}
 	return b.String()
+}
+
+// FormatForPrompt renders injected memories for the system prompt.
+func FormatForPrompt(mems []ScoredMemory) string {
+	return FormatPromptMemories(PromptMemories{Relevant: mems})
+}
+
+func dedupeRelevantMemories(preferences, relevant []ScoredMemory) []ScoredMemory {
+	seen := make(map[string]struct{}, len(preferences))
+	for _, m := range preferences {
+		seen[m.ID] = struct{}{}
+	}
+	out := make([]ScoredMemory, 0, len(relevant))
+	for _, m := range relevant {
+		if _, ok := seen[m.ID]; ok {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
 }

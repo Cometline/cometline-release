@@ -68,10 +68,17 @@ func (p *fakeProvider) Stream(ctx context.Context, req *cometsdk.Request) (<-cha
 
 type fakeMemory struct {
 	retrieveCalls int
+	baselineCalls int
 	waitForCancel bool
+	preferences   []memory.ScoredMemory
 }
 
 func (m *fakeMemory) Enabled() bool { return true }
+
+func (m *fakeMemory) BaselinePreferences(ctx context.Context, limit int) ([]memory.ScoredMemory, error) {
+	m.baselineCalls++
+	return m.preferences, nil
+}
 
 func (m *fakeMemory) RetrieveForTurn(ctx context.Context, query string) ([]memory.ScoredMemory, error) {
 	m.retrieveCalls++
@@ -175,6 +182,9 @@ func TestRunner_SkipsMemoryRetrievalForLowValueTurn(t *testing.T) {
 	if mem.retrieveCalls != 0 {
 		t.Fatalf("RetrieveForTurn called %d times, want 0", mem.retrieveCalls)
 	}
+	if mem.baselineCalls != 0 {
+		t.Fatalf("BaselinePreferences called %d times, want 0", mem.baselineCalls)
+	}
 }
 
 func TestRunner_RetrievesMemoryForSubstantiveTurn(t *testing.T) {
@@ -200,6 +210,9 @@ func TestRunner_RetrievesMemoryForSubstantiveTurn(t *testing.T) {
 	}
 	if mem.retrieveCalls != 1 {
 		t.Fatalf("RetrieveForTurn called %d times, want 1", mem.retrieveCalls)
+	}
+	if mem.baselineCalls != 1 {
+		t.Fatalf("BaselinePreferences called %d times, want 1", mem.baselineCalls)
 	}
 }
 
@@ -233,9 +246,49 @@ func TestRunner_MemoryRetrievalTimeoutDoesNotEmitError(t *testing.T) {
 	if mem.retrieveCalls != 1 {
 		t.Fatalf("RetrieveForTurn called %d times, want 1", mem.retrieveCalls)
 	}
+	if mem.baselineCalls != 1 {
+		t.Fatalf("BaselinePreferences called %d times, want 1", mem.baselineCalls)
+	}
 	for _, ev := range events {
 		if ev.Kind == event.KindError {
 			t.Fatalf("timeout should not emit error event: %+v", ev)
 		}
+	}
+}
+
+func TestRunner_InjectsPreferencesWhenSemanticRetrievalTimesOut(t *testing.T) {
+	store := &fakeStore{history: []cometsdk.Message{{
+		Role:    cometsdk.RoleUser,
+		Content: []cometsdk.Block{cometsdk.TextBlock{Text: "help me implement this"}},
+	}}}
+	mem := &fakeMemory{
+		waitForCancel: true,
+		preferences: []memory.ScoredMemory{{Record: memory.Record{
+			ID: "pref1", Kind: "preference", Content: "User prefers Traditional Chinese replies.",
+		}}},
+	}
+	provider := &fakeProvider{events: []cometsdk.Event{
+		cometsdk.TextDeltaEvent{Text: "ok"},
+		cometsdk.StepFinishEvent{FinishReason: cometsdk.FinishStop},
+		cometsdk.DoneEvent{},
+	}}
+
+	r := &Runner{
+		Provider:               provider,
+		Sessions:               store,
+		Memory:                 mem,
+		Registry:               tools.NewRegistry(t.TempDir()),
+		MemoryRetrievalTimeout: 10 * time.Millisecond,
+	}
+	ch := make(chan event.Event, 16)
+	var runErr error
+	go func() { runErr = r.Run(context.Background(), session.AgentTurn{ID: "s1", ModelID: "m"}, ch) }()
+	_ = drain(ch)
+
+	if runErr != nil {
+		t.Fatalf("Run returned error: %v", runErr)
+	}
+	if mem.baselineCalls != 1 || mem.retrieveCalls != 1 {
+		t.Fatalf("baseline=%d retrieve=%d, want 1/1", mem.baselineCalls, mem.retrieveCalls)
 	}
 }

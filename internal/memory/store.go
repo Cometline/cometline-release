@@ -46,23 +46,24 @@ func (s *store) get(ctx context.Context, id string) (Record, error) {
 func (s *store) insert(ctx context.Context, rec Record) error {
 	now := time.Now().UnixMilli()
 	if err := s.q.InsertMemory(ctx, db.InsertMemoryParams{
-		ID:              rec.ID,
-		Scope:           rec.Scope,
-		Kind:            rec.Kind,
-		Content:         rec.Content,
-		Embedding:       encodeEmbedding(rec.Embedding),
-		EmbeddingModel:  nullString(rec.EmbeddingModel),
-		Source:          rec.Source,
-		BaseWeight:      rec.BaseWeight,
-		AccessCount:     rec.AccessCount,
-		Pinned:          boolToInt64(rec.Pinned),
-		SourceSessionID: nullString(rec.SourceSessionID),
-		SupersededBy:    sql.NullString{},
-		Archived:        0,
-		ArchivedReason:  sql.NullString{},
-		LastAccessedAt:  nullInt64MS(rec.LastAccessedAt),
-		CreatedAt:       now,
-		UpdatedAt:       now,
+		ID:                 rec.ID,
+		Scope:              rec.Scope,
+		Kind:               rec.Kind,
+		PreferenceCategory: normalizePreferenceCategory(rec.Kind, rec.Content, rec.PreferenceCategory),
+		Content:            rec.Content,
+		Embedding:          encodeEmbedding(rec.Embedding),
+		EmbeddingModel:     nullString(rec.EmbeddingModel),
+		Source:             rec.Source,
+		BaseWeight:         rec.BaseWeight,
+		AccessCount:        rec.AccessCount,
+		Pinned:             boolToInt64(rec.Pinned),
+		SourceSessionID:    nullString(rec.SourceSessionID),
+		SupersededBy:       sql.NullString{},
+		Archived:           0,
+		ArchivedReason:     sql.NullString{},
+		LastAccessedAt:     nullInt64MS(rec.LastAccessedAt),
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}); err != nil {
 		return err
 	}
@@ -71,15 +72,16 @@ func (s *store) insert(ctx context.Context, rec Record) error {
 
 func (s *store) update(ctx context.Context, rec Record) error {
 	if err := s.q.UpdateMemory(ctx, db.UpdateMemoryParams{
-		Kind:           rec.Kind,
-		Content:        rec.Content,
-		Embedding:      encodeEmbedding(rec.Embedding),
-		EmbeddingModel: nullString(rec.EmbeddingModel),
-		BaseWeight:     rec.BaseWeight,
-		Pinned:         boolToInt64(rec.Pinned),
-		LastAccessedAt: nullInt64MS(rec.LastAccessedAt),
-		UpdatedAt:      time.Now().UnixMilli(),
-		ID:             rec.ID,
+		Kind:               rec.Kind,
+		PreferenceCategory: normalizePreferenceCategory(rec.Kind, rec.Content, rec.PreferenceCategory),
+		Content:            rec.Content,
+		Embedding:          encodeEmbedding(rec.Embedding),
+		EmbeddingModel:     nullString(rec.EmbeddingModel),
+		BaseWeight:         rec.BaseWeight,
+		Pinned:             boolToInt64(rec.Pinned),
+		LastAccessedAt:     nullInt64MS(rec.LastAccessedAt),
+		UpdatedAt:          time.Now().UnixMilli(),
+		ID:                 rec.ID,
 	}); err != nil {
 		return err
 	}
@@ -116,6 +118,33 @@ func (s *store) delete(ctx context.Context, id string) error {
 
 func (s *store) listArchivedOlderThan(ctx context.Context, beforeMS int64) ([]string, error) {
 	return s.q.ListArchivedMemoryIDsOlderThan(ctx, beforeMS)
+}
+
+func (s *store) listBaselinePreferences(ctx context.Context, limit int) ([]Record, error) {
+	if limit <= 0 {
+		limit = 3
+	}
+	rows, err := s.q.ListBaselinePreferences(ctx, int64(limit))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Record, len(rows))
+	for i, row := range rows {
+		out[i] = recordFromDB(row)
+	}
+	return out, nil
+}
+
+func (s *store) listActivePreferencesByCategory(ctx context.Context, category string) ([]Record, error) {
+	rows, err := s.q.ListActivePreferencesByCategory(ctx, category)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Record, len(rows))
+	for i, row := range rows {
+		out[i] = recordFromDB(row)
+	}
+	return out, nil
 }
 
 func (s *store) deleteMemoryEventsForMemory(ctx context.Context, memoryID string) (int64, error) {

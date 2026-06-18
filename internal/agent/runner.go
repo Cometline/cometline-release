@@ -32,6 +32,7 @@ type TurnStore interface {
 
 type MemoryStore interface {
 	Enabled() bool
+	BaselinePreferences(ctx context.Context, limit int) ([]memory.ScoredMemory, error)
 	RetrieveForTurn(ctx context.Context, query string) ([]memory.ScoredMemory, error)
 	ExtractAfterTurn(ctx context.Context, sessionID, model string, llmProvider cometsdk.Provider) ([]memory.Change, error)
 }
@@ -103,6 +104,10 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 			if !decision.Retrieve {
 				logging.L().Info("memory.retrieve.skipped", "session", turn.ID, "reason", decision.Reason, "score", decision.Score, "text_bytes", decision.TextBytes)
 			} else {
+				prefs, prefErr := r.Memory.BaselinePreferences(ctx, 3)
+				if prefErr != nil {
+					logging.L().Error("memory.preferences.failed", "session", turn.ID, "error", prefErr)
+				}
 				query := memory.BuildRetrievalQuery(memory.RetrievalQueryInput{
 					Messages: msgs,
 				})
@@ -111,14 +116,15 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 				cancel()
 				if memErr != nil {
 					if errors.Is(memErr, context.DeadlineExceeded) {
-						logging.L().Warn("memory.retrieve.timeout", "session", turn.ID, "budget_ms", retrievalTimeout.Milliseconds())
+						logging.L().Warn("memory.retrieve.timeout", "session", turn.ID, "budget_ms", retrievalTimeout.Milliseconds(), "using_preferences", len(prefs) > 0)
 					} else {
 						logging.L().Error("memory.retrieve.failed", "session", turn.ID, "error", memErr)
 						ch <- event.Errorf(memErr.Error(), "memory")
 					}
-				} else if len(mems) > 0 {
-					logging.L().Info("memory.injected", "session", turn.ID, "count", len(mems))
-					system += memory.FormatForPrompt(mems)
+				}
+				if len(prefs) > 0 || len(mems) > 0 {
+					logging.L().Info("memory.injected", "session", turn.ID, "preferences", len(prefs), "relevant", len(mems))
+					system += memory.FormatPromptMemories(memory.PromptMemories{Preferences: prefs, Relevant: mems})
 					wire := make([]event.MemoryWire, len(mems))
 					for i, m := range mems {
 						wire[i] = event.MemoryWire{
