@@ -825,6 +825,35 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/memory/purge:
+    post:
+      tags: [Memory]
+      summary: Purge archived memories
+      operationId: purgeArchivedMemory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PurgeArchivedMemoryRequest'
+      responses:
+        '200':
+          description: Purge result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PurgeArchivedMemoryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          description: Memory subsystem disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/memory/compact:
     post:
       tags: [Memory]
@@ -1674,6 +1703,27 @@ components:
           $ref: '#/components/schemas/MemoryLifecycleSettings'
         embedding:
           $ref: '#/components/schemas/MemoryEmbeddingSettings'
+
+    PurgeArchivedMemoryRequest:
+      type: object
+      additionalProperties: false
+      required: [older_than_days]
+      properties:
+        older_than_days:
+          type: integer
+          minimum: 0
+
+    PurgeArchivedMemoryResponse:
+      type: object
+      additionalProperties: false
+      required: [status, memories_purged, memory_events_purged]
+      properties:
+        status:
+          type: string
+        memories_purged:
+          type: integer
+        memory_events_purged:
+          type: integer
 
     CompactMemoryPreviewResponse:
       type: object

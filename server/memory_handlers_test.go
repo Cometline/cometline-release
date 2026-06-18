@@ -88,6 +88,21 @@ func TestMemorySettingsGetPut(t *testing.T) {
 	if updated.Enabled {
 		t.Fatal("expected enabled=false")
 	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/memory/purge", bytes.NewBufferString(`{"older_than_days":0}`))
+	req.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST purge: %d %s", rec.Code, rec.Body.String())
+	}
+	var purged purgeMemoryResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &purged); err != nil {
+		t.Fatal(err)
+	}
+	if purged.Status != "ok" || purged.MemoriesPurged != 0 || purged.MemoryEventsPurged != 0 {
+		t.Fatalf("unexpected purge response: %+v", purged)
+	}
 }
 
 type noopRunner struct{}

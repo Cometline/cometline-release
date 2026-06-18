@@ -120,6 +120,7 @@ func New(deps Deps) (*gin.Engine, error) {
 	api.POST("/memories/search", app.handleSearchMemories)
 	api.GET("/memory/settings", app.handleGetMemorySettings)
 	api.PUT("/memory/settings", app.handlePutMemorySettings)
+	api.POST("/memory/purge", app.handlePurgeMemory)
 	api.POST("/memory/compact", app.handleCompactMemory)
 	api.GET("/memory/compact/preview", app.handleCompactPreview)
 

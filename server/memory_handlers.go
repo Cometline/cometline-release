@@ -44,6 +44,16 @@ type searchMemoryRequest struct {
 	Limit int    `json:"limit"`
 }
 
+type purgeMemoryRequest struct {
+	OlderThanDays int `json:"older_than_days"`
+}
+
+type purgeMemoryResponse struct {
+	Status             string `json:"status"`
+	MemoriesPurged     int    `json:"memories_purged"`
+	MemoryEventsPurged int    `json:"memory_events_purged"`
+}
+
 func scoredToResource(sm memory.ScoredMemory) memoryResource {
 	var last *int64
 	if sm.LastAccessedAt != nil {
@@ -181,6 +191,28 @@ func (a *App) handlePutMemorySettings(c *gin.Context) {
 		a.memory.UpdateSettings(a.config.MemorySettings())
 	}
 	c.JSON(http.StatusOK, a.config.EffectiveMemoryConfig())
+}
+
+func (a *App) handlePurgeMemory(c *gin.Context) {
+	if a.memory == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "memory disabled"})
+		return
+	}
+	var req purgeMemoryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	memories, events, err := a.memory.PurgeArchived(c.Request.Context(), req.OlderThanDays)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, purgeMemoryResponse{
+		Status:             "ok",
+		MemoriesPurged:     memories,
+		MemoryEventsPurged: events,
+	})
 }
 
 func (a *App) handleCompactMemory(c *gin.Context) {

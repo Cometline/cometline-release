@@ -339,6 +339,18 @@ type PostMessageRequest struct {
 	Text *string `json:"text,omitempty"`
 }
 
+// PurgeArchivedMemoryRequest defines model for PurgeArchivedMemoryRequest.
+type PurgeArchivedMemoryRequest struct {
+	OlderThanDays int `json:"older_than_days"`
+}
+
+// PurgeArchivedMemoryResponse defines model for PurgeArchivedMemoryResponse.
+type PurgeArchivedMemoryResponse struct {
+	MemoriesPurged     int    `json:"memories_purged"`
+	MemoryEventsPurged int    `json:"memory_events_purged"`
+	Status             string `json:"status"`
+}
+
 // ReasoningDeltaEvent defines model for ReasoningDeltaEvent.
 type ReasoningDeltaEvent struct {
 	Text string `json:"text"`
@@ -651,6 +663,9 @@ type SearchMemoriesJSONRequestBody = SearchMemoryRequest
 
 // PatchMemoryJSONRequestBody defines body for PatchMemory for application/json ContentType.
 type PatchMemoryJSONRequestBody = UpdateMemoryRequest
+
+// PurgeArchivedMemoryJSONRequestBody defines body for PurgeArchivedMemory for application/json ContentType.
+type PurgeArchivedMemoryJSONRequestBody = PurgeArchivedMemoryRequest
 
 // PutMemorySettingsJSONRequestBody defines body for PutMemorySettings for application/json ContentType.
 type PutMemorySettingsJSONRequestBody = MemorySettings
