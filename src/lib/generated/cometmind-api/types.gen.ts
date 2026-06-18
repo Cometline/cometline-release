@@ -425,6 +425,16 @@ export type MemorySettings = {
     embedding?: MemoryEmbeddingSettings;
 };
 
+export type PurgeArchivedMemoryRequest = {
+    older_than_days: number;
+};
+
+export type PurgeArchivedMemoryResponse = {
+    status: string;
+    memories_purged: number;
+    memory_events_purged: number;
+};
+
 export type CompactMemoryPreviewResponse = {
     to_forget: Array<MemoryResource>;
     to_merge: Array<Array<MemoryResource>>;
@@ -1393,6 +1403,39 @@ export type PutMemorySettingsResponses = {
 };
 
 export type PutMemorySettingsResponse = PutMemorySettingsResponses[keyof PutMemorySettingsResponses];
+
+export type PurgeArchivedMemoryData = {
+    body: PurgeArchivedMemoryRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/memory/purge';
+};
+
+export type PurgeArchivedMemoryErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorResponse;
+    /**
+     * Unexpected server error
+     */
+    500: ErrorResponse;
+    /**
+     * Memory subsystem disabled
+     */
+    503: SimpleErrorResponse;
+};
+
+export type PurgeArchivedMemoryError = PurgeArchivedMemoryErrors[keyof PurgeArchivedMemoryErrors];
+
+export type PurgeArchivedMemoryResponses = {
+    /**
+     * Purge result
+     */
+    200: PurgeArchivedMemoryResponse;
+};
+
+export type PurgeArchivedMemoryResponse2 = PurgeArchivedMemoryResponses[keyof PurgeArchivedMemoryResponses];
 
 export type CompactMemoryData = {
     body?: never;

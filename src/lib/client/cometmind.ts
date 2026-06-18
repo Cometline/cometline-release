@@ -463,6 +463,28 @@ export function putMemorySettings(settings: MemorySettings): Promise<MemorySetti
 	}).then(({ data }) => resolveMemorySettings(data));
 }
 
+export interface PurgeArchivedMemoryResponse {
+	status: string;
+	memories_purged: number;
+	memory_events_purged: number;
+}
+
+export async function purgeArchivedMemory(
+	olderThanDays: number
+): Promise<PurgeArchivedMemoryResponse> {
+	const res = await fetch(`${BASE_URL}/api/v1/memory/purge`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ older_than_days: olderThanDays })
+	});
+	if (!res.ok) {
+		const text = await res.text();
+		const parsed = parseErrorBody(text || res.statusText);
+		throw new CometMindApiError(res.status, parsed.code, parsed.message);
+	}
+	return res.json();
+}
+
 export function compactMemory(): Promise<{ status: string }> {
 	return compactMemoryApi({ throwOnError: true }).then(({ data }) => data);
 }

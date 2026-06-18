@@ -247,7 +247,7 @@
 		<div class="section-heading">
 			<h3>Storage & retention</h3>
 			<p>
-				Automatic cleanup runs when CometMind starts. Set a field to 0 to disable that rule.
+				Automatic cleanup runs when CometMind starts and after settings are saved. Set a field to 0 to disable that rule.
 			</p>
 		</div>
 
