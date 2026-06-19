@@ -214,13 +214,3 @@ declare global {
 }
 
 export {};
-
-declare namespace svelteHTML {
-	interface IntrinsicElements {
-		webview: import('svelte/elements').HTMLAttributes<HTMLElement> & {
-			src?: string;
-			sandbox?: string;
-			partition?: string;
-		};
-	}
-}
