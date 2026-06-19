@@ -34,6 +34,7 @@ __export(schema_exports, {
   normalizeProviders: () => normalizeProviders,
   normalizeSettings: () => normalizeSettings,
   parseAndNormalizeSettings: () => parseAndNormalizeSettings,
+  resolveActiveProviderId: () => resolveActiveProviderId,
   runtimeProviders: () => runtimeProviders,
   runtimeSlice: () => runtimeSlice,
   validateSettings: () => validateSettings
@@ -4319,7 +4320,7 @@ var DEFAULT_PROVIDERS = [
     id: "opencode-go",
     name: "OpenCode Go",
     method: "opencode-go",
-    enabled: true,
+    enabled: false,
     baseURL: "https://opencode.ai/zen/go/v1",
     apiKey: "",
     selectedModel: "",
@@ -4569,6 +4570,17 @@ function normalizeProvider(provider, fallback) {
     enabledModels
   };
 }
+function resolveActiveProviderId(providers, preferredId) {
+  const preferred = preferredId ? providers.find((provider) => provider.id === preferredId) : void 0;
+  if (preferred?.enabled && preferred.enabledModels.length > 0) {
+    return preferred.id;
+  }
+  const enabledWithModels = providers.find(
+    (provider) => provider.enabled && provider.enabledModels.length > 0
+  );
+  if (enabledWithModels) return enabledWithModels.id;
+  return providers[0]?.id ?? "";
+}
 function normalizeProviders(providers) {
   const saved = Array.isArray(providers) ? providers : [];
   const normalizedDefaults = DEFAULT_PROVIDERS.map((provider) => {
@@ -4613,10 +4625,9 @@ function migrateSingleProvider(saved) {
 }
 function defaultSettings() {
   const providers = DEFAULT_PROVIDERS.map(cloneProvider);
-  const active = providers.find((provider) => provider.enabled && provider.enabledModels.length > 0) ?? providers[0];
   return {
     providers,
-    activeProviderId: active.id,
+    activeProviderId: resolveActiveProviderId(providers),
     defaultModelId: "",
     defaultProviderId: "",
     appearance: defaultAppearance(),
@@ -4627,10 +4638,7 @@ function defaultSettings() {
 }
 function normalizeSettings(next, options = {}) {
   const providers = normalizeProviders(next.providers);
-  const firstEnabled = providers.find(
-    (provider) => provider.enabled && provider.enabledModels.length > 0
-  );
-  const activeProviderId = firstEnabled?.id ?? next.activeProviderId ?? providers[0]?.id ?? "";
+  const activeProviderId = resolveActiveProviderId(providers, next.activeProviderId);
   const cometmind = normalizeCometMindSettings(
     next.cometmind,
     options.fallbackWorkspacePath ?? ""
@@ -4812,6 +4820,7 @@ function parseAndNormalizeSettings(raw, options = {}) {
   normalizeProviders,
   normalizeSettings,
   parseAndNormalizeSettings,
+  resolveActiveProviderId,
   runtimeProviders,
   runtimeSlice,
   validateSettings

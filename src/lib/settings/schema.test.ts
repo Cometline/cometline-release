@@ -20,6 +20,7 @@ describe('settings schema', () => {
 			'openai-compatible'
 		]);
 		expect(settings.providers.find((p) => p.id === 'codex')?.apiKey).toBe('');
+		expect(settings.activeProviderId).toBe('codex');
 		expect(settings.app.iconVariant).toBe('default');
 		expect(settings.cometmind.systemPromptPath).toBe('');
 		expect(settings.cometmind.maxTokens).toBe(2048);

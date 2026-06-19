@@ -105,9 +105,7 @@
 
 	let activeSection = $state<SettingsSection>('models');
 	let draft = $state<ProviderSettings>(cloneSettings(settingsStore.settings));
-	let selectedProviderId = $state<string>(
-		settingsStore.settings.activeProviderId || settingsStore.settings.providers[0]?.id || ''
-	);
+	let selectedProviderId = $state<string>(settingsStore.settings.providers[0]?.id || '');
 	let status = $state('');
 	let codexAuthStatus = $state<CodexAuthStatus | undefined>();
 	let checkingCodexAuth = $state(false);
@@ -400,9 +398,7 @@
 		const activeProvider =
 			draft.providers.find(
 				(provider) => provider.enabled && provider.enabledModels.length > 0
-			) ??
-			draft.providers.find((provider) => provider.enabled) ??
-			draft.providers[0];
+			) ?? draft.providers[0];
 		const payload: ProviderSettings = providerPayloadFromDraft();
 		payload.activeProviderId = activeProvider?.id ?? '';
 		const iconVariantChanged =
@@ -417,7 +413,7 @@
 		activeSection = preservedSection;
 		selectedProviderId = draft.providers.some((provider) => provider.id === preservedProviderId)
 			? preservedProviderId
-			: saved.activeProviderId || draft.providers[0]?.id || '';
+			: draft.providers[0]?.id ?? '';
 		modelSearch = preservedModelSearch;
 		status = saveStatusMessage(preservedSection, restartCometMind, iconVariantChanged);
 		if (iconVariantChanged) {
@@ -531,7 +527,9 @@
 			...draft,
 			providers: nextProviders,
 			activeProviderId:
-				nextProviders.find((provider) => provider.enabled)?.id ?? nextProviders[0]?.id ?? ''
+				nextProviders.find(
+					(provider) => provider.enabled && provider.enabledModels.length > 0
+				)?.id ?? nextProviders[0]?.id ?? ''
 		};
 		selectedProviderId = nextProviders[0]?.id ?? '';
 	}
@@ -776,7 +774,6 @@
 									>
 										<span>
 											<strong>{provider.name}</strong>
-											<small>{METHOD_LABELS[provider.method]}</small>
 										</span>
 										<span class="provider-dot" aria-hidden="true"></span>
 									</button>

@@ -616,11 +616,11 @@ function writeProviderSettings(settings) {
 		: current.providers;
 	const requestedActive = nextProviders.find((p) => p.id === settings.activeProviderId);
 	const nextActive =
-		requestedActive?.id ??
-		nextProviders.find((p) => p.enabled && p.enabledModels.length > 0)?.id ??
-		nextProviders.find((p) => p.enabled)?.id ??
-		nextProviders[0]?.id ??
-		'';
+		requestedActive?.enabled && requestedActive.enabledModels.length > 0
+			? requestedActive.id
+			: (nextProviders.find((p) => p.enabled && p.enabledModels.length > 0)?.id ??
+				nextProviders[0]?.id ??
+				'');
 	const iconVariant = resolveNextIconVariant(settings, current);
 	const nextCometMind = {
 		...(settings.cometmind ?? current.cometmind),

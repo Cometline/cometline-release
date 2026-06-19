@@ -162,7 +162,7 @@ const DEFAULT_PROVIDERS: ProviderConfig[] = [
 		id: 'opencode-go',
 		name: 'OpenCode Go',
 		method: 'opencode-go',
-		enabled: true,
+		enabled: false,
 		baseURL: 'https://opencode.ai/zen/go/v1',
 		apiKey: '',
 		selectedModel: '',
@@ -471,6 +471,24 @@ export function normalizeProvider(
 	};
 }
 
+/** Runtime active provider: first enabled with models, else preferred id, else sidebar order. */
+export function resolveActiveProviderId(
+	providers: ProviderConfig[],
+	preferredId?: string
+): string {
+	const preferred = preferredId
+		? providers.find((provider) => provider.id === preferredId)
+		: undefined;
+	if (preferred?.enabled && preferred.enabledModels.length > 0) {
+		return preferred.id;
+	}
+	const enabledWithModels = providers.find(
+		(provider) => provider.enabled && provider.enabledModels.length > 0
+	);
+	if (enabledWithModels) return enabledWithModels.id;
+	return providers[0]?.id ?? '';
+}
+
 export function normalizeProviders(providers: Partial<ProviderConfig>[] | undefined): ProviderConfig[] {
 	const saved = Array.isArray(providers) ? providers : [];
 	const normalizedDefaults = DEFAULT_PROVIDERS.map((provider) => {
@@ -532,12 +550,9 @@ export function migrateSingleProvider(
 
 export function defaultSettings(): ProviderSettings {
 	const providers = DEFAULT_PROVIDERS.map(cloneProvider);
-	const active =
-		providers.find((provider) => provider.enabled && provider.enabledModels.length > 0) ??
-		providers[0];
 	return {
 		providers,
-		activeProviderId: active.id,
+		activeProviderId: resolveActiveProviderId(providers),
 		defaultModelId: '',
 		defaultProviderId: '',
 		appearance: defaultAppearance(),
@@ -557,10 +572,7 @@ export function normalizeSettings(
 	options: NormalizeSettingsOptions = {}
 ): ProviderSettings {
 	const providers = normalizeProviders(next.providers);
-	const firstEnabled = providers.find(
-		(provider) => provider.enabled && provider.enabledModels.length > 0
-	);
-	const activeProviderId = firstEnabled?.id ?? next.activeProviderId ?? providers[0]?.id ?? '';
+	const activeProviderId = resolveActiveProviderId(providers, next.activeProviderId);
 	const cometmind = normalizeCometMindSettings(
 		next.cometmind,
 		options.fallbackWorkspacePath ?? ''
