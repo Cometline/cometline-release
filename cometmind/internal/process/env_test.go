@@ -13,8 +13,11 @@ func TestAugmentedPathAddsUserToolDirs(t *testing.T) {
 	path := AugmentedPath("/usr/bin:/bin")
 	entries := filepath.SplitList(path)
 
-	if entries[0] != filepath.Join("/Users/example", ".opencode", "bin") {
-		t.Fatalf("first PATH entry = %q, want opencode bin", entries[0])
+	if entries[0] != filepath.Join("/Users/example", ".cometmind", "bin") {
+		t.Fatalf("first PATH entry = %q, want cometmind bin", entries[0])
+	}
+	if !containsEntry(entries, filepath.Join("/Users/example", ".opencode", "bin")) {
+		t.Fatalf("PATH %q missing ~/.opencode/bin", path)
 	}
 	if !containsEntry(entries, filepath.Join("/Users/example", ".local", "bin")) {
 		t.Fatalf("PATH %q missing ~/.local/bin", path)
@@ -46,18 +49,18 @@ func TestEnvReplacesPath(t *testing.T) {
 func TestResolveCommandUsesAugmentedPath(t *testing.T) {
 	tmp := t.TempDir()
 	home := filepath.Join(tmp, "home")
-	bin := filepath.Join(home, ".opencode", "bin")
+	bin := filepath.Join(home, ".cometmind", "bin")
 	if err := os.MkdirAll(bin, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(bin, "opencode")
+	want := filepath.Join(bin, "cometmind")
 	if err := os.WriteFile(want, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
 	t.Setenv("PATH", "/usr/bin:/bin")
 
-	got, err := ResolveCommand("opencode")
+	got, err := ResolveCommand("cometmind")
 	if err != nil {
 		t.Fatalf("ResolveCommand: %v", err)
 	}

@@ -48,6 +48,7 @@ func AugmentedPath(current string) string {
 	prefixes := []string{}
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		prefixes = append(prefixes,
+			filepath.Join(home, ".cometmind", "bin"),
 			filepath.Join(home, ".opencode", "bin"),
 			filepath.Join(home, ".local", "bin"),
 		)

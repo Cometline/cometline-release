@@ -259,6 +259,44 @@ function resolveCometMindBinary() {
 	return path.join(__dirname, '..', '..', 'cometmind', 'cometmind');
 }
 
+function cometMindCliBinDirs() {
+	const home = os.homedir();
+	const dirs = [path.join(home, '.cometmind', 'bin'), path.join(home, '.local', 'bin')];
+	if (process.platform === 'darwin') dirs.push('/opt/homebrew/bin', '/usr/local/bin');
+	return dirs;
+}
+
+function installCometMindCliShim() {
+	if (process.platform === 'win32') return;
+	const binary = resolveCometMindBinary();
+	if (!fs.existsSync(binary)) return;
+
+	for (const dir of cometMindCliBinDirs()) {
+		try {
+			fs.mkdirSync(dir, { recursive: true });
+			const shim = path.join(dir, 'cometmind');
+			try {
+				const stat = fs.lstatSync(shim);
+				if (!stat.isSymbolicLink()) continue;
+				if (fs.readlinkSync(shim) === binary) continue;
+				fs.unlinkSync(shim);
+			} catch (err) {
+				if (err.code !== 'ENOENT') throw err;
+			}
+			fs.symlinkSync(binary, shim);
+		} catch (err) {
+			console.warn(`Unable to install CometMind CLI shim in ${dir}:`, err);
+		}
+	}
+}
+
+function pathWithCometMindCliBins(envPath = '') {
+	const delimiter = path.delimiter;
+	const existing = String(envPath || '').split(delimiter).filter(Boolean);
+	const entries = [...cometMindCliBinDirs(), ...existing];
+	return [...new Set(entries)].join(delimiter);
+}
+
 function resolveSystemPromptPath(variant = 'default') {
 	if (process.env.COMETMIND_SYSTEM_PROMPT_PATH) {
 		return path.resolve(process.env.COMETMIND_SYSTEM_PROMPT_PATH);
@@ -725,6 +763,7 @@ function providerEnv() {
 		settings.providers[0];
 	const env = {
 		...process.env,
+		PATH: pathWithCometMindCliBins(process.env.PATH),
 		COMETMIND_PROVIDER: active.id,
 		COMETMIND_MODEL: active.enabledModels[0] || active.selectedModel || active.models[0] || '',
 		COMETMIND_MAX_TOKENS: String(settings.cometmind?.maxTokens ?? 2048),
@@ -1854,6 +1893,7 @@ app.whenReady().then(async () => {
 
 	// Ensure settings JSON exists with system prompt path before starting CometMind.
 	writeProviderSettings(readProviderSettings());
+	installCometMindCliShim();
 	const startupSettings = readProviderSettings();
 	applyOpenAtLoginSetting(startupSettings.app?.openAtLogin);
 	startCometMind();
