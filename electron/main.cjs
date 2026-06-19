@@ -4,6 +4,8 @@ const { pathToFileURL } = require('url');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
+const http = require('http');
+const crypto = require('crypto');
 const {
 	CODEX_FALLBACK_MODELS,
 	OPENCODE_GO_AVAILABLE_MODELS,
@@ -46,6 +48,9 @@ const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex';
 const CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
 const CODEX_REFRESH_URL = 'https://auth.openai.com/oauth/token';
 const CODEX_CLIENT_VERSION = '1.0.0';
+const CODEX_AUTH_CALLBACK_PORT = 1455;
+const CODEX_AUTH_CALLBACK_PATH = '/auth/callback';
+const CODEX_AUTH_TIMEOUT_MS = 5 * 60 * 1000;
 
 function rotateLogIfNeeded(logPath) {
 	try {
@@ -1416,22 +1421,75 @@ function codexAuthPath() {
 	return path.join(codexHome || path.join(os.homedir(), '.codex'), 'auth.json');
 }
 
-function jwtExpiresSoon(token) {
+function codexRedirectURI() {
+	return `http://localhost:${CODEX_AUTH_CALLBACK_PORT}${CODEX_AUTH_CALLBACK_PATH}`;
+}
+
+function base64URLEncode(buffer) {
+	return Buffer.from(buffer)
+		.toString('base64')
+		.replace(/\+/g, '-')
+		.replace(/\//g, '_')
+		.replace(/=+$/g, '');
+}
+
+function codexCodeVerifier() {
+	return base64URLEncode(crypto.randomBytes(48));
+}
+
+function codexCodeChallenge(verifier) {
+	return base64URLEncode(crypto.createHash('sha256').update(verifier).digest());
+}
+
+function parseJWTPayload(token) {
 	const parts = String(token || '').split('.');
-	if (parts.length < 2) return false;
+	if (parts.length < 2) return {};
 	try {
-		const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
-		const exp = Number(payload.exp || 0);
-		if (!exp) return false;
-		return exp * 1000 <= Date.now() + 30_000;
+		return JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
 	} catch {
-		return false;
+		return {};
 	}
+}
+
+function codexAccountIDFromTokens(tokens) {
+	if (tokens?.account_id) return tokens.account_id;
+	const accessPayload = parseJWTPayload(tokens?.access_token);
+	if (typeof accessPayload.account_id === 'string') return accessPayload.account_id;
+	const idPayload = parseJWTPayload(tokens?.id_token);
+	if (typeof idPayload.account_id === 'string') return idPayload.account_id;
+	return '';
+}
+
+function writeCodexAuth(tokens) {
+	const authPath = codexAuthPath();
+	const authDir = path.dirname(authPath);
+	fs.mkdirSync(authDir, { recursive: true, mode: 0o700 });
+	const auth = {
+		auth_mode: 'chatgpt',
+		tokens: {
+			access_token: tokens.access_token,
+			refresh_token: tokens.refresh_token || '',
+			id_token: tokens.id_token || '',
+			account_id: codexAccountIDFromTokens(tokens),
+			last_refresh: new Date().toISOString()
+		}
+	};
+	const tmpPath = `${authPath}.tmp`;
+	fs.writeFileSync(tmpPath, `${JSON.stringify(auth, null, 2)}\n`, { mode: 0o600 });
+	fs.renameSync(tmpPath, authPath);
+	return auth;
+}
+
+function jwtExpiresSoon(token) {
+	const payload = parseJWTPayload(token);
+	const exp = Number(payload.exp || 0);
+	if (!exp) return false;
+	return exp * 1000 <= Date.now() + 30_000;
 }
 
 async function refreshCodexAuth(auth, authPath) {
 	const refreshToken = String(auth?.tokens?.refresh_token || '').trim();
-	if (!refreshToken) throw new Error('Codex session expired. Run `codex login` again.');
+	if (!refreshToken) throw new Error('Codex session expired. Sign in with ChatGPT again.');
 	const res = await fetch(CODEX_REFRESH_URL, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -1445,12 +1503,13 @@ async function refreshCodexAuth(auth, authPath) {
 	const payload = await res.json().catch(() => ({}));
 	if (!res.ok || payload.error) {
 		const detail = payload.error_description || payload.error || res.statusText;
-		throw new Error(`Codex refresh failed: ${detail}. Run \`codex login\` again.`);
+		throw new Error(`Codex refresh failed: ${detail}. Sign in with ChatGPT again.`);
 	}
 	if (!payload.access_token) throw new Error('Codex refresh did not return an access token');
 	auth.tokens.access_token = payload.access_token;
 	if (payload.refresh_token) auth.tokens.refresh_token = payload.refresh_token;
 	if (payload.id_token) auth.tokens.id_token = payload.id_token;
+	auth.tokens.account_id = codexAccountIDFromTokens(auth.tokens);
 	auth.tokens.last_refresh = new Date().toISOString();
 	const tmpPath = `${authPath}.tmp`;
 	fs.writeFileSync(tmpPath, `${JSON.stringify(auth, null, 2)}\n`, { mode: 0o600 });
@@ -1461,7 +1520,7 @@ async function refreshCodexAuth(auth, authPath) {
 async function borrowCodexAuth() {
 	const authPath = codexAuthPath();
 	if (!fs.existsSync(authPath)) {
-		throw new Error(`Codex auth file not found at ${authPath}. Run \`codex login\` first.`);
+		throw new Error(`Codex auth file not found at ${authPath}. Sign in with ChatGPT first.`);
 	}
 	let auth;
 	try {
@@ -1470,10 +1529,10 @@ async function borrowCodexAuth() {
 		throw new Error(`Failed to read Codex auth file: ${err instanceof Error ? err.message : err}`);
 	}
 	if (auth?.auth_mode !== 'chatgpt') {
-		throw new Error('Codex is not logged in with ChatGPT. Run `codex login` first.');
+		throw new Error('Codex is not signed in with ChatGPT browser auth. Sign in with ChatGPT first.');
 	}
 	if (!auth?.tokens?.access_token) {
-		throw new Error('Codex auth file has no access token. Run `codex login` first.');
+		throw new Error('Codex auth file has no access token. Sign in with ChatGPT first.');
 	}
 	if (jwtExpiresSoon(auth.tokens.access_token)) {
 		auth = await refreshCodexAuth(auth, authPath);
@@ -1482,6 +1541,155 @@ async function borrowCodexAuth() {
 		accessToken: auth.tokens.access_token,
 		accountID: auth.tokens.account_id || ''
 	};
+}
+
+function getCodexAuthStatus() {
+	const authPath = codexAuthPath();
+	if (!fs.existsSync(authPath)) {
+		return { authenticated: false, authPath, error: 'Not signed in' };
+	}
+	try {
+		const auth = JSON.parse(fs.readFileSync(authPath, 'utf8'));
+		if (auth?.auth_mode !== 'chatgpt') {
+			return {
+				authenticated: false,
+				authPath,
+				error: 'Codex is not signed in with ChatGPT browser auth'
+			};
+		}
+		if (!auth?.tokens?.access_token) {
+			return { authenticated: false, authPath, error: 'Codex auth file has no access token' };
+		}
+		return {
+			authenticated: true,
+			authPath,
+			accountID: auth.tokens.account_id || undefined
+		};
+	} catch (err) {
+		return {
+			authenticated: false,
+			authPath,
+			error: err instanceof Error ? err.message : String(err)
+		};
+	}
+}
+
+async function exchangeCodexCode(code, codeVerifier) {
+	const res = await fetch(CODEX_REFRESH_URL, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+		body: JSON.stringify({
+			client_id: CODEX_CLIENT_ID,
+			grant_type: 'authorization_code',
+			code,
+			redirect_uri: codexRedirectURI(),
+			code_verifier: codeVerifier
+		}),
+		signal: AbortSignal.timeout(FETCH_MODELS_TIMEOUT_MS)
+	});
+	const payload = await res.json().catch(() => ({}));
+	if (!res.ok || payload.error) {
+		const detail = payload.error_description || payload.error || res.statusText;
+		throw new Error(`ChatGPT sign-in failed: ${detail}`);
+	}
+	if (!payload.access_token) throw new Error('ChatGPT sign-in did not return an access token');
+	return payload;
+}
+
+function codexAuthorizeURL(state, codeChallenge) {
+	const params = new URLSearchParams({
+		response_type: 'code',
+		client_id: CODEX_CLIENT_ID,
+		redirect_uri: codexRedirectURI(),
+		scope: 'openid profile email offline_access',
+		code_challenge: codeChallenge,
+		code_challenge_method: 'S256',
+		id_token_add_organizations: 'true',
+		codex_cli_simplified_flow: 'true',
+		state,
+		originator: 'cometline'
+	});
+	return `https://auth.openai.com/oauth/authorize?${params.toString()}`;
+}
+
+async function startCodexLogin() {
+	const state = base64URLEncode(crypto.randomBytes(32));
+	const codeVerifier = codexCodeVerifier();
+	const codeChallenge = codexCodeChallenge(codeVerifier);
+	let server;
+
+	try {
+		const code = await new Promise((resolve, reject) => {
+			const timeout = setTimeout(() => {
+				reject(new Error('Timed out waiting for ChatGPT sign-in to complete.'));
+			}, CODEX_AUTH_TIMEOUT_MS);
+
+			server = http.createServer((req, res) => {
+				const requestURL = new URL(req.url || '/', codexRedirectURI());
+				if (requestURL.pathname !== CODEX_AUTH_CALLBACK_PATH) {
+					res.writeHead(404, { 'Content-Type': 'text/plain' });
+					res.end('Not found');
+					return;
+				}
+
+				const error = requestURL.searchParams.get('error');
+				const returnedState = requestURL.searchParams.get('state');
+				const returnedCode = requestURL.searchParams.get('code');
+				if (returnedState !== state) {
+					res.writeHead(400, { 'Content-Type': 'text/html' });
+					res.end('<h1>ChatGPT sign-in failed</h1><p>Invalid OAuth state.</p>');
+					clearTimeout(timeout);
+					reject(new Error('ChatGPT sign-in failed: invalid OAuth state.'));
+					return;
+				}
+				if (error) {
+					res.writeHead(400, { 'Content-Type': 'text/html' });
+					res.end(`<h1>ChatGPT sign-in failed</h1><p>${error}</p>`);
+					clearTimeout(timeout);
+					reject(new Error(`ChatGPT sign-in failed: ${error}`));
+					return;
+				}
+				if (!returnedCode) {
+					res.writeHead(400, { 'Content-Type': 'text/html' });
+					res.end('<h1>ChatGPT sign-in failed</h1><p>No authorization code returned.</p>');
+					clearTimeout(timeout);
+					reject(new Error('ChatGPT sign-in failed: no authorization code returned.'));
+					return;
+				}
+
+				res.writeHead(200, { 'Content-Type': 'text/html' });
+				res.end('<h1>Signed in with ChatGPT</h1><p>You can return to Cometline.</p>');
+				clearTimeout(timeout);
+				resolve(returnedCode);
+			});
+
+			server.once('error', (err) => {
+				clearTimeout(timeout);
+				reject(err);
+			});
+			server.listen(CODEX_AUTH_CALLBACK_PORT, async () => {
+				try {
+					await shell.openExternal(codexAuthorizeURL(state, codeChallenge));
+				} catch (err) {
+					clearTimeout(timeout);
+					reject(
+						new Error(
+							`Failed to open ChatGPT sign-in in your browser: ${err instanceof Error ? err.message : err}`
+						)
+					);
+				}
+			});
+		});
+
+		const tokens = await exchangeCodexCode(code, codeVerifier);
+		writeCodexAuth(tokens);
+		return {
+			started: true,
+			message: 'Signed in with ChatGPT. You can fetch Codex models now.'
+		};
+	} finally {
+		if (server) server.close();
+	}
 }
 
 function normalizeCodexModelsURL(rawBaseURL) {
@@ -1519,10 +1727,34 @@ async function fetchCodexModels(baseURL) {
 	return Array.from(new Set(models.length > 0 ? models : CODEX_FALLBACK_MODELS)).sort();
 }
 
+async function fetchOpenCodeGoModels(baseURL) {
+	const url = normalizeModelsBaseURL(baseURL || 'https://opencode.ai/zen/go/v1');
+	const res = await fetchModelsFromURL(url, {
+		Accept: 'application/json'
+	});
+	if (!res.ok) {
+		const body = await res.text();
+		throw new Error(`${res.status}: ${body || res.statusText}`);
+	}
+	const payload = await res.json();
+	const rawModels = Array.isArray(payload?.data)
+		? payload.data
+		: Array.isArray(payload)
+			? payload
+			: [];
+	const models = rawModels
+		.map((item) => (typeof item === 'string' ? item : item?.id))
+		.filter((id) => typeof id === 'string' && id.trim())
+		.map((id) => id.trim());
+	return Array.from(
+		new Set(models.length > 0 ? models : OPENCODE_GO_AVAILABLE_MODELS)
+	).sort();
+}
+
 async function fetchProviderModels(config) {
 	const method = config.method;
 	if (method === 'opencode-go') {
-		return [...OPENCODE_GO_AVAILABLE_MODELS];
+		return fetchOpenCodeGoModels(config.baseURL);
 	}
 	if (method === 'codex') {
 		return fetchCodexModels(config.baseURL);
@@ -1677,6 +1909,10 @@ ipcMain.handle('cometline:read-workspace-file', (_event, workspacePath, relative
 );
 
 ipcMain.handle('cometline:get-provider-settings', () => readProviderSettings());
+
+ipcMain.handle('cometline:get-codex-auth-status', () => getCodexAuthStatus());
+
+ipcMain.handle('cometline:start-codex-login', () => startCodexLogin());
 
 ipcMain.handle('cometline:fetch-provider-models', async (_event, config) => {
 	return fetchProviderModels(config);

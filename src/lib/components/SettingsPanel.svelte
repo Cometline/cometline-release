@@ -5,6 +5,7 @@
 		Download,
 		FolderOpen,
 		Keyboard,
+		LogIn,
 		LoaderCircle,
 		Palette,
 		Plus,
@@ -40,6 +41,12 @@
 	import { onMount } from 'svelte';
 
 	type SettingsSection = 'models' | 'memory' | 'agent' | 'appearance' | 'shortcuts' | 'app';
+	type CodexAuthStatus = {
+		authenticated: boolean;
+		authPath: string;
+		accountID?: string;
+		error?: string;
+	};
 
 	const METHOD_LABELS: Record<ProviderMethod, string> = {
 		openai: 'OpenAI',
@@ -58,22 +65,6 @@
 		'openai-compatible',
 
 	]);
-	const OPENCODE_GO_AVAILABLE_MODELS = [
-		'deepseek-v4-flash',
-		'deepseek-v4-pro',
-		'glm-5',
-		'glm-5.1',
-		'kimi-k2.6',
-		'kimi-k2.7-code',
-		'mimo-v2.5',
-		'mimo-v2.5-pro',
-		'minimax-m2.7',
-		'minimax-m3',
-		'qwen3.6-plus',
-		'qwen3.7-max',
-		'qwen3.7-plus'
-	];
-	const CODEX_FALLBACK_MODELS = ['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano'];
 
 	function cloneProvider(provider: ProviderConfig): ProviderConfig {
 		return {
@@ -118,6 +109,9 @@
 		settingsStore.settings.activeProviderId || settingsStore.settings.providers[0]?.id || ''
 	);
 	let status = $state('');
+	let codexAuthStatus = $state<CodexAuthStatus | undefined>();
+	let checkingCodexAuth = $state(false);
+	let startingCodexLogin = $state(false);
 	let modelSearch = $state('');
 	let appVersion = $state('');
 	let workspacePruning = $state(false);
@@ -197,6 +191,7 @@
 			updateState = next;
 			if (next.status !== 'checking') checkingUpdates = false;
 		});
+		void refreshCodexAuthStatus();
 		return () => unsubscribe?.();
 	});
 
@@ -435,7 +430,8 @@
 			updateSelected({
 				method,
 				baseURL: 'https://opencode.ai/zen/go/v1',
-				models: [...OPENCODE_GO_AVAILABLE_MODELS]
+				models: [],
+				enabledModels: []
 			});
 			return;
 		}
@@ -444,7 +440,8 @@
 				method,
 				baseURL: 'https://chatgpt.com/backend-api/codex',
 				apiKey: '',
-				models: [...CODEX_FALLBACK_MODELS]
+				models: [],
+				enabledModels: []
 			});
 			return;
 		}
@@ -478,6 +475,31 @@
 			selectedModel: updated.selectedModel
 		});
 		status = `Fetched ${updated.models.length} model${updated.models.length === 1 ? '' : 's'} for ${selectedProvider.name}.`;
+	}
+
+	async function refreshCodexAuthStatus() {
+		if (!window.electronAPI?.getCodexAuthStatus || checkingCodexAuth) return;
+		checkingCodexAuth = true;
+		try {
+			codexAuthStatus = await window.electronAPI.getCodexAuthStatus();
+		} finally {
+			checkingCodexAuth = false;
+		}
+	}
+
+	async function startCodexLogin() {
+		if (!window.electronAPI?.startCodexLogin || startingCodexLogin) return;
+		startingCodexLogin = true;
+		status = '';
+		try {
+			const result = await window.electronAPI.startCodexLogin();
+			status = result.message;
+			setTimeout(() => void refreshCodexAuthStatus(), 1500);
+		} catch (error) {
+			status = error instanceof Error ? error.message : 'Failed to start Codex login.';
+		} finally {
+			startingCodexLogin = false;
+		}
 	}
 
 	function addProvider() {
@@ -603,17 +625,17 @@
 		draft = { ...draft, app: { ...draft.app, iconVariant } };
 	}
 
-	function methodNeedsFetch(method: ProviderMethod) {
-		return method !== 'opencode-go';
-	}
-
 	function methodNeedsApiKey(method: ProviderMethod) {
 		return method !== 'codex';
 	}
 
 	function canFetchModels(provider: ProviderConfig) {
 		if (settingsStore.isFetchingModels || !provider.baseURL.trim()) return false;
-		return provider.method === 'codex' || provider.apiKey.trim().length > 0;
+		return (
+			provider.method === 'codex' ||
+			provider.method === 'opencode-go' ||
+			provider.apiKey.trim().length > 0
+		);
 	}
 </script>
 
@@ -856,10 +878,41 @@
 										<div class="field-note">
 											<span>Authentication</span>
 											<p>
-												Uses your Codex CLI ChatGPT session at <code
-													>~/.codex/auth.json</code
-												>. Run <code>codex login</code> first.
+												Uses your ChatGPT Plus/Pro browser sign-in and stores a local
+												Codex-compatible session at <code>~/.codex/auth.json</code>. No API
+												key or Codex CLI install is required.
 											</p>
+											{#if codexAuthStatus}
+												<p class:ok={codexAuthStatus.authenticated}>
+													{codexAuthStatus.authenticated
+														? 'Signed in with ChatGPT browser session.'
+														: (codexAuthStatus.error ?? 'Not signed in.')}
+												</p>
+											{/if}
+											<div class="inline-actions">
+												<button
+													class="secondary"
+													type="button"
+													onclick={startCodexLogin}
+													disabled={startingCodexLogin || !window.electronAPI?.startCodexLogin}
+												>
+													{#if startingCodexLogin}<span class="spin"
+															><LoaderCircle size={14} /></span
+														>{:else}<LogIn size={14} />{/if}
+													Sign in with ChatGPT
+												</button>
+												<button
+													class="secondary"
+													type="button"
+													onclick={refreshCodexAuthStatus}
+													disabled={checkingCodexAuth || !window.electronAPI?.getCodexAuthStatus}
+												>
+													{#if checkingCodexAuth}<span class="spin"
+															><LoaderCircle size={14} /></span
+														>{:else}<RefreshCw size={14} />{/if}
+													Check session
+												</button>
+											</div>
 										</div>
 									{/if}
 								</div>
@@ -870,32 +923,34 @@
 											<h3>Models</h3>
 											{#if selectedProvider.method === 'codex'}
 												<p>
-													Use Fetch models to refresh models from your Codex CLI
-													ChatGPT session.
+													Use Fetch models to refresh models from your ChatGPT browser
+													session.
 												</p>
-											{:else if methodNeedsFetch(selectedProvider.method)}
+											{:else if selectedProvider.method === 'opencode-go'}
+												<p>
+													Use Fetch models to refresh the latest list from <code
+														>/models</code
+													> at OpenCode Go.
+												</p>
+											{:else}
 												<p>
 													Use Fetch models to refresh the latest list from <code
 														>/models</code
 													>.
 												</p>
-											{:else}
-												<p>OpenCode Go models are available by default.</p>
 											{/if}
 										</div>
-										{#if methodNeedsFetch(selectedProvider.method)}
-											<button
-												class="secondary"
-												onclick={fetchModels}
-												disabled={!canFetchModels(selectedProvider)}
-											>
-												{#if settingsStore.isFetchingModels}<span
-														class="spin"
-														><LoaderCircle size={14} /></span
-													>{/if}
-												Fetch models
-											</button>
-										{/if}
+										<button
+											class="secondary"
+											onclick={fetchModels}
+											disabled={!canFetchModels(selectedProvider)}
+										>
+											{#if settingsStore.isFetchingModels}<span
+													class="spin"
+													><LoaderCircle size={14} /></span
+												>{/if}
+											Fetch models
+										</button>
 									</div>
 
 									<input
@@ -1435,6 +1490,7 @@
 
 	.field-note {
 		display: grid;
+		grid-column: 1 / -1;
 		gap: 6px;
 		border: 1px solid var(--border-soft);
 		border-radius: 11px;
@@ -1449,8 +1505,25 @@
 	}
 
 	.field-note p {
+		max-width: 640px;
 		font-weight: 500;
 		line-height: 1.45;
+	}
+
+	.field-note p.ok {
+		color: #24745d;
+		font-weight: 650;
+	}
+
+	.inline-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		padding-top: 2px;
+	}
+
+	.inline-actions .secondary {
+		width: fit-content;
 	}
 
 	input,

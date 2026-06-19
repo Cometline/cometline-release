@@ -165,6 +165,13 @@ declare global {
 			restartCometMind?: () => void;
 			openExternal?: (url: string) => Promise<boolean>;
 			getProviderSettings?: () => Promise<ProviderSettings>;
+			getCodexAuthStatus?: () => Promise<{
+				authenticated: boolean;
+				authPath: string;
+				accountID?: string;
+				error?: string;
+			}>;
+			startCodexLogin?: () => Promise<{ started: boolean; message: string }>;
 			getDiscordGatewayStatus?: () => Promise<{ running: boolean; enabled: boolean }>;
 			setDiscordGatewayEnabled?: (
 				enabled: boolean
