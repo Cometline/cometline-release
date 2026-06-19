@@ -36,6 +36,7 @@
 	import { ICON_VARIANT_OPTIONS, projectAvatarSrc } from '$lib/project-icon';
 	import type { IconVariant } from '$lib/types';
 	import type { MemorySettings } from '$lib/client/cometmind';
+	import { pruneWorkspaces } from '$lib/client/cometmind';
 	import { onMount } from 'svelte';
 
 	type SettingsSection = 'models' | 'memory' | 'agent' | 'appearance' | 'shortcuts' | 'app';
@@ -114,6 +115,8 @@
 	let status = $state('');
 	let modelSearch = $state('');
 	let appVersion = $state('');
+	let workspacePruning = $state(false);
+	let workspacePruneMessage = $state('');
 	let updateState = $state<UpdateState>({ status: 'idle' });
 	let checkingUpdates = $state(false);
 	let installingUpdate = $state(false);
@@ -227,6 +230,38 @@
 		const selected = await api.selectWorkspacePath();
 		if (!selected) return;
 		shellStore.setWorkspacePath(selected);
+	}
+
+	async function cleanupWorkspaces() {
+		if (workspacePruning) return;
+		workspacePruning = true;
+		workspacePruneMessage = '';
+		try {
+			const [{ pruned }, storeResult] = await Promise.all([
+				pruneWorkspaces(),
+				window.electronAPI?.pruneWorkspaceStore?.() ?? { removedRecent: 0, clearedCurrent: false }
+			]);
+			const parts: string[] = [];
+			if (pruned > 0) {
+				parts.push(
+					`Removed ${pruned} stale workspace registration${pruned === 1 ? '' : 's'} from CometMind`
+				);
+			}
+			if (storeResult.removedRecent > 0) {
+				parts.push(
+					`Cleared ${storeResult.removedRecent} recent path${storeResult.removedRecent === 1 ? '' : 's'}`
+				);
+			}
+			if (storeResult.clearedCurrent) {
+				parts.push('Cleared invalid current workspace path');
+			}
+			workspacePruneMessage = parts.length > 0 ? parts.join('. ') + '.' : 'Nothing to clean up.';
+		} catch (error) {
+			workspacePruneMessage =
+				error instanceof Error ? error.message : 'Failed to clean up workspaces.';
+		} finally {
+			workspacePruning = false;
+		}
 	}
 
 	function replayIntro() {
@@ -949,6 +984,25 @@
 								Change
 							</button>
 						</div>
+						<div class="about-row workspace-row">
+							<div class="workspace-info">
+								<span class="about-label">Workspace cleanup</span>
+								<span class="about-hint">
+									Remove deleted workspace folders from /change and CometMind registrations.
+								</span>
+								{#if workspacePruneMessage}
+									<span class="workspace-prune-message">{workspacePruneMessage}</span>
+								{/if}
+							</div>
+							<button class="secondary" onclick={cleanupWorkspaces} disabled={workspacePruning}>
+								{#if workspacePruning}
+									<span class="spin small"><LoaderCircle size={14} /></span>
+								{:else}
+									<Trash2 size={14} />
+								{/if}
+								Clean up
+							</button>
+						</div>
 						<div class="about-row update-row">
 							<div class="update-info">
 								<span class="about-label">Updates</span>
@@ -1603,6 +1657,20 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+		max-width: 420px;
+	}
+
+	.about-hint {
+		font-size: 12px;
+		line-height: 1.45;
+		color: var(--text-soft);
+		max-width: 420px;
+	}
+
+	.workspace-prune-message {
+		font-size: 12px;
+		line-height: 1.45;
+		color: var(--text-muted);
 		max-width: 420px;
 	}
 

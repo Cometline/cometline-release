@@ -18,6 +18,7 @@ import {
 	listSessions as listSessionsApi,
 	listSkills as listSkillsApi,
 	listWorkspaces as listWorkspacesApi,
+	pruneWorkspaces as pruneWorkspacesApi,
 	listWorkspaceFiles as listWorkspaceFilesApi,
 	readWorkspaceFileContent as readWorkspaceFileContentApi,
 	writeWorkspaceFileContent as writeWorkspaceFileContentApi,
@@ -162,6 +163,10 @@ export function ensureWorkspace(workspacePath: string): Promise<Workspace> {
 
 export function listWorkspaces(): Promise<Workspace[]> {
 	return listWorkspacesApi({ throwOnError: true }).then(({ data }) => data.workspaces);
+}
+
+export function pruneWorkspaces(): Promise<{ pruned: number }> {
+	return pruneWorkspacesApi({ throwOnError: true }).then(({ data }) => data);
 }
 
 export interface WorkspaceFiles {

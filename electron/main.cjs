@@ -696,14 +696,13 @@ function pruneWorkspaceStore() {
 		workspacePath = '';
 	}
 	const recentPaths = store.recentPaths.filter((item) => workspacePathExists(item));
-	const changed =
-		workspacePath !== store.workspacePath ||
-		recentPaths.length !== store.recentPaths.length ||
-		recentPaths.some((item, index) => path.resolve(item) !== path.resolve(store.recentPaths[index] || ''));
+	const removedRecent = store.recentPaths.length - recentPaths.length;
+	const clearedCurrent = Boolean(store.workspacePath && !workspacePath);
+	const changed = clearedCurrent || removedRecent > 0;
 	if (changed) {
 		writeWorkspaceStore({ workspacePath, recentPaths });
 	}
-	return { workspacePath, recentPaths };
+	return { removedRecent, clearedCurrent };
 }
 
 function readWorkspaceStore() {
@@ -722,8 +721,9 @@ function readWorkspaceStore() {
 }
 
 function readStoredWorkspacePath() {
-	const { workspacePath } = pruneWorkspaceStore();
-	if (workspacePath) return path.resolve(workspacePath);
+	pruneWorkspaceStore();
+	const { workspacePath } = readWorkspaceStore();
+	if (workspacePath && workspacePathExists(workspacePath)) return path.resolve(workspacePath);
 	return '';
 }
 
@@ -743,7 +743,8 @@ function writeStoredWorkspacePath(workspacePath) {
 }
 
 function listRecentWorkspacePaths() {
-	const store = pruneWorkspaceStore();
+	pruneWorkspaceStore();
+	const store = readWorkspaceStore();
 	const seen = new Set();
 	const out = [];
 	const add = (candidate) => {
@@ -1552,6 +1553,8 @@ ipcMain.handle('cometline:list-recent-workspaces', () => listRecentWorkspacePath
 ipcMain.handle('cometline:filter-existing-workspace-paths', (_event, paths) =>
 	filterExistingWorkspacePaths(Array.isArray(paths) ? paths : [])
 );
+
+ipcMain.handle('cometline:prune-workspace-store', () => pruneWorkspaceStore());
 
 ipcMain.handle('cometline:read-workspace-file', (_event, workspacePath, relativePath) =>
 	readWorkspaceFileForPreview(workspacePath, relativePath)

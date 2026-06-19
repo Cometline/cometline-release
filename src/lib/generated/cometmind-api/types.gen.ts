@@ -49,6 +49,13 @@ export type WorkspaceListResponse = {
     workspaces: Array<Workspace>;
 };
 
+export type PruneWorkspacesResponse = {
+    /**
+     * Number of workspace registrations removed from the database.
+     */
+    pruned: number;
+};
+
 export type WorkspaceFileList = {
     /**
      * Workspace-relative file paths.
@@ -563,6 +570,31 @@ export type CreateWorkspaceResponses = {
 };
 
 export type CreateWorkspaceResponse = CreateWorkspaceResponses[keyof CreateWorkspaceResponses];
+
+export type PruneWorkspacesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/workspaces/prune';
+};
+
+export type PruneWorkspacesErrors = {
+    /**
+     * Unexpected server error
+     */
+    500: ErrorResponse;
+};
+
+export type PruneWorkspacesError = PruneWorkspacesErrors[keyof PruneWorkspacesErrors];
+
+export type PruneWorkspacesResponses = {
+    /**
+     * Prune completed
+     */
+    200: PruneWorkspacesResponse;
+};
+
+export type PruneWorkspacesResponse2 = PruneWorkspacesResponses[keyof PruneWorkspacesResponses];
 
 export type ListWorkspaceFilesData = {
     body?: never;
