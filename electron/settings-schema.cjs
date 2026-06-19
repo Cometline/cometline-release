@@ -4394,6 +4394,7 @@ function defaultCometMindSettings(workspacePath = "") {
       mirrorToCometMind: false
     },
     memory: {
+      extractionProviderId: "",
       extractionModel: "",
       embedding: {
         providerId: "",
@@ -4448,6 +4449,9 @@ function normalizeCometMindSettings(input, fallbackWorkspacePath = "") {
       mirrorToCometMind: typeof skills.mirrorToCometMind === "boolean" ? skills.mirrorToCometMind : defaults.skills.mirrorToCometMind
     },
     memory: {
+      extractionProviderId: String(
+        memory.extractionProviderId ?? defaults.memory.extractionProviderId
+      ).trim(),
       extractionModel: String(memory.extractionModel ?? defaults.memory.extractionModel).trim(),
       embedding: {
         providerId: String(embedding.providerId ?? defaults.memory.embedding.providerId).trim(),
@@ -4501,6 +4505,7 @@ function cloneCometMindSettings(settings) {
       roots: [...settings.skills.roots]
     },
     memory: {
+      extractionProviderId: settings.memory.extractionProviderId,
       extractionModel: settings.memory.extractionModel,
       embedding: { ...settings.memory.embedding }
     },
@@ -4692,6 +4697,7 @@ function runtimeSlice(settings) {
     acp: { ...settings.cometmind.acp, args: [...settings.cometmind.acp.args] },
     skills: { ...settings.cometmind.skills, roots: [...settings.cometmind.skills.roots] },
     memory: {
+      extractionProviderId: settings.cometmind.memory.extractionProviderId,
       extractionModel: settings.cometmind.memory.extractionModel,
       embedding: { ...settings.cometmind.memory.embedding }
     },
@@ -4750,6 +4756,7 @@ var providerSettingsSchema = external_exports.object({
       mirrorToCometMind: external_exports.boolean()
     }),
     memory: external_exports.object({
+      extractionProviderId: external_exports.string(),
       extractionModel: external_exports.string(),
       embedding: external_exports.object({
         providerId: external_exports.string(),

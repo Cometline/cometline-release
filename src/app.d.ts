@@ -109,6 +109,7 @@ declare global {
 	}
 
 	interface CometMindMemorySettings {
+		extractionProviderId: string;
 		extractionModel: string;
 		embedding: {
 			providerId: string;

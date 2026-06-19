@@ -170,10 +170,31 @@
 		cometmind = { ...cometmind, titleModelId: modelId };
 	}
 
-	// ── Memory extraction model (model id only, session provider) ───────
-	const allModels = $derived(
-		Array.from(new Set(runtimeProviders.flatMap((provider) => modelsForProvider(provider))))
+	// ── Memory extraction (provider + model, falls back to session) ─────
+	const extractionProvider = $derived(
+		runtimeProviders.find((provider) => provider.id === cometmind.memory.extractionProviderId) ??
+			providers.find((provider) => provider.id === cometmind.memory.extractionProviderId)
 	);
+
+	const extractionModels = $derived(modelsForProvider(extractionProvider));
+
+	function setExtractionProvider(providerId: string) {
+		if (!providerId) {
+			cometmind = {
+				...cometmind,
+				memory: { ...cometmind.memory, extractionProviderId: '', extractionModel: '' }
+			};
+			return;
+		}
+		const provider = providers.find((item) => item.id === providerId);
+		const modelId = provider
+			? (provider.enabledModels[0] ?? provider.selectedModel ?? provider.models[0] ?? '')
+			: '';
+		cometmind = {
+			...cometmind,
+			memory: { ...cometmind.memory, extractionProviderId: providerId, extractionModel: modelId }
+		};
+	}
 
 	function setExtractionModel(modelId: string) {
 		cometmind = {
@@ -291,25 +312,37 @@
 			<h3>Memory extraction</h3>
 			<p>
 				After each turn, CometMind extracts durable memories in the background. Pin a cheaper model
-				for this step, or leave as default to reuse the session's own model. Runs on the session's
-				provider.
+				from any provider for this step, or leave as default to reuse the session's own model.
 			</p>
 		</div>
 		<label>
-			<span>Extraction model</span>
+			<span>Extraction provider</span>
 			<select
-				value={cometmind.memory.extractionModel}
-				onchange={(e) => setExtractionModel(e.currentTarget.value)}
+				value={cometmind.memory.extractionProviderId}
+				onchange={(e) => setExtractionProvider(e.currentTarget.value)}
 			>
 				<option value="">Use session model (default)</option>
-				{#each allModels as model (model)}
-					<option value={model}>{model}</option>
+				{#each providers as provider (provider.id)}
+					<option value={provider.id}>{provider.name}</option>
 				{/each}
 			</select>
-			<p class="field-hint">
-				The selected model id is used on whichever provider the session already uses.
-			</p>
 		</label>
+		{#if cometmind.memory.extractionProviderId}
+			<label>
+				<span>Extraction model</span>
+				<select
+					value={cometmind.memory.extractionModel || extractionModels[0] || ''}
+					onchange={(e) => setExtractionModel(e.currentTarget.value)}
+				>
+					{#each extractionModels as model (model)}
+						<option value={model}>{model}</option>
+					{/each}
+				</select>
+				<p class="field-hint">
+					A small, fast model is ideal — extraction runs after every turn in the background.
+				</p>
+			</label>
+		{/if}
 	</div>
 </section>
 

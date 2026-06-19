@@ -70,6 +70,7 @@ export interface CometMindSkillsSettings {
 }
 
 export interface CometMindMemorySettings {
+	extractionProviderId: string;
 	extractionModel: string;
 	embedding: {
 		providerId: string;
@@ -244,6 +245,7 @@ export function defaultCometMindSettings(workspacePath = ''): CometMindSettings 
 			mirrorToCometMind: false
 		},
 		memory: {
+			extractionProviderId: '',
 			extractionModel: '',
 			embedding: {
 				providerId: '',
@@ -315,6 +317,9 @@ export function normalizeCometMindSettings(
 					: defaults.skills.mirrorToCometMind
 		},
 		memory: {
+			extractionProviderId: String(
+				memory.extractionProviderId ?? defaults.memory.extractionProviderId
+			).trim(),
 			extractionModel: String(memory.extractionModel ?? defaults.memory.extractionModel).trim(),
 			embedding: {
 				providerId: String(embedding.providerId ?? defaults.memory.embedding.providerId).trim(),
@@ -378,6 +383,7 @@ export function cloneCometMindSettings(settings: CometMindSettings): CometMindSe
 			roots: [...settings.skills.roots]
 		},
 		memory: {
+			extractionProviderId: settings.memory.extractionProviderId,
 			extractionModel: settings.memory.extractionModel,
 			embedding: { ...settings.memory.embedding }
 		},
@@ -637,6 +643,7 @@ export function runtimeSlice(settings: ProviderSettings): RuntimeSettingsSlice |
 		acp: { ...settings.cometmind.acp, args: [...settings.cometmind.acp.args] },
 		skills: { ...settings.cometmind.skills, roots: [...settings.cometmind.skills.roots] },
 		memory: {
+			extractionProviderId: settings.cometmind.memory.extractionProviderId,
 			extractionModel: settings.cometmind.memory.extractionModel,
 			embedding: { ...settings.cometmind.memory.embedding }
 		},
@@ -697,6 +704,7 @@ const providerSettingsSchema = z.object({
 			mirrorToCometMind: z.boolean()
 		}),
 		memory: z.object({
+			extractionProviderId: z.string(),
 			extractionModel: z.string(),
 			embedding: z.object({
 				providerId: z.string(),
