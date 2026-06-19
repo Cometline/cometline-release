@@ -39,6 +39,7 @@ describe('settings schema', () => {
 					enabled: false,
 					baseURL: 'http://localhost:11434/v1',
 					apiKey: '',
+					selectedModel: '',
 					models: [],
 					enabledModels: []
 				}
