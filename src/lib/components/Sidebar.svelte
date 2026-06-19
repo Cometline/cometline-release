@@ -2,19 +2,21 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
+	import { flip } from 'svelte/animate';
 	import { fade, fly, slide } from 'svelte/transition';
 	import { ChevronDown, ChevronRight, Folder, Settings, Search, SquarePen, Trash2 } from '@lucide/svelte';
 	import type { Session } from '$lib/types';
 	import { sessionStore } from '$lib/stores/session.svelte';
 	import { deleteSession } from '$lib/client/cometmind';
 	import { startNewChat } from '$lib/actions/new-chat';
+	import { navigateToSession } from '$lib/actions/navigate-to-session';
 	import { chatStore } from '$lib/stores/chat.svelte';
-	import { modelStore } from '$lib/stores/model.svelte';
 	import { shellStore } from '$lib/stores/shell.svelte';
 	import { isNarrowViewport } from '$lib/layout/narrow-viewport';
 	import { groupSessionsByWorkspace } from '$lib/sessions/group-by-workspace';
 
 	const WORKSPACE_SESSIONS_SLIDE = { duration: 180 };
+	const WORKSPACE_GROUP_FLIP = { duration: 240 };
 
 	let {
 		workspacePath = '/',
@@ -48,15 +50,7 @@
 	}
 
 	function selectSession(session: Session) {
-		sessionStore.selectSession(session);
-		modelStore.selectFromSession(session);
-		// Switch the active workspace to match the selected session so the
-		// sidebar highlight and grouping reorder to the session's directory.
-		if (session.workspace_path && session.workspace_path !== shellStore.workspacePath) {
-			void window.electronAPI?.setWorkspacePath?.(session.workspace_path);
-			shellStore.setWorkspacePath(session.workspace_path);
-		}
-		void goto(`/session/${session.id}`);
+		navigateToSession(session);
 		closeSidebarIfNarrow();
 	}
 
@@ -162,53 +156,55 @@
 			{#each groupedSessions as group, index (group.workspacePath)}
 				{@const collapsed = isGroupCollapsed(group.workspacePath)}
 				{@const isActive = group.workspacePath === workspacePath}
-				<div class="workspace-group" class:active={isActive}>
-					<button
-						class="workspace-header"
-						aria-expanded={!collapsed}
-						aria-current={isActive ? 'true' : undefined}
-						onclick={() => toggleGroup(group.workspacePath)}
-						title={group.workspacePath}
-					>
-						<span class="workspace-chevron">
-							{#if collapsed}
-								<ChevronRight size={13} stroke-width={2} />
-							{:else}
-								<ChevronDown size={13} stroke-width={2} />
-							{/if}
-						</span>
-						<Folder size={13} stroke-width={1.8} class="workspace-folder" />
-						<span class="workspace-label">{group.label}</span>
-						<span class="workspace-count">{group.sessions.length}</span>
-					</button>
+				<div class="workspace-entry" animate:flip={WORKSPACE_GROUP_FLIP}>
+					<div class="workspace-group" class:active={isActive}>
+						<button
+							class="workspace-header"
+							aria-expanded={!collapsed}
+							aria-current={isActive ? 'true' : undefined}
+							onclick={() => toggleGroup(group.workspacePath)}
+							title={group.workspacePath}
+						>
+							<span class="workspace-chevron">
+								{#if collapsed}
+									<ChevronRight size={13} stroke-width={2} />
+								{:else}
+									<ChevronDown size={13} stroke-width={2} />
+								{/if}
+							</span>
+							<Folder size={13} stroke-width={1.8} class="workspace-folder" />
+							<span class="workspace-label">{group.label}</span>
+							<span class="workspace-count">{group.sessions.length}</span>
+						</button>
 
-					{#if !collapsed}
-						<div class="workspace-sessions" transition:slide={WORKSPACE_SESSIONS_SLIDE}>
-							{#each group.sessions as session (session.id)}
-								<div
-									class="session-row-wrap"
-									class:selected={currentSessionId === session.id}
-								>
-									<button class="session-row" onclick={() => selectSession(session)}>
-										<span class="session-title">{session.title || 'Untitled'}</span>
-									</button>
-									<button
-										class="delete-session"
-										disabled={deletingID === session.id}
-										onclick={() => removeSession(session)}
-										aria-label={`Delete ${session.title || 'Untitled'}`}
-										title="Delete session"
+						{#if !collapsed}
+							<div class="workspace-sessions" transition:slide={WORKSPACE_SESSIONS_SLIDE}>
+								{#each group.sessions as session (session.id)}
+									<div
+										class="session-row-wrap"
+										class:selected={currentSessionId === session.id}
 									>
-										<Trash2 size={13} stroke-width={1.9} />
-									</button>
-								</div>
-							{/each}
-						</div>
+										<button class="session-row" onclick={() => selectSession(session)}>
+											<span class="session-title">{session.title || 'Untitled'}</span>
+										</button>
+										<button
+											class="delete-session"
+											disabled={deletingID === session.id}
+											onclick={() => removeSession(session)}
+											aria-label={`Delete ${session.title || 'Untitled'}`}
+											title="Delete session"
+										>
+											<Trash2 size={13} stroke-width={1.9} />
+										</button>
+									</div>
+								{/each}
+							</div>
+						{/if}
+					</div>
+					{#if index === 0 && showWorkspaceDivider}
+						<div class="workspace-divider" role="separator" aria-hidden="true"></div>
 					{/if}
 				</div>
-				{#if index === 0 && showWorkspaceDivider}
-					<div class="workspace-divider" role="separator" aria-hidden="true"></div>
-				{/if}
 			{/each}
 			{#if totalSessions === 0}
 				<p class="session-empty">
@@ -365,6 +361,12 @@
 		padding: 0 12px 12px 12px;
 	}
 
+	.workspace-entry {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
 	.workspace-group {
 		display: flex;
 		flex-direction: column;
@@ -382,11 +384,11 @@
 		padding-left: 4px;
 		margin-left: -6px;
 		margin-right: -6px;
-		background: color-mix(in srgb, var(--workspace-inactive-color) 30%, transparent);
+		background: color-mix(in srgb, var(--workspace-inactive-color) 15%, transparent);
 	}
 
 	.workspace-group:not(.active):hover {
-		background: color-mix(in srgb, var(--workspace-inactive-color) 40%, transparent);
+		background: color-mix(in srgb, var(--workspace-inactive-color) 30%, transparent);
 	}
 
 	.workspace-group.active {

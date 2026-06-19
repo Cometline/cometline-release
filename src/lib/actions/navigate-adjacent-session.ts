@@ -1,6 +1,5 @@
-import { goto } from '$app/navigation';
-import { modelStore } from '$lib/stores/model.svelte';
 import { sessionStore } from '$lib/stores/session.svelte';
+import { navigateToSession } from '$lib/actions/navigate-to-session';
 
 /** Move to the previous or next chat in the sidebar list (newest first). */
 export function navigateAdjacentSession(direction: 'prev' | 'next') {
@@ -24,8 +23,5 @@ export function navigateAdjacentSession(direction: 'prev' | 'next') {
 
 	if (nextIndex < 0 || nextIndex >= sessions.length) return;
 
-	const session = sessions[nextIndex];
-	sessionStore.selectSession(session);
-	modelStore.selectFromSession(session);
-	void goto(`/session/${session.id}`);
+	navigateToSession(sessions[nextIndex]);
 }
