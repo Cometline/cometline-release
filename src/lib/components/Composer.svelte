@@ -422,7 +422,8 @@
 			for (const path of recent) add(path);
 			add(shellStore.workspacePath);
 			for (const ws of registered) add(ws.path);
-			workspacePaths = merged;
+			workspacePaths =
+				(await window.electronAPI?.filterExistingWorkspacePaths?.(merged)) ?? merged;
 			workspacePathsLoaded = true;
 		} catch {
 			workspacePaths = shellStore.workspacePath ? [shellStore.workspacePath] : [];

@@ -670,6 +670,42 @@ function getWorkspaceStoragePath() {
 	return path.join(dir, 'cometline-workspace.json');
 }
 
+function workspacePathExists(candidate) {
+	const clean = String(candidate || '').trim();
+	if (!clean) return false;
+	try {
+		return fs.existsSync(clean) && fs.statSync(clean).isDirectory();
+	} catch {
+		return false;
+	}
+}
+
+function writeWorkspaceStore({ workspacePath, recentPaths }) {
+	fs.writeFileSync(
+		getWorkspaceStoragePath(),
+		JSON.stringify({ workspacePath, recentPaths }, null, 2)
+	);
+	fs.chmodSync(getWorkspaceStoragePath(), 0o600);
+}
+
+/** Drop recent/current paths whose directories no longer exist. */
+function pruneWorkspaceStore() {
+	const store = readWorkspaceStore();
+	let workspacePath = store.workspacePath;
+	if (workspacePath && !workspacePathExists(workspacePath)) {
+		workspacePath = '';
+	}
+	const recentPaths = store.recentPaths.filter((item) => workspacePathExists(item));
+	const changed =
+		workspacePath !== store.workspacePath ||
+		recentPaths.length !== store.recentPaths.length ||
+		recentPaths.some((item, index) => path.resolve(item) !== path.resolve(store.recentPaths[index] || ''));
+	if (changed) {
+		writeWorkspaceStore({ workspacePath, recentPaths });
+	}
+	return { workspacePath, recentPaths };
+}
+
 function readWorkspaceStore() {
 	try {
 		const raw = fs.readFileSync(getWorkspaceStoragePath(), 'utf8');
@@ -686,8 +722,8 @@ function readWorkspaceStore() {
 }
 
 function readStoredWorkspacePath() {
-	const { workspacePath } = readWorkspaceStore();
-	if (workspacePath && fs.existsSync(workspacePath)) return path.resolve(workspacePath);
+	const { workspacePath } = pruneWorkspaceStore();
+	if (workspacePath) return path.resolve(workspacePath);
 	return '';
 }
 
@@ -698,11 +734,7 @@ function rememberWorkspacePath(workspacePath) {
 		0,
 		20
 	);
-	fs.writeFileSync(
-		getWorkspaceStoragePath(),
-		JSON.stringify({ workspacePath: clean, recentPaths }, null, 2)
-	);
-	fs.chmodSync(getWorkspaceStoragePath(), 0o600);
+	writeWorkspaceStore({ workspacePath: clean, recentPaths });
 	return clean;
 }
 
@@ -711,12 +743,12 @@ function writeStoredWorkspacePath(workspacePath) {
 }
 
 function listRecentWorkspacePaths() {
-	const store = readWorkspaceStore();
+	const store = pruneWorkspaceStore();
 	const seen = new Set();
 	const out = [];
 	const add = (candidate) => {
 		const clean = String(candidate || '').trim();
-		if (!clean || !fs.existsSync(clean)) return;
+		if (!clean || !workspacePathExists(clean)) return;
 		const resolved = path.resolve(clean);
 		if (seen.has(resolved)) return;
 		seen.add(resolved);
@@ -724,6 +756,20 @@ function listRecentWorkspacePaths() {
 	};
 	add(store.workspacePath);
 	for (const item of store.recentPaths) add(item);
+	return out;
+}
+
+function filterExistingWorkspacePaths(paths) {
+	const seen = new Set();
+	const out = [];
+	for (const candidate of paths) {
+		const clean = String(candidate || '').trim();
+		if (!clean || !workspacePathExists(clean)) continue;
+		const resolved = path.resolve(clean);
+		if (seen.has(resolved)) continue;
+		seen.add(resolved);
+		out.push(resolved);
+	}
 	return out;
 }
 
@@ -1380,6 +1426,8 @@ app.whenReady().then(async () => {
 	// Serve the packaged bundle over the custom app:// scheme.
 	if (app.isPackaged) registerAppProtocol();
 
+	pruneWorkspaceStore();
+
 	if (process.platform === 'darwin') {
 		ensureTray();
 	}
@@ -1500,6 +1548,10 @@ ipcMain.handle('cometline:set-workspace-path', (_event, workspacePath) => {
 });
 
 ipcMain.handle('cometline:list-recent-workspaces', () => listRecentWorkspacePaths());
+
+ipcMain.handle('cometline:filter-existing-workspace-paths', (_event, paths) =>
+	filterExistingWorkspacePaths(Array.isArray(paths) ? paths : [])
+);
 
 ipcMain.handle('cometline:read-workspace-file', (_event, workspacePath, relativePath) =>
 	readWorkspaceFileForPreview(workspacePath, relativePath)
