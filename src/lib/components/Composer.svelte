@@ -231,8 +231,13 @@
 		return groups;
 	});
 
+	export function focus() {
+		void focusInput();
+	}
+
 	$effect(() => {
 		if (!autofocus) return;
+		sessionId;
 		void focusInput();
 	});
 
@@ -569,6 +574,7 @@
 				setDropMessage(`Switched workspace to ${clean}`);
 				await onWorkspaceChanged?.();
 			}
+			void focusInput();
 		} catch (err) {
 			setDropMessage(err instanceof Error ? err.message : 'Failed to fork session');
 		}
@@ -900,9 +906,14 @@
 		}
 	}
 
-	async function focusInput() {
+	async function focusInput(options?: { position?: 'start' | 'end' }) {
 		await tick();
-		input?.focus();
+		// Defer past keydown handlers (session shortcuts) so focus sticks and
+		// the caret can be placed after layout settles.
+		setTimeout(() => {
+			const position = options?.position ?? (value.trim() ? 'end' : 'start');
+			void input?.focusAsync({ position });
+		}, 0);
 	}
 
 	type IdleHandle = { type: 'idle'; id: number } | { type: 'timeout'; id: ReturnType<typeof setTimeout> };

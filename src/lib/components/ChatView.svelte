@@ -135,10 +135,13 @@
 	let activatedSessionId = $state<string | null>(null);
 	let activationRun = 0;
 
+	let composerRef = $state<{ focus: () => void } | null>(null);
+
 	async function activateSession(id: string, run: number) {
 		await tick();
 		if (activationRun !== run || sessionId !== id) return;
 		conversation.onMount();
+		setTimeout(() => composerRef?.focus(), 0);
 	}
 
 	$effect(() => {
@@ -265,6 +268,7 @@
 			}}
 		>
 			<Composer
+				bind:this={composerRef}
 				onSend={submit}
 				onStop={stop}
 				onRemoveQueued={removeQueuedMessage}

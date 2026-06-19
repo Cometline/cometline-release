@@ -701,23 +701,54 @@
 		scheduleCaretMeasure();
 	}
 
-	export function focus() {
-		editor?.focus({ preventScroll: true });
-		// Move caret to end.
-		if (editor) {
-			const range = document.createRange();
+	function setCaretPosition(atEnd: boolean) {
+		if (!editor) return;
+		const sel = window.getSelection();
+		if (!sel) return;
+
+		const range = document.createRange();
+		const hasText = Boolean(editor.textContent);
+
+		if (!hasText) {
+			// Browsers often inject a lone <br> into empty contenteditables, which
+			// makes a collapsed "end" caret render on a phantom second line.
+			if (editor.innerHTML === '<br>') {
+				editor.innerHTML = '';
+			}
+			range.setStart(editor, 0);
+			range.collapse(true);
+		} else if (atEnd) {
 			range.selectNodeContents(editor);
 			range.collapse(false);
-			const sel = window.getSelection();
-			sel?.removeAllRanges();
-			sel?.addRange(range);
+		} else {
+			const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+			const firstText = walker.nextNode();
+			if (firstText) {
+				range.setStart(firstText, 0);
+				range.collapse(true);
+			} else {
+				range.setStart(editor, 0);
+				range.collapse(true);
+			}
 		}
+
+		sel.removeAllRanges();
+		sel.addRange(range);
+	}
+
+	export function focus(options?: { position?: 'start' | 'end' }) {
+		editor?.focus({ preventScroll: true });
+		if (!editor) return;
+		const atEnd =
+			options?.position === 'end' ||
+			(options?.position !== 'start' && Boolean(editor.textContent?.length));
+		setCaretPosition(atEnd);
 		scheduleCaretMeasure();
 	}
 
-	export async function focusAsync() {
+	export async function focusAsync(options?: { position?: 'start' | 'end' }) {
 		await tick();
-		focus();
+		focus(options);
 	}
 
 	export function insertText(text: string) {
@@ -773,7 +804,7 @@
 		}
 		editor.textContent = text;
 		value = text;
-		focus();
+		focus({ position: 'end' });
 		syncing = true;
 		decorateEditor({ allowCaretEnd: true });
 		syncing = false;
