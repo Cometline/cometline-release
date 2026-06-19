@@ -19,9 +19,12 @@
 	const WORKSPACE_GROUP_FLIP = { duration: 240 };
 
 	let {
-		workspacePath = '/',
 		collapsed = false
-	}: { workspacePath?: string; collapsed?: boolean } = $props();
+	}: { collapsed?: boolean } = $props();
+	let orderWorkspacePath = $derived(shellStore.sidebarOrderWorkspacePath);
+	let highlightWorkspacePath = $derived(
+		sessionStore.current?.workspace_path ?? shellStore.sidebarOrderWorkspacePath
+	);
 	let deletingID = $state<string | null>(null);
 	let pendingDelete = $state<Session | null>(null);
 	let skipDeleteConfirm = $state(false);
@@ -101,10 +104,10 @@
 		);
 	});
 	let groupedSessions = $derived(
-		groupSessionsByWorkspace(filteredSessions, workspacePath)
+		groupSessionsByWorkspace(filteredSessions, orderWorkspacePath)
 	);
 	let showWorkspaceDivider = $derived(
-		groupedSessions.length > 1 && groupedSessions[0].workspacePath === workspacePath
+		groupedSessions.length > 1 && groupedSessions[0].workspacePath === orderWorkspacePath
 	);
 	let totalSessions = $derived(filteredSessions.length);
 
@@ -119,7 +122,7 @@
 	}
 </script>
 
-<aside class="sidebar" class:collapsed aria-hidden={collapsed} data-workspace-path={workspacePath}>
+<aside class="sidebar" class:collapsed aria-hidden={collapsed} data-workspace-path={orderWorkspacePath}>
 	<div class="sidebar-content">
 		<div class="sidebar-titlebar-row">
 			<div class="search-field-wrap no-drag">
@@ -155,7 +158,7 @@
 		<div class="session-list">
 			{#each groupedSessions as group, index (group.workspacePath)}
 				{@const collapsed = isGroupCollapsed(group.workspacePath)}
-				{@const isActive = group.workspacePath === workspacePath}
+				{@const isActive = group.workspacePath === highlightWorkspacePath}
 				<div class="workspace-entry" animate:flip={WORKSPACE_GROUP_FLIP}>
 					<div class="workspace-group" class:active={isActive}>
 						<button

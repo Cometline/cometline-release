@@ -21,6 +21,8 @@ function createShellStore() {
 	let introOpen = $state(false);
 	let composerPhase = $state<'centered' | 'docked'>('centered');
 	let workspacePath = $state('/');
+	/** Sidebar group ordering; updated on explicit commit (click, send, workspace picker). */
+	let sidebarOrderWorkspacePath = $state('/');
 	let bootMessage = $state('');
 	let fullscreen = $state(false);
 	let webPanelsBySession = $state<Record<string, SessionWebPanel>>({});
@@ -68,6 +70,9 @@ function createShellStore() {
 		get workspacePath() {
 			return workspacePath;
 		},
+		get sidebarOrderWorkspacePath() {
+			return sidebarOrderWorkspacePath;
+		},
 		get bootMessage() {
 			return bootMessage;
 		},
@@ -105,6 +110,14 @@ function createShellStore() {
 		},
 		setWorkspacePath(path: string) {
 			workspacePath = path;
+		},
+		setSidebarOrderWorkspacePath(path: string) {
+			sidebarOrderWorkspacePath = path;
+		},
+		/** Keep composer and sidebar ordering in sync (explicit user commit). */
+		commitWorkspace(path: string) {
+			workspacePath = path;
+			sidebarOrderWorkspacePath = path;
 		},
 		setBootMessage(message: string) {
 			bootMessage = message;

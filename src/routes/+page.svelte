@@ -32,8 +32,13 @@ import type { ImageAttachment } from '$lib/types';
 	async function onSend(text: string, images?: ImageAttachment[], filePaths?: string[]) {
 		const selectedModel = modelStore.selected;
 		if (!selectedModel) return;
+		const workspace = shellStore.sidebarOrderWorkspacePath;
+		if (shellStore.workspacePath !== workspace) {
+			void window.electronAPI?.setWorkspacePath?.(workspace);
+			shellStore.setWorkspacePath(workspace);
+		}
 		const session = await createSession({
-			workspace_path: shellStore.workspacePath,
+			workspace_path: workspace,
 			model_id: selectedModel.modelId,
 			provider_id: selectedModel.providerId
 		});

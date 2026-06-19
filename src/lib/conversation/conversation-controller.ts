@@ -7,6 +7,7 @@
  */
 
 import { getSession } from '$lib/client/cometmind';
+import { commitSidebarWorkspaceForSession } from '$lib/actions/commit-sidebar-workspace';
 import { createChatTurnQueue, type ChatTurnQueue, type QueuedMessage } from '$lib/actions/chat-turn-queue';
 import { chatStore } from '$lib/stores/chat.svelte';
 import { sessionStore } from '$lib/stores/session.svelte';
@@ -66,6 +67,10 @@ async function runTurn(
 	const payload = typeof payloadOrText === 'string' ? { text: payloadOrText } : payloadOrText;
 	const firstTurn = !getHasVisibleConversation();
 	const usesFlight = Boolean(deps.flight?.onUserMessageFlight);
+
+	commitSidebarWorkspaceForSession(
+		sessionStore.sessions.find((session) => session.id === turnSessionId) ?? sessionStore.current
+	);
 
 	if (usesFlight) {
 		await deps.flight!.onUserMessageFlight!(

@@ -42,3 +42,11 @@ export function groupSessionsByWorkspace(
 		return (mostRecent.get(b.workspacePath) ?? 0) - (mostRecent.get(a.workspacePath) ?? 0);
 	});
 }
+
+/** Flatten sessions in sidebar group order for keyboard navigation. */
+export function flattenSessionsInSidebarOrder(
+	sessions: Session[],
+	orderWorkspacePath = ''
+): Session[] {
+	return groupSessionsByWorkspace(sessions, orderWorkspacePath).flatMap((group) => group.sessions);
+}

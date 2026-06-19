@@ -17,9 +17,8 @@
 	const FALLBACK_SIDEBAR_DURATION = 240;
 
 	let {
-		children,
-		workspacePath = '/'
-	}: { children: import('svelte').Snippet; workspacePath?: string } = $props();
+		children
+	}: { children: import('svelte').Snippet } = $props();
 
 	let sidebarRef = $state<{ focusSearch: () => void } | null>(null);
 
@@ -199,7 +198,7 @@
 	class:sidebar-collapsed={!shellStore.sidebarOpen}
 	class:is-fullscreen={shellStore.fullscreen}
 >
-	<Sidebar bind:this={sidebarRef} {workspacePath} collapsed={!shellStore.sidebarOpen} />
+	<Sidebar bind:this={sidebarRef} collapsed={!shellStore.sidebarOpen} />
 	<div class="content-row">
 		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 		<main

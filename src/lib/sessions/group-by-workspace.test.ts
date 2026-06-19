@@ -1,58 +1,37 @@
 import { describe, expect, it } from 'vitest';
-import { groupSessionsByWorkspace, workspaceLabel } from './group-by-workspace';
+import {
+	flattenSessionsInSidebarOrder,
+	groupSessionsByWorkspace
+} from '$lib/sessions/group-by-workspace';
 import type { Session } from '$lib/types';
 
 function session(id: string, workspacePath: string, updatedAt: number): Session {
 	return {
 		id,
-		workspace_id: workspacePath,
 		workspace_path: workspacePath,
+		updated_at: updatedAt,
 		title: id,
 		model_id: 'm',
-		provider_id: 'p',
-		status: 'active',
-		token_usage: { input_tokens: 0, output_tokens: 0, cache_read: 0, cache_write: 0 },
-		created_at: updatedAt,
-		updated_at: updatedAt
-	} as Session;
+		provider_id: 'p'
+	};
 }
 
-describe('workspaceLabel', () => {
-	it('returns the final path segment', () => {
-		expect(workspaceLabel('/Users/me/projects/app')).toBe('app');
-		expect(workspaceLabel('/Users/me/projects/app/')).toBe('app');
-	});
-});
-
-describe('groupSessionsByWorkspace', () => {
-	it('groups sessions by workspace path', () => {
+describe('flattenSessionsInSidebarOrder', () => {
+	it('walks committed workspace sessions before other workspaces', () => {
 		const sessions = [
-			session('a', '/ws/one', 30),
-			session('b', '/ws/two', 20),
-			session('c', '/ws/one', 10)
+			session('b1', '/ws-b', 90),
+			session('a1', '/ws-a', 100),
+			session('a2', '/ws-a', 80),
+			session('c1', '/ws-c', 70)
 		];
-		const groups = groupSessionsByWorkspace(sessions);
-		expect(groups).toHaveLength(2);
-		const one = groups.find((g) => g.workspacePath === '/ws/one');
-		expect(one?.sessions.map((s) => s.id)).toEqual(['a', 'c']);
-	});
 
-	it('orders the active workspace first', () => {
-		const sessions = [
-			session('a', '/ws/one', 30),
-			session('b', '/ws/two', 50)
-		];
-		const groups = groupSessionsByWorkspace(sessions, '/ws/one');
-		expect(groups[0].workspacePath).toBe('/ws/one');
-	});
+		const flat = flattenSessionsInSidebarOrder(sessions, '/ws-a');
 
-	it('orders remaining groups by most recent session', () => {
-		const sessions = [
-			session('a', '/ws/one', 10),
-			session('b', '/ws/two', 90),
-			session('c', '/ws/three', 50)
-		];
-		const groups = groupSessionsByWorkspace(sessions);
-		expect(groups.map((g) => g.workspacePath)).toEqual(['/ws/two', '/ws/three', '/ws/one']);
+		expect(flat.map((item) => item.id)).toEqual(['a1', 'a2', 'b1', 'c1']);
+		expect(groupSessionsByWorkspace(sessions, '/ws-a').map((g) => g.workspacePath)).toEqual([
+			'/ws-a',
+			'/ws-b',
+			'/ws-c'
+		]);
 	});
 });

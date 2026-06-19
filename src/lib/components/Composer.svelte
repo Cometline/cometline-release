@@ -555,7 +555,7 @@
 				forkedId = forked.id;
 			}
 			await window.electronAPI?.setWorkspacePath?.(clean);
-			shellStore.setWorkspacePath(clean);
+			shellStore.commitWorkspace(clean);
 			skillsLoaded = false;
 			skills = [];
 			workspacePathsLoaded = false;

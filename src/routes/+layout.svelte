@@ -56,7 +56,7 @@
 	async function initializeWorkspace() {
 		try {
 			const workspacePath = (await window.electronAPI?.getWorkspacePath?.()) ?? '/';
-			shellStore.setWorkspacePath(workspacePath);
+			shellStore.commitWorkspace(workspacePath);
 		} catch (err) {
 			shellStore.setBootMessage(
 				err instanceof Error ? err.message : 'Failed to initialize workspace'
@@ -80,6 +80,6 @@
 	}
 </script>
 
-<AppShell workspacePath={shellStore.workspacePath}>
+<AppShell>
 	{@render children()}
 </AppShell>
