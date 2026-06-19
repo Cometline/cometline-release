@@ -42,19 +42,21 @@
 	type SettingsSection = 'models' | 'memory' | 'agent' | 'appearance' | 'shortcuts' | 'app';
 
 	const METHOD_LABELS: Record<ProviderMethod, string> = {
-		'openai-compatible': 'OpenAI-compatible',
 		openai: 'OpenAI',
 		anthropic: 'Anthropic',
 		'opencode-go': 'OpenCode Go',
-		codex: 'ChatGPT Codex'
+		codex: 'ChatGPT Codex',
+		'openai-compatible': 'OpenAI-compatible',
+
 	};
 
 	const DEFAULT_PROVIDER_IDS = new Set([
-		'openai-compatible',
 		'anthropic',
 		'openai',
 		'opencode-go',
-		'codex'
+		'codex',
+		'openai-compatible',
+
 	]);
 	const OPENCODE_GO_AVAILABLE_MODELS = [
 		'deepseek-v4-flash',
