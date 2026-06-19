@@ -1834,6 +1834,8 @@ components:
           type: integer
         similarity_threshold:
           type: number
+        extraction_provider:
+          type: string
         extraction_model:
           type: string
         lifecycle:

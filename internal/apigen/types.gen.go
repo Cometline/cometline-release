@@ -330,6 +330,7 @@ type MemorySettings struct {
 	Embedding           *MemoryEmbeddingSettings `json:"embedding,omitempty"`
 	Enabled             *bool                    `json:"enabled,omitempty"`
 	ExtractionModel     *string                  `json:"extraction_model,omitempty"`
+	ExtractionProvider  *string                  `json:"extraction_provider,omitempty"`
 	Lifecycle           *MemoryLifecycleSettings `json:"lifecycle,omitempty"`
 	MaxRetrieved        *int                     `json:"max_retrieved,omitempty"`
 	SimilarityThreshold *float32                 `json:"similarity_threshold,omitempty"`
