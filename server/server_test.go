@@ -1031,6 +1031,63 @@ func TestListWorkspaces(t *testing.T) {
 	}
 }
 
+func TestListWorkspacesOmitsMissingPath(t *testing.T) {
+	t.Parallel()
+
+	_, svc, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
+		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
+			ch <- event.Done()
+			return nil
+		}), nil
+	})
+	defer cleanup()
+
+	ctx := context.Background()
+	root := t.TempDir()
+	alive := filepath.Join(root, "alive")
+	gone := filepath.Join(root, "gone")
+	if err := os.MkdirAll(alive, 0o755); err != nil {
+		t.Fatalf("MkdirAll(alive) error = %v", err)
+	}
+	if err := os.MkdirAll(gone, 0o755); err != nil {
+		t.Fatalf("MkdirAll(gone) error = %v", err)
+	}
+	if _, err := svc.EnsureWorkspace(ctx, alive); err != nil {
+		t.Fatalf("EnsureWorkspace(alive) error = %v", err)
+	}
+	if _, err := svc.EnsureWorkspace(ctx, gone); err != nil {
+		t.Fatalf("EnsureWorkspace(gone) error = %v", err)
+	}
+
+	list, err := svc.ListWorkspaces(ctx)
+	if err != nil {
+		t.Fatalf("ListWorkspaces() error = %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("ListWorkspaces() len = %d, want 2", len(list))
+	}
+
+	if err := os.RemoveAll(gone); err != nil {
+		t.Fatalf("RemoveAll(gone) error = %v", err)
+	}
+
+	list, err = svc.ListWorkspaces(ctx)
+	if err != nil {
+		t.Fatalf("ListWorkspaces() after delete error = %v", err)
+	}
+	if len(list) != 1 || list[0].Path != filepath.Clean(alive) {
+		t.Fatalf("ListWorkspaces() = %+v, want only %q", list, alive)
+	}
+
+	pruned, err := svc.PruneMissingWorkspaces(ctx)
+	if err != nil {
+		t.Fatalf("PruneMissingWorkspaces() error = %v", err)
+	}
+	if pruned != 1 {
+		t.Fatalf("PruneMissingWorkspaces() = %d, want 1", pruned)
+	}
+}
+
 func TestChangeSessionWorkspace(t *testing.T) {
 	t.Parallel()
 

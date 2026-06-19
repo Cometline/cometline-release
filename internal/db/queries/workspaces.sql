@@ -19,3 +19,12 @@ LIMIT 1;
 SELECT *
 FROM workspaces
 ORDER BY created_at ASC;
+
+-- name: DeleteWorkspace :exec
+DELETE FROM workspaces
+WHERE id = ?;
+
+-- name: CountSessionsForWorkspace :one
+SELECT COUNT(*) AS count
+FROM sessions
+WHERE workspace_id = ?;

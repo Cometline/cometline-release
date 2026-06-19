@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -47,6 +48,12 @@ func runServe(_ *cobra.Command, _ []string) error {
 		return err
 	}
 	defer rt.Close()
+
+	if pruned, err := rt.Sessions.PruneMissingWorkspaces(ctx); err != nil {
+		return fmt.Errorf("prune missing workspaces: %w", err)
+	} else if pruned > 0 {
+		fmt.Fprintf(os.Stderr, "pruned %d missing workspace(s) with no sessions\n", pruned)
+	}
 
 	engine, err := server.New(server.Deps{
 		Config:   rt.Config,

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -84,7 +85,7 @@ func (s *Service) LookupWorkspaceByPath(ctx context.Context, absRoot string) (Wo
 	return workspaceFromDB(w), nil
 }
 
-// ListWorkspaces returns all registered workspace roots.
+// ListWorkspaces returns registered workspace roots that still exist on disk.
 func (s *Service) ListWorkspaces(ctx context.Context) ([]Workspace, error) {
 	rows, err := s.q.ListWorkspaces(ctx)
 	if err != nil {
@@ -92,9 +93,45 @@ func (s *Service) ListWorkspaces(ctx context.Context) ([]Workspace, error) {
 	}
 	out := make([]Workspace, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, workspaceFromDB(row))
+		ws := workspaceFromDB(row)
+		if !workspaceRootExists(ws.Path) {
+			continue
+		}
+		out = append(out, ws)
 	}
 	return out, nil
+}
+
+// PruneMissingWorkspaces removes registered workspaces whose directories are
+// gone and that have no sessions. Workspaces with sessions are kept for history.
+func (s *Service) PruneMissingWorkspaces(ctx context.Context) (int, error) {
+	rows, err := s.q.ListWorkspaces(ctx)
+	if err != nil {
+		return 0, err
+	}
+	pruned := 0
+	for _, row := range rows {
+		if workspaceRootExists(row.Path) {
+			continue
+		}
+		count, err := s.q.CountSessionsForWorkspace(ctx, row.ID)
+		if err != nil {
+			return pruned, err
+		}
+		if count > 0 {
+			continue
+		}
+		if err := s.q.DeleteWorkspace(ctx, row.ID); err != nil {
+			return pruned, err
+		}
+		pruned++
+	}
+	return pruned, nil
+}
+
+func workspaceRootExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
 
 func activeDelegationStatuses() map[string]bool {
