@@ -21,12 +21,16 @@ func (ListDir) Spec() ToolSpec {
 
 func (l ListDir) Execute(ctx context.Context, input json.RawMessage) (Result, error) {
 	var in struct {
-		Path string `json:"path"`
+		Path *string `json:"path"`
 	}
 	if err := json.Unmarshal(input, &in); err != nil {
 		return Result{}, err
 	}
-	p, err := l.Workspace.Resolve(in.Path)
+	path, bad, ok := requiredTrimmedString(in.Path, "path")
+	if !ok {
+		return bad, nil
+	}
+	p, err := l.Workspace.Resolve(path)
 	if err != nil {
 		return Result{OK: false, Output: err.Error()}, nil
 	}

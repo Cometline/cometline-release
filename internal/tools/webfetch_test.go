@@ -66,6 +66,49 @@ func TestWebFetchRejectsNonHTTP(t *testing.T) {
 	}
 }
 
+func TestWebFetchAcceptsBareStringURLInput(t *testing.T) {
+	res, err := WebFetch{}.Execute(context.Background(), json.RawMessage(`"ftp://example.com"`))
+	if err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+	if res.OK {
+		t.Fatalf("expected non-http to be rejected")
+	}
+	if !strings.Contains(res.Output, "http(s)") {
+		t.Errorf("expected scheme error, got: %s", res.Output)
+	}
+}
+
+func TestParseWebFetchInputPreservesMaxCharsForObjectInput(t *testing.T) {
+	in, err := parseWebFetchInput(mustJSON(t, map[string]any{"url": "https://example.com", "max_chars": 123}))
+	if err != nil {
+		t.Fatalf("parseWebFetchInput error: %v", err)
+	}
+	if in.URL == nil || *in.URL != "https://example.com" || in.MaxChars != 123 {
+		t.Fatalf("input = %+v, want URL and max_chars preserved", in)
+	}
+}
+
+func TestParseWebFetchInputAcceptsStringifiedObject(t *testing.T) {
+	in, err := parseWebFetchInput(json.RawMessage(`"{\"url\":\"https://example.com\",\"max_chars\":321}"`))
+	if err != nil {
+		t.Fatalf("parseWebFetchInput error: %v", err)
+	}
+	if in.URL == nil || *in.URL != "https://example.com" || in.MaxChars != 321 {
+		t.Fatalf("input = %+v, want URL and max_chars preserved", in)
+	}
+}
+
+func TestParseWebFetchInputAcceptsBareStringURL(t *testing.T) {
+	in, err := parseWebFetchInput(json.RawMessage(`"https://example.com"`))
+	if err != nil {
+		t.Fatalf("parseWebFetchInput error: %v", err)
+	}
+	if in.URL == nil || *in.URL != "https://example.com" || in.MaxChars != 0 {
+		t.Fatalf("input = %+v, want URL and max_chars preserved", in)
+	}
+}
+
 func TestWebFetchRejectsEmptyURL(t *testing.T) {
 	res, _ := WebFetch{}.Execute(context.Background(), mustJSON(t, map[string]any{"url": "  "}))
 	if res.OK {

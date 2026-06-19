@@ -23,12 +23,14 @@ const (
 )
 
 // WebFetch fetches a web page over http(s) and returns its readable text.
-//
-// This is the sanctioned path for outbound HTTP from the agent (the shell
-// run_command tool denies curl/wget). Requests to loopback, private, and
-// link-local addresses are blocked to avoid SSRF against the user's machine and
-// cloud metadata endpoints.
+// Requests to loopback, private, and link-local addresses are blocked to avoid
+// SSRF against the user's machine and cloud metadata endpoints.
 type WebFetch struct{}
+
+type webFetchInput struct {
+	URL      *string `json:"url"`
+	MaxChars int     `json:"max_chars"`
+}
 
 func (WebFetch) Spec() ToolSpec {
 	return ToolSpec{
@@ -42,17 +44,14 @@ func (WebFetch) Spec() ToolSpec {
 }
 
 func (WebFetch) Execute(ctx context.Context, input json.RawMessage) (Result, error) {
-	var in struct {
-		URL      string `json:"url"`
-		MaxChars int    `json:"max_chars"`
-	}
-	if err := json.Unmarshal(input, &in); err != nil {
+	in, err := parseWebFetchInput(input)
+	if err != nil {
 		return Result{}, err
 	}
 
-	target := strings.TrimSpace(in.URL)
-	if target == "" {
-		return Result{OK: false, Output: "url is required"}, nil
+	target, bad, ok := requiredTrimmedString(in.URL, "url")
+	if !ok {
+		return bad, nil
 	}
 	parsed, err := url.Parse(target)
 	if err != nil {
@@ -119,6 +118,29 @@ func (WebFetch) Execute(ctx context.Context, input json.RawMessage) (Result, err
 		out += "\n\n[truncated]"
 	}
 	return Result{OK: true, Output: out}, nil
+}
+
+func parseWebFetchInput(input json.RawMessage) (webFetchInput, error) {
+	var in webFetchInput
+	if err := json.Unmarshal(input, &in); err == nil {
+		return in, nil
+	} else {
+		var raw string
+		if stringErr := json.Unmarshal(input, &raw); stringErr == nil {
+			raw, _, ok := requiredTrimmedString(&raw, "url")
+			if !ok {
+				return webFetchInput{}, nil
+			}
+			if strings.HasPrefix(raw, "{") {
+				var nested webFetchInput
+				if nestedErr := json.Unmarshal([]byte(raw), &nested); nestedErr == nil {
+					return nested, nil
+				}
+			}
+			return webFetchInput{URL: &raw}, nil
+		}
+		return webFetchInput{}, err
+	}
 }
 
 func isHTMLContentType(contentType string) bool {

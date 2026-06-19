@@ -27,12 +27,16 @@ func (l LoadSkill) Execute(_ context.Context, input json.RawMessage) (Result, er
 		return Result{OK: false, Output: "skills are not configured"}, nil
 	}
 	var in struct {
-		Name string `json:"name"`
+		Name *string `json:"name"`
 	}
 	if err := json.Unmarshal(input, &in); err != nil {
 		return Result{}, err
 	}
-	skill, markdown, err := l.Skills.SkillMarkdown(strings.TrimSpace(in.Name))
+	name, bad, ok := requiredTrimmedString(in.Name, "name")
+	if !ok {
+		return bad, nil
+	}
+	skill, markdown, err := l.Skills.SkillMarkdown(name)
 	if err != nil {
 		return Result{OK: false, Output: err.Error()}, nil
 	}
@@ -58,17 +62,25 @@ func (r ReadSkillFile) Execute(_ context.Context, input json.RawMessage) (Result
 		return Result{OK: false, Output: "skills are not configured"}, nil
 	}
 	var in struct {
-		Name string `json:"name"`
-		Path string `json:"path"`
+		Name *string `json:"name"`
+		Path *string `json:"path"`
 	}
 	if err := json.Unmarshal(input, &in); err != nil {
 		return Result{}, err
 	}
-	skill, content, err := r.Skills.ReadSkillFile(strings.TrimSpace(in.Name), strings.TrimSpace(in.Path))
+	name, bad, ok := requiredTrimmedString(in.Name, "name")
+	if !ok {
+		return bad, nil
+	}
+	path, bad, ok := requiredTrimmedString(in.Path, "path")
+	if !ok {
+		return bad, nil
+	}
+	skill, content, err := r.Skills.ReadSkillFile(name, path)
 	if err != nil {
 		return Result{OK: false, Output: err.Error()}, nil
 	}
-	return Result{OK: true, Output: fmt.Sprintf("name: %s\npath: %s\n\n%s", skill.Name, in.Path, content)}, nil
+	return Result{OK: true, Output: fmt.Sprintf("name: %s\npath: %s\n\n%s", skill.Name, path, content)}, nil
 }
 
 func skillFiles(root string) []string {

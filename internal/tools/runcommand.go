@@ -7,29 +7,38 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
 
 // RunCommand runs a shell command with cwd set to the workspace root.
+//
+// This is a convenience tool with best-effort guardrails, not a hard process
+// sandbox. A few obviously destructive patterns are rejected, but callers
+// should not rely on this as a complete security boundary.
 type RunCommand struct{ Workspace Workspace }
 
 func (RunCommand) Spec() ToolSpec {
 	return ToolSpec{
 		Name:        "run_command",
-		Description: "Run a shell command. Working directory is the workspace root. Dangerous patterns are rejected.",
+		Description: "Run a shell command in the workspace root. Best-effort guardrails reject a few obviously dangerous patterns.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"command":{"type":"string","description":"Command with arguments (shell interpretation)"}},"required":["command"]}`),
 	}
 }
 
 func (r RunCommand) Execute(ctx context.Context, input json.RawMessage) (Result, error) {
 	var in struct {
-		Command string `json:"command"`
+		Command *string `json:"command"`
 	}
 	if err := json.Unmarshal(input, &in); err != nil {
 		return Result{}, err
 	}
-	if err := denylistCheck(in.Command); err != nil {
+	command, bad, ok := requiredTrimmedString(in.Command, "command")
+	if !ok {
+		return bad, nil
+	}
+	if err := denylistCheck(command); err != nil {
 		return Result{OK: false, Output: err.Error()}, nil
 	}
 	if _, err := r.Workspace.Resolve("."); err != nil {
@@ -46,7 +55,7 @@ func (r RunCommand) Execute(ctx context.Context, input json.RawMessage) (Result,
 	cmdCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(cmdCtx, "sh", "-c", in.Command) //nolint:gosec
+	cmd := exec.CommandContext(cmdCtx, "sh", "-c", command) //nolint:gosec
 	cmd.Dir = root
 
 	out, err := cmd.CombinedOutput()
@@ -67,14 +76,22 @@ func (r RunCommand) Execute(ctx context.Context, input json.RawMessage) (Result,
 	return Result{OK: true, Output: text, ExitCode: exit}, nil
 }
 
+var deniedCommandPatterns = []struct {
+	re  *regexp.Regexp
+	msg string
+}{
+	{re: regexp.MustCompile(`(^|[^[:alnum:]_./-])mkfs([^[:alnum:]_./-]|$)`), msg: "command rejected by safety guardrail (matched mkfs)"},
+	{re: regexp.MustCompile(`\bdd\s+if=`), msg: "command rejected by safety guardrail (matched dd if=)"},
+	{re: regexp.MustCompile(`>\s*/dev/`), msg: "command rejected by safety guardrail (matched > /dev/)"},
+	{re: regexp.MustCompile(`(^|[^[:alnum:]_./-])sudo\s+rm([^[:alnum:]_./-]|$)`), msg: "command rejected by safety guardrail (matched sudo rm)"},
+	{re: regexp.MustCompile(`(^|[^[:alnum:]_./-])rm\s+-rf\s+/([^[:alnum:]_./-]|$)`), msg: "command rejected by safety guardrail (matched rm -rf /)"},
+}
+
 func denylistCheck(cmd string) error {
-	c := strings.TrimSpace(strings.ToLower(cmd))
-	patterns := []string{
-		"curl ", "wget ", "ssh ", "scp ", "mkfs", "dd if=", "> /dev/", "sudo rm ", "rm -rf /",
-	}
-	for _, p := range patterns {
-		if strings.Contains(c, p) {
-			return fmt.Errorf("command rejected by safety deny-list (matched %q)", p)
+	c := strings.ToLower(cmd)
+	for _, pattern := range deniedCommandPatterns {
+		if pattern.re.MatchString(c) {
+			return fmt.Errorf("%s", pattern.msg)
 		}
 	}
 	return nil

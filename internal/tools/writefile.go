@@ -22,13 +22,21 @@ func (WriteFile) Spec() ToolSpec {
 
 func (w WriteFile) Execute(ctx context.Context, input json.RawMessage) (Result, error) {
 	var in struct {
-		Path    string `json:"path"`
-		Content string `json:"content"`
+		Path    *string `json:"path"`
+		Content *string `json:"content"`
 	}
 	if err := json.Unmarshal(input, &in); err != nil {
 		return Result{}, err
 	}
-	p, err := w.Workspace.Resolve(in.Path)
+	path, bad, ok := requiredTrimmedString(in.Path, "path")
+	if !ok {
+		return bad, nil
+	}
+	content, bad, ok := requiredString(in.Content, "content")
+	if !ok {
+		return bad, nil
+	}
+	p, err := w.Workspace.Resolve(path)
 	if err != nil {
 		return Result{OK: false, Output: err.Error()}, nil
 	}
@@ -41,8 +49,8 @@ func (w WriteFile) Execute(ctx context.Context, input json.RawMessage) (Result, 
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return Result{OK: false, Output: err.Error()}, nil
 	}
-	if err := os.WriteFile(p, []byte(in.Content), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
 		return Result{OK: false, Output: err.Error()}, nil
 	}
-	return Result{OK: true, Output: fmt.Sprintf("wrote %d bytes to %s", len(in.Content), strings.TrimPrefix(strings.TrimPrefix(p, w.Workspace.Root), string(filepath.Separator)))}, nil
+	return Result{OK: true, Output: fmt.Sprintf("wrote %d bytes to %s", len(content), strings.TrimPrefix(strings.TrimPrefix(p, w.Workspace.Root), string(filepath.Separator)))}, nil
 }

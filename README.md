@@ -5,7 +5,7 @@
 CometMind is the middle tier of the Cometline stack:
 
 ```
-comet-sdk   →  provider-agnostic LLM I/O (streaming, reasoning, tool-call assembly, retries)
+comet-sdk   →  provider-agnostic LLM I/O (Anthropic, OpenAI, Codex, compatible APIs)
 cometmind   →  general agent brain: agent loop + tools + memory + persistence + HTTP/SSE + CLI
   └─ ACP ──→  opencode / claude-code (coding specialist, invoked via delegate_coding_task)
 cometline   →  Electron desktop shell (also starts CometMind as a sidecar)
@@ -40,7 +40,7 @@ internal/
   skills/            Agent Skills discovery, sync, export, write
   acp/               ACP client for delegate_coding_task (OpenCode by default)
   gateway/           messaging adapters (Discord today)
-  provider/          builds a comet-sdk provider from config/session
+  provider/          builds a comet-sdk provider from config/session (Anthropic, OpenAI-compatible, Codex)
   config/            cometline-settings.json loading + legacy TOML migration + COMETMIND_* env
   db/                sqlc-generated querier + schema.sql + queries/*.sql
   event/event.go     CometMind-native event union (shared by SSE/CLI/gateway)
@@ -86,7 +86,7 @@ When the model calls `delegate_coding_task`, CometMind spawns an external coding
 - Interactive mode can pause for user questions or permission prompts (`subagent_awaiting_input`).
 - The desktop can reply to awaiting children via `POST /api/v1/sessions/{id}/respond`.
 
-Configure in `~/.cometmind/cometline-settings.json` (or legacy `config.toml` until migrated):
+Configure in Settings → CometMind → ACP, persisted in `~/.cometmind/cometline-settings.json` (legacy `config.toml` is read only when JSON settings are missing):
 
 ```toml
 [acp]
@@ -168,7 +168,12 @@ Localhost-only HTTP + SSE, versioned under `/api/v1` (default `http://127.0.0.1:
 | Method & Path | Purpose |
 |---|---|
 | `GET /api/v1/health` | Liveness (`{status:ok}`) |
+| `GET /api/v1/workspaces` | List registered workspaces |
 | `POST /api/v1/workspaces` | Register a workspace by absolute path |
+| `POST /api/v1/workspaces/prune` | Remove registrations whose directories no longer exist |
+| `GET /api/v1/workspaces/files` | List previewable workspace files |
+| `GET /api/v1/workspaces/files/content` | Read a previewable text/image file |
+| `PUT /api/v1/workspaces/files/content` | Write a small UTF-8 text file from the preview editor |
 
 ### Sessions
 
@@ -178,6 +183,8 @@ Localhost-only HTTP + SSE, versioned under `/api/v1` (default `http://127.0.0.1:
 | `GET /api/v1/sessions` | List sessions for one workspace |
 | `GET /api/v1/sessions/{id}` | Fetch a session |
 | `PATCH /api/v1/sessions/{id}` | Update model/provider for later turns |
+| `PATCH /api/v1/sessions/{id}/workspace` | Move an existing session to another workspace |
+| `POST /api/v1/sessions/{id}/fork` | Copy a session into another workspace |
 | `DELETE /api/v1/sessions/{id}` | Delete session and cascade messages |
 | `GET /api/v1/sessions/{id}/messages` | Transcript (user/reasoning/assistant/tool) |
 | `GET /api/v1/sessions/{id}/children` | Delegated child sessions |
@@ -206,6 +213,7 @@ Localhost-only HTTP + SSE, versioned under `/api/v1` (default `http://127.0.0.1:
 | `POST /api/v1/memories/search` | Semantic search |
 | `GET /api/v1/memory/settings` | Read memory configuration |
 | `PUT /api/v1/memory/settings` | Update memory configuration |
+| `POST /api/v1/memory/purge` | Hard-delete archived memories older than a threshold |
 | `POST /api/v1/memory/compact` | Run compaction |
 | `GET /api/v1/memory/compact/preview` | Preview compaction candidates |
 
@@ -303,7 +311,7 @@ When Cometline is running, Settings writes `~/.cometmind/cometline-settings.json
 
 ## Database
 
-SQLite schema (version 5) includes:
+SQLite schema (version 7) includes:
 
 | Table | Purpose |
 |---|---|

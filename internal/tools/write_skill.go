@@ -12,7 +12,7 @@ type WriteSkill struct{}
 
 func (WriteSkill) Spec() ToolSpec {
 	return ToolSpec{
-		Name: "write_skill",
+		Name:        "write_skill",
 		Description: "Create or update an Agent Skill in ~/.cometmind/skills. Provide the full SKILL.md contents with YAML frontmatter (name, description) and markdown body.",
 		Parameters: json.RawMessage(`{
 			"type": "object",
@@ -28,15 +28,23 @@ func (WriteSkill) Spec() ToolSpec {
 
 func (WriteSkill) Execute(_ context.Context, input json.RawMessage) (Result, error) {
 	var in struct {
-		Name      string `json:"name"`
-		Content   string `json:"content"`
-		Overwrite bool   `json:"overwrite"`
+		Name      *string `json:"name"`
+		Content   *string `json:"content"`
+		Overwrite bool    `json:"overwrite"`
 	}
 	if err := json.Unmarshal(input, &in); err != nil {
 		return Result{}, err
 	}
-	if err := skills.WriteSkill(in.Name, in.Content, in.Overwrite); err != nil {
+	name, bad, ok := requiredTrimmedString(in.Name, "name")
+	if !ok {
+		return bad, nil
+	}
+	content, bad, ok := requiredString(in.Content, "content")
+	if !ok {
+		return bad, nil
+	}
+	if err := skills.WriteSkill(name, content, in.Overwrite); err != nil {
 		return Result{OK: false, Output: err.Error()}, nil
 	}
-	return Result{OK: true, Output: "skill " + in.Name + " written to ~/.cometmind/skills/" + in.Name + "/SKILL.md"}, nil
+	return Result{OK: true, Output: "skill " + name + " written to ~/.cometmind/skills/" + name + "/SKILL.md"}, nil
 }
