@@ -1,4 +1,4 @@
-ocname: Release macOS
+name: Release macOS
 
 on:
   push:
