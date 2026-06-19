@@ -8,6 +8,7 @@ import (
 	"time"
 
 	acpsdk "github.com/coder/acp-go-sdk"
+	"github.com/cometline/cometmind/internal/process"
 )
 
 // Config controls how CometMind spawns an external ACP coding agent.
@@ -78,8 +79,13 @@ func Cancel(conn *acpsdk.ClientSideConnection, sessionID acpsdk.SessionId) error
 }
 
 func defaultProcessStarter(ctx context.Context, cfg Config) (io.WriteCloser, io.ReadCloser, io.Closer, error) {
-	cmd := exec.CommandContext(ctx, cfg.Command, cfg.Args...)
+	command, err := process.ResolveCommand(cfg.Command)
+	if err != nil {
+		return nil, nil, nil, process.CommandNotFoundError(cfg.Command, err)
+	}
+	cmd := exec.CommandContext(ctx, command, cfg.Args...)
 	cmd.Dir = "."
+	cmd.Env = process.Env()
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, nil, nil, err
@@ -96,7 +102,7 @@ func defaultProcessStarter(ctx context.Context, cfg Config) (io.WriteCloser, io.
 }
 
 type cmdWaitCloser struct {
-	cmd *exec.Cmd
+	cmd  *exec.Cmd
 	once sync.Once
 }
 
@@ -114,6 +120,7 @@ func (c *cmdWaitCloser) Close() error {
 func runVerifyCommand(ctx context.Context, workspaceRoot, command string) (string, error) {
 	cmd := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // delegated verify step
 	cmd.Dir = workspaceRoot
+	cmd.Env = process.Env()
 	out, err := cmd.CombinedOutput()
 	text := string(out)
 	if err != nil {

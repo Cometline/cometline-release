@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/cometline/cometmind/internal/process"
 )
 
 // RunCommand runs a shell command with cwd set to the workspace root.
@@ -57,6 +59,7 @@ func (r RunCommand) Execute(ctx context.Context, input json.RawMessage) (Result,
 
 	cmd := exec.CommandContext(cmdCtx, "sh", "-c", command) //nolint:gosec
 	cmd.Dir = root
+	cmd.Env = process.Env()
 
 	out, err := cmd.CombinedOutput()
 	text := string(out)

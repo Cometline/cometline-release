@@ -12,6 +12,7 @@ import (
 	"time"
 
 	acpsdk "github.com/coder/acp-go-sdk"
+	"github.com/cometline/cometmind/internal/process"
 	"github.com/cometline/cometmind/internal/tools/sandbox"
 )
 
@@ -25,9 +26,9 @@ type ProgressUpdate struct {
 
 // WorkspaceClient implements acp.Client with workspace-sandboxed file and terminal access.
 type WorkspaceClient struct {
-	WorkspaceRoot string
-	OnProgress    func(ProgressUpdate)
-	Interactive   bool
+	WorkspaceRoot     string
+	OnProgress        func(ProgressUpdate)
+	Interactive       bool
 	PermissionHandler func(ctx context.Context, params acpsdk.RequestPermissionRequest) (acpsdk.PermissionOptionId, error)
 
 	mu        sync.Mutex
@@ -177,6 +178,7 @@ func (c *WorkspaceClient) CreateTerminal(ctx context.Context, params acpsdk.Crea
 	id := fmt.Sprintf("term-%d", time.Now().UnixNano())
 	cmd := exec.CommandContext(ctx, "sh", "-c", params.Command) //nolint:gosec // ACP terminal delegation
 	cmd.Dir = c.WorkspaceRoot
+	cmd.Env = process.Env()
 	ts := &terminalSession{cmd: cmd, done: make(chan struct{})}
 	c.terminals[id] = ts
 	go func() {
