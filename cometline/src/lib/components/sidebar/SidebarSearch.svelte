@@ -45,7 +45,6 @@
 		align-items: stretch;
 		min-width: 0;
 		height: 1.75rem;
-		overflow: hidden;
 		border: 1px solid var(--border-soft);
 		border-radius: 0.5rem;
 		background: rgba(255, 255, 255, 0.7);
@@ -63,8 +62,8 @@
 		min-width: 0;
 		flex: 1;
 		align-items: center;
-		gap: 0.5rem;
-		padding: 0 0.625rem;
+		gap: 0.375rem;
+		padding: 0 0.375rem 0 0.625rem;
 	}
 
 	.search-field :global(.search-icon) {
@@ -74,12 +73,20 @@
 	.search-input {
 		min-width: 0;
 		flex: 1;
+		width: 100%;
 		border: 0;
 		background: transparent;
-		padding: 0;
+		padding: 0 1px 0 0;
 		font-size: 0.75rem;
 		color: var(--text-main);
 		outline: none;
+		overflow: visible;
+	}
+
+	.search-input::-webkit-search-decoration,
+	.search-input::-webkit-search-cancel-button,
+	.search-input::-webkit-search-results-button {
+		display: none;
 	}
 
 	.search-input::placeholder {
@@ -93,7 +100,7 @@
 
 	.new-chat-button {
 		display: grid;
-		width: 1.75rem;
+		width: 1.625rem;
 		flex-shrink: 0;
 		place-items: center;
 		border: 0;
