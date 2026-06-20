@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { LoaderCircle, Search, Trash2 } from '@lucide/svelte';
-	import SettingsToggle from '$lib/components/SettingsToggle.svelte';
+	import SettingsToggle from './SettingsToggle.svelte';
 	import {
 		compactMemory,
 		compactMemoryPreview,
@@ -538,17 +538,6 @@
 
 	.icon.danger:hover {
 		color: #b42318;
-	}
-
-	.spin {
-		display: inline-grid;
-		animation: spin 0.9s linear infinite;
-	}
-
-	@keyframes spin {
-		to {
-			transform: rotate(360deg);
-		}
 	}
 
 	@media (max-width: 780px) {

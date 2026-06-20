@@ -28,12 +28,13 @@
 	} from '$lib/types';
 	import { shellStore } from '$lib/stores/shell.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
-	import SettingsAppearancePanel from '$lib/components/SettingsAppearancePanel.svelte';
-	import SettingsGeneralPanel from '$lib/components/SettingsGeneralPanel.svelte';
-	import SettingsCometMindPanel from '$lib/components/SettingsCometMindPanel.svelte';
-	import SettingsModelRolesPanel from '$lib/components/SettingsModelRolesPanel.svelte';
-	import SettingsMemoryPanel from '$lib/components/SettingsMemoryPanel.svelte';
-	import SettingsShortcutsPanel from '$lib/components/SettingsShortcutsPanel.svelte';
+	import SettingsAppearancePanel from './SettingsAppearancePanel.svelte';
+	import SettingsGeneralPanel from './SettingsGeneralPanel.svelte';
+	import SettingsCometMindPanel from './SettingsCometMindPanel.svelte';
+	import SettingsModelRolesPanel from './SettingsModelRolesPanel.svelte';
+	import SettingsMemoryPanel from './SettingsMemoryPanel.svelte';
+	import SettingsShortcutsPanel from './SettingsShortcutsPanel.svelte';
+	import SettingsProvidersPanel from './SettingsProvidersPanel.svelte';
 	import { cloneCometMindSettings, normalizeCometMindSettings } from '$lib/cometmind-settings';
 	import { ICON_VARIANT_OPTIONS, projectAvatarSrc } from '$lib/project-icon';
 	import type { IconVariant } from '$lib/types';
@@ -797,253 +798,26 @@
 
 			<div class="settings-pane">
 				{#if activeSection === 'models'}
-					<div class="provider-shell">
-						<aside class="provider-sidebar">
-							<div class="provider-sidebar-title">
-								<span>{enabledProviderCount} enabled</span>
-								<button
-									class="icon-button inline"
-									aria-label="Add provider"
-									onclick={addProvider}
-								>
-									<Plus size={15} />
-								</button>
-							</div>
-
-							<div class="provider-list">
-								{#each draft.providers as provider (provider.id)}
-									<button
-										class="provider-card"
-										class:selected={selectedProviderId === provider.id}
-										class:enabled={provider.enabled}
-										onclick={() => {
-											selectedProviderId = provider.id;
-											modelSearch = '';
-										}}
-										transition:fly={{ y: 4, duration: 100 }}
-									>
-										<span>
-											<strong>{provider.name}</strong>
-										</span>
-										<span class="provider-dot" aria-hidden="true"></span>
-									</button>
-								{:else}
-									<p class="empty-providers">No providers configured.</p>
-								{/each}
-							</div>
-						</aside>
-
-						{#if selectedProvider}
-							<section class="provider-detail">
-								<div class="detail-heading">
-									<div>
-										<h3>{selectedProvider.name}</h3>
-										<p>
-											{METHOD_LABELS[selectedProvider.method]} · {selectedProvider
-												.enabledModels.length} enabled models
-										</p>
-									</div>
-									<div class="detail-actions">
-										{#if !DEFAULT_PROVIDER_IDS.has(selectedProvider.id)}
-											<button
-												class="secondary danger"
-												aria-label="Delete provider"
-												onclick={() => removeProvider(selectedProvider.id)}
-											>
-												<Trash2 size={14} />
-											</button>
-										{/if}
-										<button
-											class="switch"
-											class:on={selectedProvider.enabled}
-											role="switch"
-											aria-checked={selectedProvider.enabled}
-											aria-label={`${selectedProvider.enabled ? 'Disable' : 'Enable'} ${selectedProvider.name}`}
-											title={`${selectedProvider.enabled ? 'Disable' : 'Enable'} ${selectedProvider.name}`}
-											onclick={() => toggleProvider(selectedProvider.id)}
-										>
-											<span></span>
-										</button>
-									</div>
-								</div>
-
-								<div class="form-grid">
-									<label>
-										<span>Name</span>
-										<input
-											value={selectedProvider.name}
-											oninput={(e) =>
-												updateSelected({ name: e.currentTarget.value })}
-											placeholder="Provider name"
-											spellcheck="false"
-										/>
-									</label>
-
-									<label>
-										<span>Method</span>
-										<select
-											value={selectedProvider.method}
-											onchange={(e) =>
-												setSelectedMethod(
-													e.currentTarget.value as ProviderMethod
-												)}
-										>
-											<option value="codex">ChatGPT Codex</option>
-											<option value="openai">OpenAI</option>
-											<option value="anthropic">Anthropic</option>
-											<option value="opencode-go">OpenCode Go</option>
-											<option value="openai-compatible"
-												>OpenAI-compatible</option
-											>
-										</select>
-									</label>
-
-									<label>
-										<span>Base URL</span>
-										<input
-											value={selectedProvider.baseURL}
-											oninput={(e) =>
-												updateSelected({ baseURL: e.currentTarget.value })}
-											placeholder="https://example.com/v1"
-											spellcheck="false"
-										/>
-									</label>
-
-									{#if methodNeedsApiKey(selectedProvider.method)}
-										<label>
-											<span>API Key</span>
-											<input
-												value={selectedProvider.apiKey}
-												oninput={(e) =>
-													updateSelected({
-														apiKey: e.currentTarget.value
-													})}
-												type="password"
-												placeholder="sk-..."
-												spellcheck="false"
-											/>
-										</label>
-									{:else}
-										<div class="field-note">
-											<span>Authentication</span>
-											<p>
-												Uses your ChatGPT Plus/Pro browser sign-in and
-												stores a local Codex-compatible session at <code
-													>~/.codex/auth.json</code
-												>. No API key or Codex CLI install is required.
-											</p>
-											{#if codexAuthStatus}
-												<p class:ok={codexAuthStatus.authenticated}>
-													{codexAuthStatus.authenticated
-														? 'Signed in with ChatGPT browser session.'
-														: (codexAuthStatus.error ??
-															'Not signed in.')}
-												</p>
-											{/if}
-											<div class="inline-actions">
-												<button
-													class="secondary"
-													type="button"
-													onclick={startCodexLogin}
-													disabled={startingCodexLogin ||
-														!window.electronAPI?.startCodexLogin}
-												>
-													{#if startingCodexLogin}<span class="spin"
-															><LoaderCircle size={14} /></span
-														>{:else}<LogIn size={14} />{/if}
-													Sign in with ChatGPT
-												</button>
-												<button
-													class="secondary"
-													type="button"
-													onclick={refreshCodexAuthStatus}
-													disabled={checkingCodexAuth ||
-														!window.electronAPI?.getCodexAuthStatus}
-												>
-													{#if checkingCodexAuth}<span class="spin"
-															><LoaderCircle size={14} /></span
-														>{:else}<RefreshCw size={14} />{/if}
-													Check session
-												</button>
-											</div>
-										</div>
-									{/if}
-								</div>
-
-								<div class="model-section">
-									<div class="model-heading">
-										<div>
-											<h3>Models</h3>
-											{#if selectedProvider.method === 'codex'}
-												<p>
-													Use Fetch models to refresh models from your
-													ChatGPT browser session.
-												</p>
-											{:else if selectedProvider.method === 'opencode-go'}
-												<p>
-													Use Fetch models to refresh the latest list from <code
-														>/models</code
-													> at OpenCode Go.
-												</p>
-											{:else}
-												<p>
-													Use Fetch models to refresh the latest list from <code
-														>/models</code
-													>.
-												</p>
-											{/if}
-										</div>
-										<button
-											class="secondary"
-											onclick={fetchModels}
-											disabled={!canFetchModels(selectedProvider)}
-										>
-											{#if settingsStore.isFetchingModels}<span class="spin"
-													><LoaderCircle size={14} /></span
-												>{/if}
-											Fetch models
-										</button>
-									</div>
-
-									<input
-										class="model-search"
-										bind:value={modelSearch}
-										placeholder="Search models..."
-										spellcheck="false"
-									/>
-
-									<div class="models">
-										{#each filteredModels as model (model)}
-											<button
-												class="model-row"
-												class:enabled={selectedProvider.enabledModels.includes(
-													model
-												)}
-												onclick={() => toggleModel(model)}
-												transition:fly={{ y: 4, duration: 100 }}
-											>
-												<span>
-													<strong>{model}</strong>
-													<small>{selectedProvider.id}:{model}</small>
-												</span>
-												<span class="model-toggle" aria-hidden="true">
-													{#if selectedProvider.enabledModels.includes(model)}<Check
-															size={13}
-														/>{/if}
-												</span>
-											</button>
-										{:else}
-											<p class="empty-models">
-												{selectedProvider.models.length === 0
-													? 'No models loaded yet.'
-													: 'No models match your search.'}
-											</p>
-										{/each}
-									</div>
-								</div>
-							</section>
-						{/if}
-					</div>
+					<SettingsProvidersPanel
+						providers={draft.providers}
+						bind:selectedProviderId
+						bind:modelSearch
+						{enabledProviderCount}
+						{filteredModels}
+						{selectedProvider}
+						{codexAuthStatus}
+						{checkingCodexAuth}
+						{startingCodexLogin}
+						onAddProvider={addProvider}
+						onRemoveProvider={removeProvider}
+						onToggleProvider={toggleProvider}
+						onUpdateSelected={updateSelected}
+						onSetMethod={setSelectedMethod}
+						onFetchModels={fetchModels}
+						onToggleModel={toggleModel}
+						onStartCodexLogin={startCodexLogin}
+						onRefreshCodexAuth={refreshCodexAuthStatus}
+					/>
 					<SettingsModelRolesPanel
 						bind:cometmind={draft.cometmind}
 						bind:defaultModelId={draft.defaultModelId}
@@ -1795,23 +1569,6 @@
 
 	footer p {
 		margin-right: auto;
-	}
-
-	.spin {
-		display: inline-grid;
-		place-items: center;
-		animation: spin 0.9s linear infinite;
-	}
-
-	.spin.small {
-		width: 14px;
-		height: 14px;
-	}
-
-	@keyframes spin {
-		to {
-			transform: rotate(360deg);
-		}
 	}
 
 	.about-pane {

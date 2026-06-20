@@ -2,9 +2,9 @@
 	import { fade } from 'svelte/transition';
 	import { tick } from 'svelte';
 	import EmptyChatState from '$lib/components/EmptyChatState.svelte';
-	import Composer from '$lib/components/Composer.svelte';
+	import Composer from '$lib/components/composer/Composer.svelte';
 	import HeroComposerFrame from '$lib/components/HeroComposerFrame.svelte';
-	import ChatThread from '$lib/components/ChatThread.svelte';
+	import ChatThread from '$lib/components/chat/ChatThread.svelte';
 	import FirstTurnFlight from '$lib/components/FirstTurnFlight.svelte';
 	import UserBubbleFlight from '$lib/components/UserBubbleFlight.svelte';
 	import {

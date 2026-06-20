@@ -1,16 +1,14 @@
 <script lang="ts">
 	import { onDestroy, tick } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { fade, fly } from 'svelte/transition';
+	import { fade } from 'svelte/transition';
 	import {
 		Check,
-		ChevronDown,
 		FileText,
 		Folder,
 		Loader,
 		Search,
 		Send,
-		Sparkles,
 		Square,
 		X
 	} from '@lucide/svelte';
@@ -20,6 +18,10 @@
 	import { shellStore } from '$lib/stores/shell.svelte';
 	import { matchesShortcut } from '$lib/keyboard-shortcuts';
 	import RichComposerInput from '$lib/components/RichComposerInput.svelte';
+	import ImageAttachments from '$lib/components/composer/ImageAttachments.svelte';
+	import MessageQueuePanel from '$lib/components/composer/MessageQueuePanel.svelte';
+	import ModelPicker from '$lib/components/composer/ModelPicker.svelte';
+	import SlashCommandMenu from '$lib/components/composer/SlashCommandMenu.svelte';
 	import { listSkills, listWorkspaces, forkSession } from '$lib/client/cometmind';
 	import {
 		filterFileIndex,
@@ -43,7 +45,7 @@
 	} from '$lib/skills/slash-commands';
 	import { formatDroppedFiles, readDroppedTextFiles } from '$lib/files/dropped-files';
 	import { workspaceLabel } from '$lib/sessions/group-by-workspace';
-	import { imageDataURL, isSupportedImageFile, readImageAttachments } from '$lib/files/images';
+	import { isSupportedImageFile, readImageAttachments } from '$lib/files/images';
 	import type { ImageAttachment, SkillResource } from '$lib/types';
 
 	let {
@@ -79,11 +81,6 @@
 	let value = $state('');
 	let images = $state<ImageAttachment[]>([]);
 	let input = $state<RichComposerInput | null>(null);
-	let modelOpen = $state(false);
-	let modelSearch = $state('');
-	let modelSearchInput = $state<HTMLInputElement | null>(null);
-	let queuePreviewOpen = $state(false);
-	let queuePicker = $state<HTMLDivElement | null>(null);
 	let skillMenu = $state<HTMLDivElement | null>(null);
 	let skills = $state<SkillResource[]>([]);
 	let skillsLoaded = $state(false);
@@ -200,39 +197,6 @@
 		const files = fileIndex?.files ?? [];
 		return filterFileIndex(files, mentionQuery);
 	});
-	let filteredModelOptions = $derived.by(() => {
-		const query = modelSearch.trim().toLowerCase();
-		if (!query) return modelStore.options;
-		return modelStore.options.filter(
-			(option) =>
-				option.label.toLowerCase().includes(query) ||
-				option.modelId.toLowerCase().includes(query) ||
-				option.providerName.toLowerCase().includes(query)
-		);
-	});
-	let groupedModelOptions = $derived.by(() => {
-		const groups: {
-			providerId: string;
-			providerName: string;
-			providerMethod: string;
-			options: ModelOption[];
-		}[] = [];
-		for (const option of filteredModelOptions) {
-			let group = groups.find((item) => item.providerId === option.providerId);
-			if (!group) {
-				group = {
-					providerId: option.providerId,
-					providerName: option.providerName,
-					providerMethod: option.providerMethod,
-					options: []
-				};
-				groups.push(group);
-			}
-			group.options.push(option);
-		}
-		return groups;
-	});
-
 	export function focus() {
 		void focusInput();
 	}
@@ -257,10 +221,6 @@
 			}
 		});
 		return () => cancelIdle(handle);
-	});
-
-	$effect(() => {
-		if (queuedCount === 0) queuePreviewOpen = false;
 	});
 
 	$effect(() => {
@@ -326,16 +286,6 @@
 			if (mentionSearchTimer) clearTimeout(mentionSearchTimer);
 			mentionSearchTimer = null;
 		};
-	});
-
-	$effect(() => {
-		if (!queuePreviewOpen) return;
-		function onPointerDown(e: PointerEvent) {
-			if (queuePicker?.contains(e.target as Node)) return;
-			queuePreviewOpen = false;
-		}
-		document.addEventListener('pointerdown', onPointerDown);
-		return () => document.removeEventListener('pointerdown', onPointerDown);
 	});
 
 	onDestroy(() => {
@@ -780,43 +730,6 @@
 		return `Use the \`${command.skillName}\` skill for this request. Load it with the \`load_skill\` tool before proceeding.${rest}`;
 	}
 
-	function selectModel(option: ModelOption) {
-		modelStore.select(option);
-		void onModelChange?.(option);
-		modelOpen = false;
-		modelSearch = '';
-	}
-
-	async function openModelMenu() {
-		if (modelStore.options.length === 0) return;
-		modelOpen = true;
-		modelSearch = '';
-		await tick();
-		modelSearchInput?.focus();
-		modelSearchInput?.select();
-	}
-
-	function toggleModelMenu() {
-		if (modelOpen) {
-			modelOpen = false;
-			modelSearch = '';
-			return;
-		}
-		void openModelMenu();
-	}
-
-	function closeModelMenu(e: FocusEvent) {
-		const next = e.relatedTarget as Node | null;
-		const current = e.currentTarget as Node;
-		if (next && current.contains(next)) return;
-		modelOpen = false;
-		modelSearch = '';
-	}
-
-	function toggleQueuePreview() {
-		queuePreviewOpen = !queuePreviewOpen;
-	}
-
 	function removeQueued(id: string) {
 		onRemoveQueued?.(id);
 	}
@@ -978,13 +891,7 @@
 	{/if}
 
 	{#if workspaceMenuOpen}
-		<div
-			class="skill-command-menu"
-			role="listbox"
-			aria-label="Workspace paths"
-			bind:this={skillMenu}
-			transition:fly={{ y: 6, duration: 120 }}
-		>
+		<SlashCommandMenu ariaLabel="Workspace paths" bind:menuRef={skillMenu}>
 			<div class="workspace-search-hint" aria-hidden="true">
 				<Search size={13} stroke-width={2} />
 				{#if workspaceSearchQuery}
@@ -1018,14 +925,9 @@
 					</button>
 				{/each}
 			{/if}
-		</div>
+		</SlashCommandMenu>
 	{:else if modelCommandMenuOpen}
-		<div
-			class="skill-command-menu model-command-menu"
-			role="listbox"
-			aria-label="Select model"
-			transition:fly={{ y: 6, duration: 120 }}
-		>
+		<SlashCommandMenu ariaLabel="Select model" class="model-command-menu">
 			<div class="workspace-search-hint" aria-hidden="true">
 				<Search size={13} stroke-width={2} />
 				{#if modelCommandQuery}
@@ -1068,15 +970,9 @@
 					</div>
 				{/each}
 			{/if}
-		</div>
+		</SlashCommandMenu>
 	{:else if skillMenuOpen}
-		<div
-			class="skill-command-menu"
-			role="listbox"
-			aria-label="Skill commands"
-			bind:this={skillMenu}
-			transition:fly={{ y: 6, duration: 120 }}
-		>
+		<SlashCommandMenu ariaLabel="Skill commands" bind:menuRef={skillMenu}>
 			{#if skillsLoading && !skillsLoaded}
 				<p class="skill-command-empty">Loading skills...</p>
 			{:else if filteredSlashOptions.length === 0}
@@ -1106,17 +1002,11 @@
 					</button>
 				{/each}
 			{/if}
-		</div>
+		</SlashCommandMenu>
 	{/if}
 
 	{#if mentionMenuOpen}
-		<div
-			class="skill-command-menu mention-menu"
-			role="listbox"
-			aria-label="Workspace files"
-			bind:this={mentionMenu}
-			transition:fly={{ y: 6, duration: 120 }}
-		>
+		<SlashCommandMenu ariaLabel="Workspace files" class="mention-menu" bind:menuRef={mentionMenu}>
 			{#if !fileIndexReady && filteredMentionFiles.length === 0}
 				<p class="skill-command-loading">
 					<Loader size={13} stroke-width={2} class="mention-spinner" />
@@ -1156,61 +1046,10 @@
 					Showing first {fileIndex?.files.length ?? 0}. Type to search all files.
 				</p>
 			{/if}
-		</div>
+		</SlashCommandMenu>
 	{/if}
 
-	{#if queuedCount > 0}
-		<div
-			class="queue-picker"
-			bind:this={queuePicker}
-			in:fly={{ y: 4, duration: 140 }}
-			out:fly={{ y: 4, duration: 120 }}
-		>
-			<button
-				type="button"
-				class="queue-banner"
-				class:open={queuePreviewOpen}
-				aria-live="polite"
-				aria-expanded={queuePreviewOpen}
-				aria-controls="queue-preview-panel"
-				onclick={toggleQueuePreview}
-			>
-				<span>{queuedCount} {queuedCount === 1 ? 'message' : 'messages'} queued</span>
-				<ChevronDown size={12} class={queuePreviewOpen ? 'expanded' : ''} />
-			</button>
-
-			{#if queuePreviewOpen}
-				<div
-					id="queue-preview-panel"
-					class="queue-preview"
-					role="region"
-					aria-label="Queued messages"
-					transition:fly={{ y: -4, duration: 120 }}
-				>
-					<ul class="queue-preview-list">
-						{#each queuedMessages as message, index (message.id)}
-							<li class="queue-preview-item">
-								<span class="queue-preview-index">{index + 1}</span>
-								<p class="queue-preview-text">{message.text}</p>
-								<button
-									type="button"
-									class="queue-remove"
-									aria-label={`Remove queued message ${index + 1}`}
-									onpointerdown={(e) => {
-										e.preventDefault();
-										e.stopPropagation();
-										removeQueued(message.id);
-									}}
-								>
-									<X size={12} stroke-width={2} />
-								</button>
-							</li>
-						{/each}
-					</ul>
-				</div>
-			{/if}
-		</div>
-	{/if}
+	<MessageQueuePanel {queuedCount} {queuedMessages} onRemove={removeQueued} />
 
 	<RichComposerInput
 		bind:this={input}
@@ -1229,89 +1068,11 @@
 		onmentionquery={onMentionQuery}
 	/>
 
-	{#if images.length > 0}
-		<div class="image-attachments" aria-label="Attached images">
-			{#each images as image (image.id)}
-				<div class="image-attachment">
-					<img src={imageDataURL(image)} alt={image.name ?? 'Attached image'} />
-					<button
-						type="button"
-						class="image-remove"
-						aria-label={`Remove ${image.name ?? 'image'}`}
-						onclick={() => removeImage(image.id)}
-					>
-						<X size={12} stroke-width={2} />
-					</button>
-				</div>
-			{/each}
-		</div>
-	{/if}
+	<ImageAttachments {images} onRemove={removeImage} />
 
 	<div class="composer-footer">
 		<div class="composer-tools">
-			<div class="model-picker" onfocusout={closeModelMenu}>
-				<button
-					class="model-button"
-					aria-label="Select model"
-					aria-expanded={modelOpen}
-					title={modelStore.options.length > 0
-						? 'Select model for new chats'
-						: 'Enable a model in Settings first'}
-					disabled={modelStore.options.length === 0}
-					onclick={toggleModelMenu}
-				>
-					<Sparkles size={14} stroke-width={1.8} />
-					<span>{modelStore.selected?.label ?? 'No enabled models'}</span>
-					<svg
-						width="10"
-						height="10"
-						viewBox="0 0 10 10"
-						fill="currentColor"
-						aria-hidden="true"
-					>
-						<path d="M2 4l3 3 3-3H2z" />
-					</svg>
-				</button>
-
-				{#if modelOpen}
-					<div class="model-menu" transition:fly={{ y: 6, duration: 120 }}>
-						<input
-							class="model-search"
-							bind:this={modelSearchInput}
-							bind:value={modelSearch}
-							placeholder="Search models..."
-							spellcheck="false"
-						/>
-						{#each groupedModelOptions as group (group.providerId)}
-							<div class="model-group" transition:fade={{ duration: 90 }}>
-								<div class="model-group-heading">
-									<strong>{group.providerName}</strong>
-									<small>{group.providerMethod}</small>
-								</div>
-								{#each group.options as option (option.id)}
-									<button
-										class="model-option"
-										onclick={() => selectModel(option)}
-									>
-										<span class="model-check">
-											{#if option.id === modelStore.selected?.id}<Check
-													size={14}
-													stroke-width={2}
-												/>{/if}
-										</span>
-										<span class="model-option-copy">
-											<strong>{option.label}</strong>
-											<small>{option.modelId}</small>
-										</span>
-									</button>
-								{/each}
-							</div>
-						{:else}
-							<p class="model-empty">No enabled models match your search.</p>
-						{/each}
-					</div>
-				{/if}
-			</div>
+			<ModelPicker {onModelChange} />
 			{#if hasWorkspace}
 				<button
 					type="button"

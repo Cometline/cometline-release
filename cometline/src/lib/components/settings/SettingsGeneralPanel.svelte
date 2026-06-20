@@ -1,5 +1,5 @@
 <script lang="ts">
-	import SettingsToggle from '$lib/components/SettingsToggle.svelte';
+	import SettingsToggle from './SettingsToggle.svelte';
 	import type { CometMindStorageSettings } from '$lib/settings/schema';
 
 	let {

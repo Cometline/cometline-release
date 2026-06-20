@@ -1,23 +1,22 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
-	import { fade, slide } from 'svelte/transition';
+	import { fade } from 'svelte/transition';
 	import {
 		Brain,
 		Check,
-		ChevronDown,
-		CircleCheck,
-		CircleX,
 		Copy,
-		LoaderCircle,
-		Terminal,
 		TriangleAlert
 	} from '@lucide/svelte';
 	import { chatStore, type ChatItem } from '$lib/stores/chat.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
-	import { projectAvatarSrc, projectAvatarSrcset } from '$lib/project-icon';
-	import { chatDebug, chatDebugEnabled, summarizeChatItem } from '../debug/chat';
+	import { chatDebug, chatDebugEnabled, summarizeChatItem } from '$lib/debug/chat';
 	import AssistantMarkdown from '$lib/components/AssistantMarkdown.svelte';
 	import ThinkingIndicator from '$lib/components/ThinkingIndicator.svelte';
+	import ThinkingBlock from '$lib/components/chat/ThinkingBlock.svelte';
+	import ToolFoldPanel from '$lib/components/chat/ToolFoldPanel.svelte';
+	import SubagentPanel from '$lib/components/chat/SubagentPanel.svelte';
+	import JumpToBottom from '$lib/components/chat/JumpToBottom.svelte';
+	import ThreadAvatar from '$lib/components/chat/ThreadAvatar.svelte';
 	import { imageDataURL } from '$lib/files/images';
 	import { memoryUpdateHint, memoryUpdateTooltip } from '$lib/memory-updates';
 	import {
@@ -32,7 +31,6 @@
 		reasoningTextLength
 	} from '$lib/conversation/reasoning';
 
-	const FOLD_IN = { duration: 180 };
 	const TRANSCRIPT_IN = { duration: 140 };
 
 	let {
@@ -166,11 +164,6 @@
 		expandedMemoryInThinking = toggleExpanded(expandedMemoryInThinking, segmentKey);
 	}
 
-	function thinkingLabel(memories?: InjectedMemory[]) {
-		if (!memories?.length) return 'Thinking';
-		return `Thinking · ${memories.length} memor${memories.length === 1 ? 'y' : 'ies'}`;
-	}
-
 	function subagentExpanded(id: string) {
 		const override = subagentFold.get(id);
 		if (override !== undefined) return override;
@@ -181,29 +174,6 @@
 		const next = new Map(subagentFold);
 		next.set(id, !subagentExpanded(id));
 		subagentFold = next;
-	}
-
-	function subagentProgressLabel(item: Extract<ChatItem, { type: 'subagent' }>) {
-		const toolCount = item.progress.filter((entry) => entry.kind === 'tool').length;
-		const prefix =
-			item.status === 'failed'
-					? 'OpenCode failed'
-					: item.status === 'cancelled'
-						? 'OpenCode cancelled'
-						: `OpenCode · ${item.agentName}`;
-		if (toolCount > 0) {
-			return `${prefix} · ${toolCount} tool${toolCount === 1 ? '' : 's'}`;
-		}
-		return prefix;
-	}
-
-	function subagentVisibleProgress(item: Extract<ChatItem, { type: 'subagent' }>) {
-		if (item.status === 'running') {
-			return item.progress.filter(
-				(entry) => !(entry.kind === 'stream' && entry.channel === 'message')
-			);
-		}
-		return item.progress;
 	}
 
 	async function copyMessage(id: string, text: string) {
@@ -223,23 +193,6 @@
 	// Drives auto-expand: only the reasoning stream should expand the block.
 	function thinkingActive(pending?: boolean) {
 		return pending === true;
-	}
-
-	// Keeps a scrollable element pinned to its bottom as its text content grows
-	// (used by the live reasoning area so the latest thinking stays visible).
-	// The `text` param is the reactive trigger: passing the latest reasoning text
-	// re-runs `update` whenever it changes.
-	function autoScrollBottom(node: HTMLElement, text: string) {
-		const pin = (value: string) => {
-			void value;
-			node.scrollTop = node.scrollHeight;
-		};
-		pin(text);
-		return {
-			update(value: string) {
-				pin(value);
-			}
-		};
 	}
 
 	function isNearBottom(element: HTMLElement) {
@@ -365,16 +318,6 @@
 		const status = item.pending ? 'running' : item.error ? 'fail' : 'success';
 		const duration = toolDurationLabel(item);
 		return duration ? `${item.toolName} → ${status} · ${duration}` : `${item.toolName} → ${status}`;
-	}
-
-	function formatToolInput(input: unknown) {
-		if (input == null) return '';
-		if (typeof input === 'string') return input.trim();
-		try {
-			return JSON.stringify(input, null, 2);
-		} catch {
-			return String(input);
-		}
 	}
 
 	let heroGlowColor = $derived(settingsStore.settings.appearance.heroComposer.glowColor);
@@ -615,110 +558,30 @@
 	</div>
 {/snippet}
 
-{#snippet thinkingBlock(entry: Extract<TimelineEntry, { kind: 'reasoning' }>, hostId: string)}
-	{@const segmentKey = `${hostId}-seg-${entry.segmentIndex}`}
-	<div class="fold-panel thinking-panel">
-		<button
-			type="button"
-			class="fold-toggle thinking-toggle"
-			aria-expanded={thinkingExpanded(segmentKey, entry.pending)}
-			onclick={() => toggleThinking(segmentKey, entry.pending)}
-		>
-			<Brain size={13} />
-			<span>{thinkingLabel(entry.memories)}</span>
-			{#if thinkingActive(entry.pending) && !(hostId === streamingAssistantId && sessionStreaming)}
-				<LoaderCircle size={12} class="spin" />
-			{/if}
-			<ChevronDown
-				size={13}
-				class={thinkingExpanded(segmentKey, entry.pending) ? 'expanded' : ''}
-			/>
-		</button>
-		{#if thinkingExpanded(segmentKey, entry.pending)}
-			<div class="fold-body thinking-body" transition:slide={FOLD_IN}>
-				{#if entry.memories?.length}
-					<div class="thinking-memories">
-						<button
-							type="button"
-							class="fold-toggle memory-toggle"
-							aria-expanded={memoryInThinkingExpanded(segmentKey)}
-							onclick={() => toggleMemoryInThinking(segmentKey)}
-						>
-							<Brain size={12} />
-							<span>Memories used · {entry.memories.length}</span>
-							<ChevronDown
-								size={12}
-								class={memoryInThinkingExpanded(segmentKey) ? 'expanded' : ''}
-							/>
-						</button>
-						{#if memoryInThinkingExpanded(segmentKey)}
-							<div class="thinking-memory-body" transition:slide={FOLD_IN}>
-								<div class="memory-chips">
-									{#each entry.memories as mem (mem.id)}
-										<span class="memory-chip" title={mem.content}>
-											{mem.kind}: {mem.content}
-										</span>
-									{/each}
-								</div>
-							</div>
-						{/if}
-					</div>
-				{/if}
-				<div class="thinking-reasoning">
-					<p use:autoScrollBottom={entry.text}>
-						{entry.text || 'Thinking…'}
-					</p>
-				</div>
-			</div>
-		{/if}
-	</div>
-{/snippet}
-
-{#snippet toolFoldCard(item: Extract<ChatItem, { type: 'tool' }>)}
-	<div class="fold-panel tool-fold-panel" class:error={!!item.error}>
-		<button
-			type="button"
-			class="fold-toggle tool-fold-toggle"
-			aria-expanded={toolOutputExpanded(item)}
-			onclick={() => toggleToolOutput(item.id)}
-		>
-			<Terminal size={13} />
-			<span>{toolFoldLabel(item)}</span>
-			{#if item.pending}
-				<LoaderCircle size={12} class="spin" />
-			{:else if item.error}
-				<TriangleAlert size={12} />
-			{:else}
-				<CircleCheck size={12} />
-			{/if}
-			<ChevronDown size={13} class={toolOutputExpanded(item) ? 'expanded' : ''} />
-		</button>
-		{#if toolOutputExpanded(item)}
-			<div class="fold-body tool-output-body" transition:slide={FOLD_IN}>
-				{#if formatToolInput(item.input)}
-					<pre class="tool-input-text">{formatToolInput(item.input)}</pre>
-				{/if}
-				{#if item.error}
-					<pre class="tool-error-text">{item.error}</pre>
-				{:else if item.output}
-					<pre>{item.output}</pre>
-				{/if}
-				{#if item.pending && !item.output && !item.error}
-					<pre>Running…</pre>
-				{/if}
-			</div>
-		{/if}
-	</div>
-{/snippet}
-
 {#snippet assistantStack(item: Extract<ChatItem, { type: 'assistant' }>)}
 	{@const timeline = buildAssistantTimeline(item.id, threadItems, thinkingForAssistant)}
 	<div class="assistant-stack">
 		{#each timeline as entry (`${entry.kind}-${entry.kind === 'reasoning' ? entry.segmentIndex : entry.tool.id}`)}
 			{#if entry.kind === 'reasoning'}
-				{@render thinkingBlock(entry, item.id)}
+				{@const segmentKey = `${item.id}-seg-${entry.segmentIndex}`}
+				<ThinkingBlock
+					text={entry.text}
+					pending={entry.pending}
+					memories={entry.memories}
+					expanded={thinkingExpanded(segmentKey, entry.pending)}
+					memoryExpanded={memoryInThinkingExpanded(segmentKey)}
+					showSpinner={thinkingActive(entry.pending) &&
+						!(item.id === streamingAssistantId && sessionStreaming)}
+					onToggle={() => toggleThinking(segmentKey, entry.pending)}
+					onToggleMemory={() => toggleMemoryInThinking(segmentKey)}
+				/>
 			{:else}
-				{@render toolFoldCard(entry.tool)}
+				<ToolFoldPanel
+					item={entry.tool}
+					label={toolFoldLabel(entry.tool)}
+					expanded={toolOutputExpanded(entry.tool)}
+					onToggle={() => toggleToolOutput(entry.tool.id)}
+				/>
 			{/if}
 		{/each}
 		{#if item.text}
@@ -774,22 +637,13 @@
 				in:fade={transcriptFadeIn}
 			>
 				{#if awaitingFirstAssistant && !firstUserId}
-					<div
-						class="row assistant-row gap-2.5 md:gap-3 lg:gap-4 flight-placeholder"
-						aria-hidden="true"
-					>
-						<div
-							class="avatar-mini size-9 shrink-0 rounded-full border border-gray-400 md:size-10 lg:size-11 xl:size-12"
-							class:avatar-flight-hidden={!firstTurnFlightDone}
-							data-flight-target="avatar"
-						>
-							<img
-								src={projectAvatarSrc(iconVariant, 96)}
-								srcset={projectAvatarSrcset(iconVariant)}
-								sizes="(min-width: 1280px) 48px, (min-width: 1024px) 44px, (min-width: 768px) 40px, 36px"
-								alt=""
-							/>
-						</div>
+					<div class="row assistant-row flight-placeholder" aria-hidden="true">
+						<ThreadAvatar
+							variant="avatar"
+							{iconVariant}
+							flightHidden={!firstTurnFlightDone}
+							flightTarget="avatar"
+						/>
 						{#if firstAssistantItem && showAssistantRow(firstAssistantItem)}
 							{@render assistantStack(firstAssistantItem)}
 						{:else if sessionStreaming}
@@ -805,14 +659,11 @@
 				{#each threadItems as item, index (item.id)}
 					{#if item.type === 'user'}
 						<div
-							class="row user-row gap-2.5 md:gap-3 lg:gap-4"
+							class="row user-row"
 							class:continuation-row={!startsSpeakerRun(index, 'user')}
 							data-user-item-id={item.id}
 						>
-							<div
-								class="avatar-gutter size-9 shrink-0 md:size-10 lg:size-11 xl:size-12"
-								aria-hidden="true"
-							></div>
+							<ThreadAvatar variant="gutter" {iconVariant} />
 							<div class="user-stack">
 								<div
 									class="bubble user-bubble"
@@ -860,22 +711,16 @@
 						</div>
 						{#if showFirstTurnAvatarSlot() && item.id === firstUserId}
 							<div
-								class="row assistant-row gap-2.5 md:gap-3 lg:gap-4"
+								class="row assistant-row"
 								class:flight-placeholder={!firstAssistantId}
 								aria-hidden={!firstAssistantId}
 							>
-								<div
-									class="avatar-mini size-9 shrink-0 rounded-full border border-gray-400 md:size-10 lg:size-11 xl:size-12"
-									class:avatar-flight-hidden={!firstTurnFlightDone}
-									data-flight-target="avatar"
-								>
-									<img
-										src={projectAvatarSrc(iconVariant, 96)}
-										srcset={projectAvatarSrcset(iconVariant)}
-										sizes="(min-width: 1280px) 48px, (min-width: 1024px) 44px, (min-width: 768px) 40px, 36px"
-										alt=""
-									/>
-								</div>
+								<ThreadAvatar
+									variant="avatar"
+									{iconVariant}
+									flightHidden={!firstTurnFlightDone}
+									flightTarget="avatar"
+								/>
 								{#if firstAssistantItem && showAssistantRow(firstAssistantItem)}
 									{@render assistantStack(firstAssistantItem)}
 								{:else if sessionStreaming}
@@ -889,137 +734,43 @@
 						{/if}
 					{:else if item.type === 'assistant' && showAssistantRow(item) && firstAssistantInNormalList(item)}
 						<div
-							class="row assistant-row gap-2.5 md:gap-3 lg:gap-4"
+							class="row assistant-row"
 							class:continuation-row={!startsSpeakerRun(index, 'assistant')}
 						>
 							{#if startsSpeakerRun(index, 'assistant')}
-								<div
-									class="avatar-mini size-9 shrink-0 rounded-full border border-gray-400 md:size-10 lg:size-11 xl:size-12"
-								>
-									<img
-										src={projectAvatarSrc(iconVariant, 96)}
-										srcset={projectAvatarSrcset(iconVariant)}
-										sizes="(min-width: 1280px) 48px, (min-width: 1024px) 44px, (min-width: 768px) 40px, 36px"
-										alt=""
-									/>
-								</div>
+								<ThreadAvatar variant="avatar" {iconVariant} />
 							{:else}
-								<div
-									class="avatar-gutter size-9 shrink-0 md:size-10 lg:size-11 xl:size-12"
-									aria-hidden="true"
-								></div>
+								<ThreadAvatar variant="gutter" {iconVariant} />
 							{/if}
 							{@render assistantStack(item)}
 						</div>
 					{:else if item.type === 'tool' && !isToolInBuffer(item)}
 						<div
-							class="row tool-row gap-2.5 md:gap-3 lg:gap-4"
+							class="row tool-row"
 							class:continuation-row={!startsSpeakerRun(index, 'assistant')}
 						>
-							<div
-								class="avatar-gutter size-9 shrink-0 md:size-10 lg:size-11 xl:size-12"
-								aria-hidden="true"
-							></div>
+							<ThreadAvatar variant="gutter" {iconVariant} />
 							<div class="tool-stack">
-								{@render toolFoldCard(item)}
+								<ToolFoldPanel
+									{item}
+									label={toolFoldLabel(item)}
+									expanded={toolOutputExpanded(item)}
+									onToggle={() => toggleToolOutput(item.id)}
+								/>
 							</div>
 						</div>
 					{:else if item.type === 'subagent'}
 						<div
-							class="row tool-row subagent-row gap-2.5 md:gap-3 lg:gap-4"
+							class="row tool-row subagent-row"
 							class:continuation-row={!startsSpeakerRun(index, 'assistant')}
 						>
-							<div
-								class="avatar-gutter size-9 shrink-0 md:size-10 lg:size-11 xl:size-12"
-								aria-hidden="true"
-							></div>
+							<ThreadAvatar variant="gutter" {iconVariant} />
 							<div class="subagent-stack">
-								<div class="fold-panel subagent-panel" class:pending={item.pending}>
-									<div class="subagent-header">
-										<button
-											type="button"
-											class="fold-toggle subagent-toggle"
-											aria-expanded={subagentExpanded(item.id)}
-											onclick={() => toggleSubagent(item.id)}
-										>
-											<Terminal size={13} />
-											<span>{subagentProgressLabel(item)}</span>
-											{#if item.pending}
-												<LoaderCircle size={12} class="spin" />
-											{:else if item.status === 'failed'}
-												<TriangleAlert size={12} />
-											{:else if item.status === 'cancelled'}
-												<CircleX size={12} />
-											{:else}
-												<CircleCheck size={12} />
-											{/if}
-											<ChevronDown
-												size={13}
-												class={subagentExpanded(item.id) ? 'expanded' : ''}
-											/>
-										</button>
-										{#if item.pending}
-											<button
-												type="button"
-												class="subagent-cancel"
-												onclick={() => chatStore.cancelSubagent(item.childSessionId)}
-											>
-												Cancel
-											</button>
-										{/if}
-									</div>
-									{#if subagentExpanded(item.id)}
-										{@const visibleProgress = subagentVisibleProgress(item)}
-										<div
-											class="fold-body subagent-body m-1"
-											transition:slide={FOLD_IN}
-										>
-											<p class="subagent-purpose">{item.purpose}</p>
-											{#if visibleProgress.length > 0}
-												<div class="subagent-progress">
-													{#each visibleProgress as entry, entryIndex (`${item.id}-progress-${entry.kind}-${entryIndex}`)}
-														{#if entry.kind === 'tool'}
-															<div
-																class="subagent-tool"
-																class:pending={entry.status ===
-																	'pending' ||
-																	entry.status === 'in_progress'}
-															>
-																<div class="subagent-tool-header">
-																	<Terminal size={12} />
-																	<span class="subagent-tool-name"
-																		>{entry.title}</span
-																	>
-																	{#if entry.status}
-																		<span
-																			class="subagent-tool-status"
-																			>{entry.status}</span
-																		>
-																	{/if}
-																</div>
-															</div>
-														{:else if entry.text.trim()}
-															<p
-																class="subagent-stream"
-																class:subagent-thought={entry.channel ===
-																	'thought'}
-																class:subagent-plan={entry.channel ===
-																	'plan'}
-															>
-																{entry.text}
-															</p>
-														{/if}
-													{/each}
-												</div>
-											{/if}
-											{#if item.summary}
-												<div class="subagent-summary">
-													<p>{item.summary}</p>
-												</div>
-											{/if}
-										</div>
-									{/if}
-								</div>
+								<SubagentPanel
+									{item}
+									expanded={subagentExpanded(item.id)}
+									onToggle={() => toggleSubagent(item.id)}
+								/>
 							</div>
 						</div>
 					{:else if item.type === 'memory' && !isMemoryInBuffer(item)}
@@ -1062,57 +813,11 @@
 		</div>
 	</div>
 	{#if showJumpToBottom}
-		<button
-			type="button"
-			class="jump-to-bottom"
-			onclick={jumpToBottom}
-			aria-label="Jump to latest"
-		>
-			<ChevronDown size={16} />
-			<span>Jump to latest</span>
-		</button>
+		<JumpToBottom onclick={jumpToBottom} />
 	{/if}
 </div>
 
 <style>
-	.thinking-memories {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
-	.memory-toggle {
-		font-size: 11px;
-		padding: 4px 9px;
-	}
-
-	.thinking-memory-body {
-		border: 1px solid var(--border-soft);
-		border-radius: 10px;
-		padding: 8px 10px;
-		background: rgba(0, 102, 204, 0.04);
-	}
-
-	.memory-chips {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
-	.memory-chip {
-		min-width: 0;
-		max-width: 100%;
-		overflow-wrap: anywhere;
-		word-break: break-word;
-		white-space: normal;
-		padding: 5px 10px;
-		border-radius: 10px;
-		background: rgba(0, 102, 204, 0.08);
-		color: var(--text-main);
-		font-size: 11px;
-		line-height: 1.45;
-	}
-
 	.thread-wrap {
 		position: absolute;
 		inset: 0;
@@ -1125,31 +830,6 @@
 		scrollbar-gutter: stable;
 		padding: 32px var(--chat-gutter) var(--thread-padding-bottom);
 		scrollbar-width: thin;
-	}
-
-	.jump-to-bottom {
-		position: absolute;
-		bottom: 20px;
-		left: 50%;
-		transform: translateX(-50%);
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		padding: 8px 14px;
-		border: 1px solid var(--border-soft);
-		border-radius: 999px;
-		background: rgba(255, 255, 255, 0.92);
-		color: var(--text-main);
-		font-size: 12px;
-		font-weight: 600;
-		box-shadow: 0 4px 16px rgba(15, 23, 42, 0.12);
-		cursor: pointer;
-		z-index: 10;
-		backdrop-filter: blur(6px);
-	}
-
-	.jump-to-bottom:hover {
-		background: rgba(255, 255, 255, 1);
 	}
 
 	.thread-inner {
@@ -1224,6 +904,7 @@
 	.row {
 		display: flex;
 		width: 100%;
+		gap: var(--chat-row-gap);
 	}
 
 	.continuation-row {
@@ -1258,17 +939,9 @@
 		align-items: flex-start;
 	}
 
-	.avatar-gutter {
-		flex: 0 0 auto;
-	}
-
 	.tool-stack {
 		min-width: 0;
 		flex: 1;
-		max-width: calc(var(--chat-content-max) * 0.35);
-	}
-
-	.tool-stack:has(.tool-output-body) {
 		max-width: var(--chat-assistant-column);
 	}
 
@@ -1285,10 +958,6 @@
 		pointer-events: none;
 	}
 
-	.avatar-flight-hidden {
-		visibility: hidden;
-	}
-
 	.assistant-stack {
 		display: flex;
 		flex-direction: column;
@@ -1297,141 +966,6 @@
 		min-width: 0;
 		flex: 0 1 auto;
 		align-items: flex-start;
-	}
-
-	.fold-panel {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
-	.tool-fold-panel.error .tool-fold-toggle {
-		border-color: rgba(239, 68, 68, 0.35);
-		color: #b91c1c;
-	}
-
-	.tool-input-text {
-		margin: 0 0 8px;
-		font-size: 11px;
-		color: var(--text-muted);
-		white-space: pre-wrap;
-		word-break: break-word;
-	}
-
-	.fold-toggle {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		align-self: flex-start;
-		border: 1px solid var(--border-soft);
-		background: rgba(255, 255, 255, 0.72);
-		color: var(--text-muted);
-		border-radius: 999px;
-		padding: 5px 10px;
-		font-size: 12px;
-		font-weight: 600;
-		cursor: pointer;
-	}
-
-	.fold-toggle:hover {
-		background: rgba(255, 255, 255, 0.92);
-		color: var(--text-main);
-	}
-
-	.fold-toggle :global(svg.expanded) {
-		transform: rotate(180deg);
-	}
-
-	.fold-body {
-		border: 1px solid var(--border-soft);
-		background: rgba(255, 255, 255, 0.68);
-		border-radius: 12px;
-		padding: 10px 12px;
-		color: var(--text-muted);
-		box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
-	}
-
-	.fold-body p {
-		margin: 0;
-		font-size: 12px;
-		line-height: 1.5;
-		white-space: pre-wrap;
-		word-break: break-word;
-		max-height: 220px;
-		overflow: auto;
-		scrollbar-gutter: stable;
-	}
-
-	.thinking-body {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-	}
-
-	.thinking-reasoning p {
-		margin: 0;
-		font-size: 12px;
-		line-height: 1.5;
-		white-space: pre-wrap;
-		word-break: break-word;
-		max-height: 220px;
-		overflow: auto;
-		scrollbar-gutter: stable;
-		color: var(--text-muted);
-	}
-
-	.tool-output-body {
-		margin-top: 8px;
-		border: 1px solid var(--border-soft);
-		background: rgba(15, 23, 42, 0.03);
-		border-radius: 10px;
-		padding: 8px 10px;
-		color: var(--text-muted);
-	}
-
-	.tool-output-body pre {
-		margin: 0;
-		font-size: 12px;
-		line-height: 1.5;
-		font-family: inherit;
-		white-space: pre-wrap;
-		word-break: normal;
-		overflow-wrap: break-word;
-		max-height: 220px;
-		overflow: auto;
-		scrollbar-gutter: stable;
-	}
-
-	.tool-output-body pre + pre {
-		margin-top: 8px;
-		padding-top: 8px;
-		border-top: 1px solid var(--border-soft);
-	}
-
-	.tool-error-text {
-		color: #b42318;
-	}
-
-	.avatar-mini {
-		flex: 0 0 auto;
-		aspect-ratio: 1;
-		background: linear-gradient(145deg, #ffffff, #eef2f6);
-		box-shadow: 0 5px 14px rgba(15, 23, 42, 0.06);
-		overflow: hidden;
-	}
-
-	@media (min-width: 1024px) {
-		.avatar-mini {
-			box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
-		}
-	}
-
-	.avatar-mini img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		border-radius: 50%;
-		display: block;
 	}
 
 	.assistant-activity-spinner {
@@ -1544,6 +1078,26 @@
 		flex-shrink: 0;
 	}
 
+	.memory-chips {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.memory-chip {
+		min-width: 0;
+		max-width: 100%;
+		overflow-wrap: anywhere;
+		word-break: break-word;
+		white-space: normal;
+		padding: 5px 10px;
+		border-radius: 10px;
+		background: rgba(0, 102, 204, 0.08);
+		color: var(--text-main);
+		font-size: 11px;
+		line-height: 1.45;
+	}
+
 	.error-card p {
 		margin: 0;
 		font-size: 12px;
@@ -1568,150 +1122,6 @@
 		min-width: 0;
 		flex: 1;
 		max-width: var(--chat-assistant-column);
-	}
-
-	.subagent-panel {
-		width: 100%;
-		min-width: 0;
-	}
-
-	.subagent-panel.pending .subagent-toggle {
-		border-color: rgba(59, 130, 246, 0.22);
-	}
-
-	.subagent-header {
-		display: flex;
-		align-items: stretch;
-		gap: 8px;
-		min-width: 0;
-	}
-
-	.subagent-toggle {
-		min-width: 0;
-		flex: 1;
-	}
-
-	.subagent-cancel {
-		flex: 0 0 auto;
-		border: 1px solid var(--border-soft);
-		border-radius: 999px;
-		padding: 0 12px;
-		font-size: 12px;
-		font-weight: 600;
-		cursor: pointer;
-		background: var(--surface-muted, var(--bg-muted));
-		color: var(--text-muted);
-	}
-
-	.subagent-cancel:hover {
-		border-color: color-mix(in srgb, var(--accent) 28%, var(--border-soft));
-		color: var(--text-main);
-	}
-
-	.subagent-body {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-		align-self: stretch;
-		box-sizing: border-box;
-		width: 100%;
-		min-width: 0;
-	}
-
-	.subagent-purpose {
-		margin: 0;
-		font-size: 12px;
-		line-height: 1.45;
-		color: var(--text-main);
-	}
-
-	.subagent-progress {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		width: 100%;
-		min-width: 0;
-	}
-
-	.subagent-stream,
-	.subagent-summary p {
-		margin: 0;
-		min-width: 0;
-		width: 100%;
-		max-width: 100%;
-		font-size: 11px;
-		line-height: 1.5;
-		white-space: pre-wrap;
-		overflow-wrap: break-word;
-		word-break: normal;
-		color: var(--text-muted);
-	}
-
-	.subagent-thought {
-		font-style: italic;
-	}
-
-	.subagent-plan {
-		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-	}
-
-	.subagent-tool {
-		border: 1px solid var(--border-soft);
-		border-radius: 10px;
-		background: rgba(255, 255, 255, 0.55);
-		padding: 8px 10px;
-	}
-
-	.subagent-tool.pending {
-		border-color: rgba(59, 130, 246, 0.18);
-	}
-
-	.subagent-tool-header {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-size: 11px;
-		color: var(--text-main);
-	}
-
-	.subagent-tool-header :global(svg) {
-		flex-shrink: 0;
-		color: var(--text-muted);
-	}
-
-	.subagent-tool-name {
-		font-weight: 600;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.subagent-tool-status {
-		margin-left: auto;
-		font-size: 10px;
-		font-weight: 600;
-		color: var(--text-muted);
-		text-transform: lowercase;
-	}
-
-	.subagent-summary {
-		box-sizing: border-box;
-		width: 100%;
-		min-width: 0;
-		max-width: 100%;
-		padding-top: 8px;
-		border-top: 1px solid var(--border-soft);
-	}
-
-	.subagent-summary p {
-		display: block;
-		box-sizing: border-box;
-		white-space: normal;
-		max-height: 220px;
-		overflow-x: hidden;
-		overflow-y: auto;
-		scrollbar-gutter: stable;
 	}
 
 </style>

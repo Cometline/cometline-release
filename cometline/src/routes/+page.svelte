@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import EmptyChatState from '$lib/components/EmptyChatState.svelte';
-	import Composer from '$lib/components/Composer.svelte';
+	import Composer from '$lib/components/composer/Composer.svelte';
 	import HeroComposerFrame from '$lib/components/HeroComposerFrame.svelte';
 	import { sessionStore } from '$lib/stores/session.svelte';
 	import { createSession } from '$lib/client/cometmind';

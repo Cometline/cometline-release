@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { FolderOpen } from '@lucide/svelte';
-	import SettingsToggle from '$lib/components/SettingsToggle.svelte';
+	import SettingsToggle from './SettingsToggle.svelte';
 	import { formatIdList, parseIdList, type CometMindSettings } from '$lib/cometmind-settings';
 	import type { ProviderConfig } from '$lib/types';
 	import { shellStore } from '$lib/stores/shell.svelte';
