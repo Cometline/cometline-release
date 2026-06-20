@@ -1,4 +1,5 @@
 import type { ChatItem, StreamEvent } from '../types';
+import { anyReasoningPending, getReasoningSegments, reasoningTextLength } from '../conversation/reasoning';
 
 type DebugGlobal = typeof globalThis & { __cometlineDebugChat?: boolean };
 
@@ -69,9 +70,13 @@ export function summarizeChatItem(item: ChatItem) {
 			textLength: item.text.length,
 			textPreview: preview(item.text),
 			pending: item.pending,
-			reasoningLength: item.reasoning?.text.length ?? 0,
-			reasoningPreview: preview(item.reasoning?.text),
-			reasoningPending: item.reasoning?.pending
+			reasoningLength: reasoningTextLength(item),
+			reasoningPreview: preview(
+				getReasoningSegments(item.reasoning)
+					.map((segment) => segment.text)
+					.join('\n\n')
+			),
+			reasoningPending: anyReasoningPending(item)
 		};
 	}
 	if (item.type === 'user') {

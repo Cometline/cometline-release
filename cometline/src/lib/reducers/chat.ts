@@ -1,5 +1,11 @@
 import type { ChatItem, StreamEvent, SubagentProgressEntry } from '$lib/types';
 import {
+	cloneReasoning as cloneReasoningSegments,
+	getReasoningSegments,
+	hasReasoning,
+	type ReasoningSegment
+} from '../conversation/reasoning';
+import {
 	chatDebug,
 	summarizeChatItem,
 	summarizeChatItems,
@@ -49,26 +55,62 @@ function cleanErrorMessage(message: string) {
 
 function removeEmptyAssistant(items: ChatItem[], assistant: AssistantItem | null): ChatItem[] {
 	if (!assistant) return items;
-	if (assistant.text.trim() || assistant.reasoning?.text.trim()) return items;
+	if (assistant.text.trim() || hasReasoning(assistant)) return items;
 	return items.filter((item) => item.id !== assistant.id);
 }
 
-function attachReasoning(
+function withReasoningSegments(
 	assistant: AssistantItem,
-	reasoning: { text: string; pending: boolean }
+	segments: ReasoningSegment[]
 ): AssistantItem {
-	if (!reasoning.text.trim() && !reasoning.pending) return assistant;
-	const chunk = reasoning.text;
-	if (assistant.reasoning?.text) {
-		return {
-			...assistant,
-			reasoning: {
-				text: assistant.reasoning.text + '\n\n' + chunk,
-				pending: reasoning.pending
-			}
-		};
+	if (segments.length === 0) {
+		const { reasoning: _reasoning, ...rest } = assistant;
+		return rest;
 	}
-	return { ...assistant, reasoning: { text: chunk, pending: reasoning.pending } };
+	return { ...assistant, reasoning: { segments } };
+}
+
+function ensureReasoningSegments(assistant: AssistantItem): ReasoningSegment[] {
+	return [...getReasoningSegments(assistant.reasoning)];
+}
+
+function pushReasoningSegment(assistant: AssistantItem): AssistantItem {
+	const segments = ensureReasoningSegments(assistant);
+	segments.push({ text: '', pending: true });
+	return withReasoningSegments(assistant, segments);
+}
+
+function syncActiveReasoningSegment(
+	assistant: AssistantItem,
+	active: { text: string; pending: boolean }
+): AssistantItem {
+	const segments = ensureReasoningSegments(assistant);
+	if (segments.length === 0) {
+		segments.push({ text: active.text, pending: active.pending });
+	} else {
+		segments[segments.length - 1] = { text: active.text, pending: active.pending };
+	}
+	return withReasoningSegments(assistant, segments);
+}
+
+function finalizeActiveReasoningSegment(assistant: AssistantItem): AssistantItem {
+	const segments = ensureReasoningSegments(assistant);
+	if (segments.length === 0) return assistant;
+	const last = segments.length - 1;
+	segments[last] = { ...segments[last], pending: false };
+	return withReasoningSegments(assistant, segments);
+}
+
+function finalizeAllReasoningSegments(assistant: AssistantItem): AssistantItem {
+	const segments = ensureReasoningSegments(assistant).map((segment) => ({
+		...segment,
+		pending: false
+	}));
+	return withReasoningSegments(assistant, segments);
+}
+
+function currentAfterSegment(assistant: AssistantItem): number {
+	return Math.max(0, ensureReasoningSegments(assistant).length - 1);
 }
 
 function settlePendingTools(items: ChatItem[]) {
@@ -83,27 +125,6 @@ function settlePendingTools(items: ChatItem[]) {
 	}
 }
 
-function settleTurn(ctx: {
-	assistant: AssistantItem | null;
-	reasoning: { text: string; pending: boolean } | null;
-}) {
-	if (ctx.reasoning) ctx.reasoning.pending = false;
-	if (ctx.assistant?.reasoning) ctx.assistant.reasoning.pending = false;
-	if (ctx.assistant && ctx.reasoning) {
-		if (ctx.assistant.reasoning) {
-			ctx.assistant.reasoning.pending = ctx.reasoning.pending;
-		} else {
-			const next = attachReasoning(ctx.assistant, ctx.reasoning);
-			ctx.assistant.text = next.text;
-			ctx.assistant.reasoning = next.reasoning;
-		}
-		ctx.reasoning = null;
-	}
-	if (ctx.assistant) {
-		ctx.assistant.pending = false;
-		if (ctx.assistant.reasoning) ctx.assistant.reasoning.pending = false;
-	}
-}
 
 function appendSubagentProgress(
 	progress: SubagentProgressEntry[],
@@ -172,7 +193,7 @@ function applyEvent(
 			id,
 			type: 'assistant',
 			text: '',
-			reasoning: { text: '', pending: true }
+			reasoning: { segments: [{ text: '', pending: true }] }
 		};
 		pushAssistant(next);
 		return next;
@@ -188,7 +209,7 @@ function applyEvent(
 			return assistant.current;
 		}
 		const last = items[items.length - 1];
-		if (last?.type === 'assistant' && !last.text.trim() && last.reasoning?.text.trim()) {
+		if (last?.type === 'assistant' && !last.text.trim() && hasReasoning(last)) {
 			assistant.current = last;
 			chatDebug('reducer:assistant-host', {
 				choice: 'reuse-last-reasoning-only',
@@ -230,21 +251,35 @@ function applyEvent(
 		return next;
 	}
 
+	function settleTurn() {
+		if (reasoning.current) reasoning.current.pending = false;
+		if (assistant.current) {
+			let next = assistant.current;
+			if (reasoning.current) {
+				next = syncActiveReasoningSegment(next, { ...reasoning.current, pending: false });
+			} else {
+				next = finalizeActiveReasoningSegment(next);
+			}
+			next = { ...next, pending: false };
+			next = finalizeAllReasoningSegments(next);
+			publishAssistant(next);
+		}
+		reasoning.current = null;
+	}
+
 	function syncReasoningPreview() {
 		const host = ensureReasoningHost();
 		if (!reasoning.current) return host;
-		return publishAssistant({
-			...host,
-			pending: true,
-			reasoning: { text: reasoning.current.text, pending: reasoning.current.pending }
-		});
+		return publishAssistant(syncActiveReasoningSegment(host, reasoning.current));
 	}
 
 	if (event.type === 'reasoning_start') {
-		if (reasoning.current?.text) {
-			reasoning.current.text += '\n\n';
-		} else {
-			reasoning.current = { text: '', pending: true };
+		reasoning.current = { text: '', pending: true };
+		let host = ensureReasoningHost();
+		const segments = ensureReasoningSegments(host);
+		const last = segments[segments.length - 1];
+		if (!(last?.pending && !last.text)) {
+			host = publishAssistant(pushReasoningSegment(host));
 		}
 		syncReasoningPreview();
 		return;
@@ -261,11 +296,13 @@ function applyEvent(
 		const host = ensureAssistantForText();
 		if (reasoning.current) reasoning.current.pending = false;
 		reasoning.current = null;
+		const withReasoning = host.reasoning
+			? finalizeAllReasoningSegments(host)
+			: host;
 		publishAssistant({
-			...host,
+			...withReasoning,
 			text: host.text + event.delta,
-			pending: false,
-			reasoning: host.reasoning ? { ...host.reasoning, pending: false } : undefined
+			pending: false
 		});
 		return;
 	}
@@ -274,8 +311,9 @@ function applyEvent(
 		// Settle the current assistant so reasoning is no longer pending, but keep
 		// assistant.current alive so the next text_delta appends to the same turn
 		// instead of creating a fresh assistant row (which would lose its avatar).
-		settleTurn({ assistant: assistant.current, reasoning: reasoning.current });
+		settleTurn();
 		reasoning.current = null;
+		const afterSegment = assistant.current ? currentAfterSegment(assistant.current) : 0;
 		const id = localID('tool', draft.nextId++).id;
 		items.push({
 			id,
@@ -284,7 +322,8 @@ function applyEvent(
 			toolName: event.tool,
 			input: event.input,
 			pending: true,
-			startedAt: Date.now()
+			startedAt: Date.now(),
+			afterSegment
 		});
 		return;
 	}
@@ -309,7 +348,7 @@ function applyEvent(
 	if (event.type === 'step_finish') {
 		// Settle reasoning/assistant state without clearing assistant.current so a
 		// multi-step turn keeps streaming into one assistant bubble.
-		settleTurn({ assistant: assistant.current, reasoning: reasoning.current });
+		settleTurn();
 		reasoning.current = null;
 		return;
 	}
@@ -394,7 +433,7 @@ function applyEvent(
 	}
 
 	if (event.type === 'error') {
-		settleTurn({ assistant: assistant.current, reasoning: reasoning.current });
+		settleTurn();
 		// clearEmptyAssistant() reassigns draft.items to a new array, so the local
 		// `items` reference captured at the top of applyEvent becomes stale. Push
 		// the error onto the live draft.items array (not the orphaned `items` one),
@@ -408,7 +447,7 @@ function applyEvent(
 	}
 
 	if (event.type === 'done') {
-		settleTurn({ assistant: assistant.current, reasoning: reasoning.current });
+		settleTurn();
 		settlePendingTools(items);
 		if (assistant.current && !assistant.current.text.trim()) {
 			clearEmptyAssistant();
@@ -426,9 +465,8 @@ function cloneAssistant(a: AssistantItem | null): AssistantItem | null {
 	if (!a) return null;
 	return {
 		...a,
-		reasoning: a.reasoning
-			? { text: a.reasoning.text, pending: a.reasoning.pending }
-			: undefined
+		reasoning: cloneReasoningSegments(a.reasoning),
+		memoryUpdates: a.memoryUpdates?.map((update) => ({ ...update }))
 	};
 }
 
@@ -437,13 +475,7 @@ function cloneItem(item: ChatItem): ChatItem {
 		return { ...item, reveal: item.reveal ?? true };
 	}
 	if (item.type === 'assistant') {
-		return {
-			...item,
-			reasoning: item.reasoning
-				? { text: item.reasoning.text, pending: item.reasoning.pending }
-				: undefined,
-			memoryUpdates: item.memoryUpdates?.map((update) => ({ ...update }))
-		};
+		return cloneAssistant(item)!;
 	}
 	if (item.type === 'subagent') {
 		return {

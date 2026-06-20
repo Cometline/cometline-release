@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StreamEvent } from '$lib/types';
+import { getReasoningSegments } from '$lib/conversation/reasoning';
 
 const { goto } = vi.hoisted(() => ({ goto: vi.fn() }));
 
@@ -47,6 +48,14 @@ function mockTranscript(sessionId: string, text: string) {
 		session_id: sessionId,
 		items: [{ type: 'user' as const, text }]
 	};
+}
+
+function hasReasoningText(text: string) {
+	return chatStore.items.some(
+		(item) =>
+			item.type === 'assistant' &&
+			getReasoningSegments(item.reasoning).some((segment) => segment.text.includes(text))
+	);
 }
 
 describe('chatStore session switching', () => {
@@ -352,13 +361,7 @@ describe('chatStore session switching', () => {
 
 		chatStore.bindSession('sess-a');
 		void chatStore.send('sess-a', 'write a joke');
-		await waitForStore(() =>
-			chatStore.items.some(
-				(item) =>
-					item.type === 'assistant' &&
-					item.reasoning?.text.includes('thinking about jokes')
-			)
-		);
+		await waitForStore(() => hasReasoningText('thinking about jokes'));
 
 		chatStore.bindSession('sess-b');
 		await chatStore.loadTranscript('sess-b');
@@ -366,13 +369,7 @@ describe('chatStore session switching', () => {
 		chatStore.bindSession('sess-a');
 		await chatStore.loadTranscript('sess-a');
 
-		expect(
-			chatStore.items.some(
-				(item) =>
-					item.type === 'assistant' &&
-					item.reasoning?.text.includes('thinking about jokes')
-			)
-		).toBe(true);
+		expect(hasReasoningText('thinking about jokes')).toBe(true);
 
 		releaseA!();
 		await vi.waitFor(() => expect(chatStore.isStreamingFor('sess-a')).toBe(false));
@@ -403,24 +400,14 @@ describe('chatStore session switching', () => {
 
 		chatStore.bindSession('sess-a');
 		void chatStore.send('sess-a', 'question A');
-		await waitForStore(() =>
-			chatStore.items.some(
-				(item) =>
-					item.type === 'assistant' && item.reasoning?.text.includes('live reasoning')
-			)
-		);
+		await waitForStore(() => hasReasoningText('live reasoning'));
 
 		chatStore.bindSession('sess-b');
 		void chatStore.send('sess-b', 'question B');
 		await vi.waitFor(() => expect(chatStore.isStreamingFor('sess-b')).toBe(true));
 
 		chatStore.bindSession('sess-a');
-		expect(
-			chatStore.items.some(
-				(item) =>
-					item.type === 'assistant' && item.reasoning?.text.includes('live reasoning')
-			)
-		).toBe(true);
+		expect(hasReasoningText('live reasoning')).toBe(true);
 
 		releaseA!();
 		await vi.waitFor(() => expect(chatStore.isStreamingFor('sess-a')).toBe(false));
@@ -450,12 +437,15 @@ describe('chatStore session switching', () => {
 		expect(chatStore.items[1]).toMatchObject({
 			type: 'assistant',
 			text: 'The file contains Go code.',
-			reasoning: { text: 'Need to inspect files.', pending: false }
+			reasoning: {
+				segments: [{ text: 'Need to inspect files.', pending: false }]
+			}
 		});
 		expect(chatStore.items[2]).toMatchObject({
 			type: 'tool',
 			toolName: 'read_file',
-			output: 'package main'
+			output: 'package main',
+			afterSegment: 0
 		});
 	});
 });

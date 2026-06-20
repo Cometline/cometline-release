@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildThinkingAttribution } from './thinking-attribution';
+import { buildAssistantTimeline, buildThinkingAttribution } from './thinking-attribution';
 import type { ChatItem } from '$lib/types';
 
 describe('buildThinkingAttribution', () => {
@@ -97,6 +97,63 @@ describe('buildThinkingAttribution', () => {
 		expect(toolIdsInBuffer.has('t1')).toBe(true);
 		expect(map.get('a1')?.tools.map((tool) => tool.id)).toEqual(['t1']);
 		expect(map.get('a2')?.tools ?? []).toEqual([]);
+	});
+
+	it('interleaves tools after the matching reasoning segment', () => {
+		const items: ChatItem[] = [
+			{ id: 'u1', type: 'user', text: 'run tool' },
+			{
+				id: 'a1',
+				type: 'assistant',
+				text: 'done',
+				reasoning: {
+					segments: [
+						{ text: 'first thought', pending: false },
+						{ text: 'second thought', pending: false }
+					]
+				}
+			},
+			{
+				id: 't1',
+				type: 'tool',
+				toolName: 'read_file',
+				input: {},
+				output: 'ok',
+				pending: false,
+				afterSegment: 0
+			},
+			{
+				id: 't2',
+				type: 'tool',
+				toolName: 'grep',
+				input: {},
+				error: 'not found',
+				pending: false,
+				afterSegment: 1
+			}
+		];
+
+		const attribution = buildThinkingAttribution(items);
+		const timeline = buildAssistantTimeline('a1', items, attribution);
+
+		expect(timeline.map((entry) => entry.kind)).toEqual([
+			'reasoning',
+			'tool',
+			'reasoning',
+			'tool'
+		]);
+		if (timeline[0].kind === 'reasoning') {
+			expect(timeline[0].text).toBe('first thought');
+		}
+		if (timeline[2].kind === 'reasoning') {
+			expect(timeline[2].text).toBe('second thought');
+		}
+		if (timeline[1].kind === 'tool') {
+			expect(timeline[1].tool.toolName).toBe('read_file');
+		}
+		if (timeline[3].kind === 'tool') {
+			expect(timeline[3].tool.toolName).toBe('grep');
+		}
 	});
 
 	it('resets pending memory at each user boundary', () => {

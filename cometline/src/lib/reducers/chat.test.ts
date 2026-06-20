@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { initChatState, reduceChatState } from './chat';
 import type { StreamEvent } from '$lib/types';
+import { getReasoningSegments, anyReasoningPending } from '$lib/conversation/reasoning';
 
 describe('reduceChatState', () => {
 	it('returns a new state without mutating the input', () => {
@@ -44,8 +45,9 @@ describe('reduceChatState', () => {
 		const assistant = state.items[0];
 		expect(assistant.type).toBe('assistant');
 		if (assistant.type !== 'assistant') return;
-		expect(assistant.reasoning?.text).toBe('think');
-		expect(assistant.reasoning?.pending).toBe(true);
+		expect(getReasoningSegments(assistant.reasoning)).toEqual([
+			{ text: 'think', pending: true }
+		]);
 	});
 
 	it('flushes reasoning when text begins', () => {
@@ -56,8 +58,9 @@ describe('reduceChatState', () => {
 		expect(assistant.type).toBe('assistant');
 		if (assistant.type !== 'assistant') return;
 		expect(assistant.text).toBe('answer');
-		expect(assistant.reasoning?.text).toBe('plan: ');
-		expect(assistant.reasoning?.pending).toBe(false);
+		expect(getReasoningSegments(assistant.reasoning)).toEqual([
+			{ text: 'plan: ', pending: false }
+		]);
 	});
 
 	it('creates tool items and updates them on result', () => {
@@ -101,7 +104,7 @@ describe('reduceChatState', () => {
 		const assistant = state.items[0];
 		expect(assistant.type).toBe('assistant');
 		if (assistant.type !== 'assistant') return;
-		expect(assistant.reasoning?.pending).toBe(false);
+		expect(anyReasoningPending(assistant)).toBe(false);
 		expect(assistant.pending).toBe(false);
 	});
 
@@ -205,8 +208,10 @@ describe('reduceChatState', () => {
 		expect(state.items).toHaveLength(2);
 		expect(state.items[0].type).toBe('assistant');
 		if (state.items[0].type !== 'assistant') return;
-		expect(state.items[0].reasoning?.text).toBe('Need to inspect files.');
-		expect(state.items[0].reasoning?.pending).toBe(false);
+		expect(getReasoningSegments(state.items[0].reasoning)).toEqual([
+			{ text: 'Need to inspect files.', pending: false }
+		]);
+		expect(anyReasoningPending(state.items[0])).toBe(false);
 		expect(state.items[0].text).toBe('The file contains Go code.');
 
 		expect(state.items[1].type).toBe('tool');
@@ -234,9 +239,43 @@ describe('reduceChatState', () => {
 		const assistant = state.items[0];
 		expect(assistant.type).toBe('assistant');
 		if (assistant.type !== 'assistant') return;
-		expect(assistant.reasoning?.text).toBe('I have enough context.');
-		expect(assistant.reasoning?.pending).toBe(false);
+		expect(getReasoningSegments(assistant.reasoning)).toEqual([
+			{ text: 'I have enough context.', pending: false }
+		]);
 		expect(assistant.text).toBe('Here is the final answer.');
+	});
+
+	it('creates separate reasoning segments across tool rounds', () => {
+		const events: StreamEvent[] = [
+			{ type: 'reasoning_delta', text: 'think1' },
+			{
+				type: 'step_finish',
+				usage: { input_tokens: 0, output_tokens: 0, cache_read: 0, cache_write: 0 }
+			},
+			{ type: 'tool_call', id: 'tc-1', tool: 'read_file', input: { path: 'main.go' } },
+			{ type: 'reasoning_start' },
+			{ type: 'reasoning_delta', text: 'think2' },
+			{ type: 'text_delta', delta: 'answer' },
+			{ type: 'done' }
+		];
+		let state = initChatState();
+		for (const event of events) {
+			state = reduceChatState(state, event);
+		}
+
+		const assistant = state.items[0];
+		expect(assistant.type).toBe('assistant');
+		if (assistant.type !== 'assistant') return;
+		expect(getReasoningSegments(assistant.reasoning)).toEqual([
+			{ text: 'think1', pending: false },
+			{ text: 'think2', pending: false }
+		]);
+		expect(assistant.text).toBe('answer');
+
+		const tool = state.items[1];
+		expect(tool.type).toBe('tool');
+		if (tool.type !== 'tool') return;
+		expect(tool.afterSegment).toBe(0);
 	});
 
 	it('accumulates subagent stream chunks and updates tool status', () => {

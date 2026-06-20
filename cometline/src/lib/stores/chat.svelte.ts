@@ -10,6 +10,7 @@ import {
 import type { ChatItem, ImageAttachment, Session, StreamEvent, TranscriptItem } from '$lib/types';
 import type { ChatTurnPayload } from '$lib/actions/start-chat';
 import { reduceChatState } from '$lib/reducers/chat';
+import { anyReasoningPending, getReasoningSegments, hasReasoning } from '$lib/conversation/reasoning';
 import { stripInlinedFileBlocks } from '$lib/messages/strip-inlined-files';
 import { sessionStore } from '$lib/stores/session.svelte';
 import { chatDebug, summarizeChatItems, summarizeStreamEvent } from '../debug/chat';
@@ -113,11 +114,9 @@ function itemsFromTranscript(transcriptItems: TranscriptItem[]): ChatItem[] {
 	function appendReasoning(index: number, text: string) {
 		if (!text) return;
 		const assistant = ensureAssistant(index);
-		if (assistant.reasoning?.text) {
-			assistant.reasoning.text += `\n\n${text}`;
-			return;
-		}
-		assistant.reasoning = { text, pending: false };
+		const segments = [...getReasoningSegments(assistant.reasoning)];
+		segments.push({ text, pending: false });
+		assistant.reasoning = { segments };
 	}
 
 	for (let i = 0; i < transcriptItems.length; i++) {
@@ -133,6 +132,19 @@ function itemsFromTranscript(transcriptItems: TranscriptItem[]): ChatItem[] {
 		}
 		if (item.type === 'reasoning') {
 			appendReasoning(i, item.text ?? '');
+			continue;
+		}
+		if (item.type === 'tool') {
+			const toolItem = itemFromTranscript(item, i);
+			if (toolItem.type === 'tool') {
+				const host = out.findLast(
+					(row): row is Extract<ChatItem, { type: 'assistant' }> => row.type === 'assistant'
+				);
+				toolItem.afterSegment = host
+					? Math.max(0, getReasoningSegments(host.reasoning).length - 1)
+					: 0;
+			}
+			out.push(toolItem);
 			continue;
 		}
 		out.push(itemFromTranscript(item, i));
@@ -157,7 +169,7 @@ function itemFromTranscript(item: TranscriptItem, index: number): ChatItem {
 			id: `history-${index}`,
 			type: 'assistant',
 			text: '',
-			reasoning: { text: item.text ?? '', pending: false }
+			reasoning: { segments: [{ text: item.text ?? '', pending: false }] }
 		};
 	if (item.type === 'memory')
 		return {
@@ -277,7 +289,7 @@ function createChatStore() {
 		return getCachedItems(targetSessionID).some(
 			(item) =>
 				item.type === 'assistant' &&
-				(item.pending === true || item.reasoning?.pending === true)
+				(item.pending === true || anyReasoningPending(item))
 		);
 	}
 
@@ -292,7 +304,7 @@ function createChatStore() {
 			(item) =>
 				item.type === 'assistant' &&
 				item.pending !== true &&
-				(item.text.length > 0 || item.reasoning?.text)
+				(item.text.length > 0 || hasReasoning(item))
 		);
 		return hasUser && pendingAssistant && !hasCompletedAssistant;
 	}
@@ -352,7 +364,7 @@ function createChatStore() {
 		const last = cached.at(-1);
 		if (
 			last?.type === 'assistant' &&
-			(last.pending === true || last.reasoning?.pending === true)
+			(last.pending === true || anyReasoningPending(last))
 		) {
 			ctx.assistant.current = last;
 		}

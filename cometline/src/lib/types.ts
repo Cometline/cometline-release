@@ -108,7 +108,12 @@ export type ChatItem =
 			text: string;
 			pending?: boolean;
 			pendingStartedAt?: number;
-			reasoning?: { text: string; pending?: boolean };
+			reasoning?: {
+				segments?: Array<{ text: string; pending?: boolean }>;
+				/** @deprecated Legacy flat reasoning; normalized to segments by helpers. */
+				text?: string;
+				pending?: boolean;
+			};
 			memoryUpdates?: MemoryUpdate[];
 	  }
 	| {
@@ -122,6 +127,8 @@ export type ChatItem =
 			pending?: boolean;
 			startedAt?: number;
 			durationMs?: number;
+			/** Index of the reasoning segment this tool follows (0-based). */
+			afterSegment?: number;
 	  }
 	| { id: string; type: 'status'; text: string; usage?: TokenUsage }
 	| {

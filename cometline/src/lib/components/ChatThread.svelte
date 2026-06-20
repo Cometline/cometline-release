@@ -21,9 +21,16 @@
 	import { imageDataURL } from '$lib/files/images';
 	import { memoryUpdateHint, memoryUpdateTooltip } from '$lib/memory-updates';
 	import {
+		buildAssistantTimeline,
 		buildThinkingAttribution,
-		type ThinkingBlock
+		type InjectedMemory,
+		type TimelineEntry
 	} from '$lib/conversation/thinking-attribution';
+	import {
+		anyReasoningPending,
+		hasReasoning,
+		reasoningTextLength
+	} from '$lib/conversation/reasoning';
 
 	const FOLD_IN = { duration: 180 };
 	const TRANSCRIPT_IN = { duration: 140 };
@@ -82,7 +89,7 @@
 		threadItems.find(
 			(item) =>
 				item.type === 'assistant' &&
-				(item.text.trim() || item.reasoning?.text.trim() || item.reasoning?.pending)
+				(item.text.trim() || hasReasoning(item))
 		) as Extract<ChatItem, { type: 'assistant' }> | undefined
 	);
 	let firstAssistantId = $derived(firstAssistantItem?.id ?? null);
@@ -137,42 +144,31 @@
 	}
 
 	// A thinking block auto-expands while reasoning is actively streaming and
-	// folds when it is done. Tool execution does NOT expand the block (tools are
-	// only surfaced as a count in the toggle). The user can override the default
-	// by toggling; the override is keyed per block and wins over the auto
-	// behaviour.
-	function thinkingExpanded(id: string, block: ThinkingBlock) {
-		const override = thinkingOverrides.get(id);
+	// folds when it is done. Tool execution does NOT expand the block. The user
+	// can override the default by toggling; the override is keyed per segment.
+	function thinkingExpanded(segmentKey: string, pending?: boolean) {
+		const override = thinkingOverrides.get(segmentKey);
 		if (override !== undefined) return override;
-		return thinkingActive(block);
+		return pending === true;
 	}
 
-	function toggleThinking(id: string, block: ThinkingBlock) {
+	function toggleThinking(segmentKey: string, pending?: boolean) {
 		const next = new Map(thinkingOverrides);
-		next.set(id, !thinkingExpanded(id, block));
+		next.set(segmentKey, !thinkingExpanded(segmentKey, pending));
 		thinkingOverrides = next;
 	}
 
-	function memoryInThinkingExpanded(id: string) {
-		return expandedMemoryInThinking.has(id);
+	function memoryInThinkingExpanded(segmentKey: string) {
+		return expandedMemoryInThinking.has(segmentKey);
 	}
 
-	function toggleMemoryInThinking(id: string) {
-		expandedMemoryInThinking = toggleExpanded(expandedMemoryInThinking, id);
+	function toggleMemoryInThinking(segmentKey: string) {
+		expandedMemoryInThinking = toggleExpanded(expandedMemoryInThinking, segmentKey);
 	}
 
-	function thinkingLabel(block: ThinkingBlock) {
-		const parts: string[] = [];
-		if (block.memories.length > 0) {
-			parts.push(
-				`${block.memories.length} memor${block.memories.length === 1 ? 'y' : 'ies'}`
-			);
-		}
-		if (block.tools.length > 0) {
-			parts.push(`${block.tools.length} tool${block.tools.length === 1 ? '' : 's'}`);
-		}
-		if (parts.length === 0) return 'Thinking';
-		return `Thinking · ${parts.join(' · ')}`;
+	function thinkingLabel(memories?: InjectedMemory[]) {
+		if (!memories?.length) return 'Thinking';
+		return `Thinking · ${memories.length} memor${memories.length === 1 ? 'y' : 'ies'}`;
 	}
 
 	function subagentExpanded(id: string) {
@@ -225,9 +221,8 @@
 	}
 
 	// Drives auto-expand: only the reasoning stream should expand the block.
-	// Tool execution must not expand the thinking block.
-	function thinkingActive(block: ThinkingBlock) {
-		return block.reasoning?.pending === true;
+	function thinkingActive(pending?: boolean) {
+		return pending === true;
 	}
 
 	// Keeps a scrollable element pinned to its bottom as its text content grows
@@ -295,7 +290,7 @@
 		for (let i = threadItems.length - 1; i >= 0; i--) {
 			const item = threadItems[i];
 			if (item.type === 'assistant') {
-				return `stream:assistant:${item.id}:${item.text.length}:${item.reasoning?.text.length ?? 0}:${item.reasoning?.pending ?? false}:${item.pending ?? false}`;
+				return `stream:assistant:${item.id}:${item.text.length}:${reasoningTextLength(item)}:${anyReasoningPending(item)}:${item.pending ?? false}`;
 			}
 			if (item.type === 'tool') {
 				return `stream:tool:${item.id}:${item.output?.length ?? 0}:${item.pending ?? false}`;
@@ -366,8 +361,20 @@
 		return expandedToolOutput.has(item.id);
 	}
 
-	function showToolOutputPanel(item: Extract<ChatItem, { type: 'tool' }>) {
-		return Boolean(item.output || item.error || item.pending);
+	function toolFoldLabel(item: Extract<ChatItem, { type: 'tool' }>) {
+		const status = item.pending ? 'running' : item.error ? 'fail' : 'success';
+		const duration = toolDurationLabel(item);
+		return duration ? `${item.toolName} → ${status} · ${duration}` : `${item.toolName} → ${status}`;
+	}
+
+	function formatToolInput(input: unknown) {
+		if (input == null) return '';
+		if (typeof input === 'string') return input.trim();
+		try {
+			return JSON.stringify(input, null, 2);
+		} catch {
+			return String(input);
+		}
 	}
 
 	let heroGlowColor = $derived(settingsStore.settings.appearance.heroComposer.glowColor);
@@ -396,11 +403,7 @@
 	}
 
 	function hasVisibleThinkingBlock(itemId: string) {
-		const block = thinkingForAssistant.map.get(itemId);
-		return Boolean(
-			block &&
-			(block.reasoning !== undefined || block.tools.length > 0 || block.memories.length > 0)
-		);
+		return buildAssistantTimeline(itemId, threadItems, thinkingForAssistant).length > 0;
 	}
 
 	function showAssistantPending(item: Extract<ChatItem, { type: 'assistant' }>) {
@@ -412,8 +415,7 @@
 	function showAssistantRow(item: Extract<ChatItem, { type: 'assistant' }>) {
 		return Boolean(
 			item.text ||
-			item.reasoning?.text ||
-			item.reasoning?.pending ||
+			hasReasoning(item) ||
 			hasVisibleThinkingBlock(item.id) ||
 			showAssistantPending(item) ||
 			showAssistantActivitySpinner(item)
@@ -613,42 +615,46 @@
 	</div>
 {/snippet}
 
-{#snippet thinkingBlock(block: ThinkingBlock, hostId: string)}
+{#snippet thinkingBlock(entry: Extract<TimelineEntry, { kind: 'reasoning' }>, hostId: string)}
+	{@const segmentKey = `${hostId}-seg-${entry.segmentIndex}`}
 	<div class="fold-panel thinking-panel">
 		<button
 			type="button"
 			class="fold-toggle thinking-toggle"
-			aria-expanded={thinkingExpanded(hostId, block)}
-			onclick={() => toggleThinking(hostId, block)}
+			aria-expanded={thinkingExpanded(segmentKey, entry.pending)}
+			onclick={() => toggleThinking(segmentKey, entry.pending)}
 		>
 			<Brain size={13} />
-			<span>{thinkingLabel(block)}</span>
-			{#if thinkingActive(block) && !(hostId === streamingAssistantId && sessionStreaming)}
+			<span>{thinkingLabel(entry.memories)}</span>
+			{#if thinkingActive(entry.pending) && !(hostId === streamingAssistantId && sessionStreaming)}
 				<LoaderCircle size={12} class="spin" />
 			{/if}
-			<ChevronDown size={13} class={thinkingExpanded(hostId, block) ? 'expanded' : ''} />
+			<ChevronDown
+				size={13}
+				class={thinkingExpanded(segmentKey, entry.pending) ? 'expanded' : ''}
+			/>
 		</button>
-		{#if thinkingExpanded(hostId, block)}
+		{#if thinkingExpanded(segmentKey, entry.pending)}
 			<div class="fold-body thinking-body" transition:slide={FOLD_IN}>
-				{#if block.memories.length > 0}
+				{#if entry.memories?.length}
 					<div class="thinking-memories">
 						<button
 							type="button"
 							class="fold-toggle memory-toggle"
-							aria-expanded={memoryInThinkingExpanded(hostId)}
-							onclick={() => toggleMemoryInThinking(hostId)}
+							aria-expanded={memoryInThinkingExpanded(segmentKey)}
+							onclick={() => toggleMemoryInThinking(segmentKey)}
 						>
 							<Brain size={12} />
-							<span>Memories used · {block.memories.length}</span>
+							<span>Memories used · {entry.memories.length}</span>
 							<ChevronDown
 								size={12}
-								class={memoryInThinkingExpanded(hostId) ? 'expanded' : ''}
+								class={memoryInThinkingExpanded(segmentKey) ? 'expanded' : ''}
 							/>
 						</button>
-						{#if memoryInThinkingExpanded(hostId)}
+						{#if memoryInThinkingExpanded(segmentKey)}
 							<div class="thinking-memory-body" transition:slide={FOLD_IN}>
 								<div class="memory-chips">
-									{#each block.memories as mem (mem.id)}
+									{#each entry.memories as mem (mem.id)}
 										<span class="memory-chip" title={mem.content}>
 											{mem.kind}: {mem.content}
 										</span>
@@ -658,12 +664,47 @@
 						{/if}
 					</div>
 				{/if}
-				{#if block.reasoning}
-					<div class="thinking-reasoning">
-						<p use:autoScrollBottom={block.reasoning.text}>
-							{block.reasoning.text || 'Thinking…'}
-						</p>
-					</div>
+				<div class="thinking-reasoning">
+					<p use:autoScrollBottom={entry.text}>
+						{entry.text || 'Thinking…'}
+					</p>
+				</div>
+			</div>
+		{/if}
+	</div>
+{/snippet}
+
+{#snippet toolFoldCard(item: Extract<ChatItem, { type: 'tool' }>)}
+	<div class="fold-panel tool-fold-panel" class:error={!!item.error}>
+		<button
+			type="button"
+			class="fold-toggle tool-fold-toggle"
+			aria-expanded={toolOutputExpanded(item)}
+			onclick={() => toggleToolOutput(item.id)}
+		>
+			<Terminal size={13} />
+			<span>{toolFoldLabel(item)}</span>
+			{#if item.pending}
+				<LoaderCircle size={12} class="spin" />
+			{:else if item.error}
+				<TriangleAlert size={12} />
+			{:else}
+				<CircleCheck size={12} />
+			{/if}
+			<ChevronDown size={13} class={toolOutputExpanded(item) ? 'expanded' : ''} />
+		</button>
+		{#if toolOutputExpanded(item)}
+			<div class="fold-body tool-output-body" transition:slide={FOLD_IN}>
+				{#if formatToolInput(item.input)}
+					<pre class="tool-input-text">{formatToolInput(item.input)}</pre>
+				{/if}
+				{#if item.error}
+					<pre class="tool-error-text">{item.error}</pre>
+				{:else if item.output}
+					<pre>{item.output}</pre>
+				{/if}
+				{#if item.pending && !item.output && !item.error}
+					<pre>Running…</pre>
 				{/if}
 			</div>
 		{/if}
@@ -671,11 +712,15 @@
 {/snippet}
 
 {#snippet assistantStack(item: Extract<ChatItem, { type: 'assistant' }>)}
-	{@const block = thinkingForAssistant.map.get(item.id)}
+	{@const timeline = buildAssistantTimeline(item.id, threadItems, thinkingForAssistant)}
 	<div class="assistant-stack">
-		{#if block && (block.reasoning || block.tools.length > 0 || block.memories.length > 0)}
-			{@render thinkingBlock(block, item.id)}
-		{/if}
+		{#each timeline as entry (`${entry.kind}-${entry.kind === 'reasoning' ? entry.segmentIndex : entry.tool.id}`)}
+			{#if entry.kind === 'reasoning'}
+				{@render thinkingBlock(entry, item.id)}
+			{:else}
+				{@render toolFoldCard(entry.tool)}
+			{/if}
+		{/each}
 		{#if item.text}
 			<div class="bubble assistant-bubble">
 				<AssistantMarkdown
@@ -876,54 +921,7 @@
 								aria-hidden="true"
 							></div>
 							<div class="tool-stack">
-								<div class="event-card tool-card" class:error={!!item.error}>
-									<div class="tool-header">
-										<div class="event-title">
-											<Terminal size={14} />
-											<span class="tool-name">{item.toolName}</span>
-										</div>
-										<div class="tool-meta">
-											{#if showToolOutputPanel(item)}
-												<button
-													type="button"
-													class="fold-toggle tool-output-toggle"
-													aria-expanded={toolOutputExpanded(item)}
-													onclick={() => toggleToolOutput(item.id)}
-												>
-													<span>Output</span>
-													<ChevronDown
-														size={12}
-														class={toolOutputExpanded(item)
-															? 'expanded'
-															: ''}
-													/>
-												</button>
-											{/if}
-											{#if toolDurationLabel(item)}
-												<span class="tool-duration"
-													>{toolDurationLabel(item)}</span
-												>
-											{/if}
-											{#if item.pending}
-												<LoaderCircle size={13} class="spin" />
-											{:else}
-												<CircleCheck size={13} />
-											{/if}
-										</div>
-									</div>
-									{#if showToolOutputPanel(item) && toolOutputExpanded(item)}
-										<div class="tool-output-body" transition:slide={FOLD_IN}>
-											{#if item.error}
-												<pre class="tool-error-text">{item.error}</pre>
-											{:else if item.output}
-												<pre>{item.output}</pre>
-											{/if}
-											{#if item.pending && !item.output && !item.error}
-												<pre>Running…</pre>
-											{/if}
-										</div>
-									{/if}
-								</div>
+								{@render toolFoldCard(item)}
 							</div>
 						</div>
 					{:else if item.type === 'subagent'}
@@ -1316,6 +1314,19 @@
 		gap: 6px;
 	}
 
+	.tool-fold-panel.error .tool-fold-toggle {
+		border-color: rgba(239, 68, 68, 0.35);
+		color: #b91c1c;
+	}
+
+	.tool-input-text {
+		margin: 0 0 8px;
+		font-size: 11px;
+		color: var(--text-muted);
+		white-space: pre-wrap;
+		word-break: break-word;
+	}
+
 	.fold-toggle {
 		display: inline-flex;
 		align-items: center;
@@ -1376,42 +1387,6 @@
 		overflow: auto;
 		scrollbar-gutter: stable;
 		color: var(--text-muted);
-	}
-
-	.tool-card {
-		padding: 8px 10px;
-	}
-
-	.tool-header {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		min-width: 0;
-	}
-
-	.tool-header .event-title {
-		margin-bottom: 0;
-		flex: 1;
-		min-width: 0;
-	}
-
-	.tool-meta {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		flex-shrink: 0;
-	}
-
-	.tool-output-toggle {
-		padding: 3px 8px;
-		font-size: 11px;
-	}
-
-	.tool-duration {
-		font-size: 11px;
-		font-weight: 500;
-		color: var(--text-soft);
-		font-variant-numeric: tabular-nums;
 	}
 
 	.tool-output-body {
@@ -1628,14 +1603,6 @@
 		font-weight: 650;
 		color: var(--text-main);
 		margin-bottom: 7px;
-	}
-
-	.tool-name {
-		min-width: 0;
-		flex: 1;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
 
 	.event-title :global(svg:last-child) {

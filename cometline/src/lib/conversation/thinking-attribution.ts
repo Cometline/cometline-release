@@ -1,12 +1,25 @@
 import type { ChatItem } from '$lib/types';
+import { getReasoningSegments } from './reasoning';
 
 export type InjectedMemory = Extract<ChatItem, { type: 'memory' }>['memories'][number];
+export type ToolChatItem = Extract<ChatItem, { type: 'tool' }>;
+type AssistantItem = Extract<ChatItem, { type: 'assistant' }>;
 
 export type ThinkingBlock = {
 	reasoning?: { text: string; pending?: boolean };
-	tools: Extract<ChatItem, { type: 'tool' }>[];
+	tools: ToolChatItem[];
 	memories: InjectedMemory[];
 };
+
+export type TimelineEntry =
+	| {
+			kind: 'reasoning';
+			segmentIndex: number;
+			text: string;
+			pending?: boolean;
+			memories?: InjectedMemory[];
+	  }
+	| { kind: 'tool'; tool: ToolChatItem };
 
 export type ThinkingAttribution = {
 	map: Map<string, ThinkingBlock>;
@@ -31,11 +44,6 @@ export function buildThinkingAttribution(items: readonly ChatItem[]): ThinkingAt
 		}
 		if (item.type === 'memory') {
 			memoryIdsInBuffer.add(item.id);
-			// During live streaming the assistant placeholder is pushed before the
-			// stream starts, so the order is [user, assistant, memory] — the memory
-			// arrives after its assistant. Attach it to the current turn's assistant
-			// directly. When replaying history the order is [user, memory, assistant],
-			// so fall back to buffering for the next assistant.
 			if (currentAssistantId) {
 				const block = map.get(currentAssistantId);
 				if (block) {
@@ -48,16 +56,23 @@ export function buildThinkingAttribution(items: readonly ChatItem[]): ThinkingAt
 		}
 		if (item.type === 'assistant') {
 			currentAssistantId = item.id;
+			const segments = getReasoningSegments(item.reasoning);
+			const firstSegment = segments[0];
 			const existing = map.get(item.id);
 			if (!existing) {
 				map.set(item.id, {
-					reasoning: item.reasoning,
+					reasoning: firstSegment
+						? { text: firstSegment.text, pending: firstSegment.pending }
+						: undefined,
 					tools: [],
 					memories: pendingMemories
 				});
 			} else {
-				if (item.reasoning && !existing.reasoning) {
-					existing.reasoning = item.reasoning;
+				if (firstSegment && !existing.reasoning) {
+					existing.reasoning = {
+						text: firstSegment.text,
+						pending: firstSegment.pending
+					};
 				}
 				if (pendingMemories.length > 0) {
 					existing.memories = pendingMemories;
@@ -74,4 +89,58 @@ export function buildThinkingAttribution(items: readonly ChatItem[]): ThinkingAt
 	}
 
 	return { map, toolIdsInBuffer, memoryIdsInBuffer };
+}
+
+/** Build chronological thinking/tool entries for one assistant turn. */
+export function buildAssistantTimeline(
+	assistantId: string,
+	items: readonly ChatItem[],
+	attribution?: ThinkingAttribution
+): TimelineEntry[] {
+	const attr = attribution ?? buildThinkingAttribution(items);
+	const assistant = items.find(
+		(item): item is AssistantItem => item.type === 'assistant' && item.id === assistantId
+	);
+	if (!assistant) return [];
+
+	const block = attr.map.get(assistantId);
+	const tools = block?.tools ?? [];
+	const memories = block?.memories ?? [];
+	const segments = getReasoningSegments(assistant.reasoning);
+	const timeline: TimelineEntry[] = [];
+
+	if (segments.length === 0) {
+		for (const tool of tools) {
+			timeline.push({ kind: 'tool', tool });
+		}
+		return timeline;
+	}
+
+	for (let i = 0; i < segments.length; i++) {
+		const segment = segments[i];
+		timeline.push({
+			kind: 'reasoning',
+			segmentIndex: i,
+			text: segment.text,
+			pending: segment.pending,
+			memories: i === 0 && memories.length > 0 ? memories : undefined
+		});
+		for (const tool of tools) {
+			const placement = tool.afterSegment ?? segments.length - 1;
+			if (placement === i) {
+				timeline.push({ kind: 'tool', tool });
+			}
+		}
+	}
+
+	const placed = new Set(
+		tools.filter((tool) => tool.afterSegment !== undefined).map((tool) => tool.id)
+	);
+	for (const tool of tools) {
+		if (!placed.has(tool.id)) {
+			timeline.push({ kind: 'tool', tool });
+		}
+	}
+
+	return timeline;
 }
