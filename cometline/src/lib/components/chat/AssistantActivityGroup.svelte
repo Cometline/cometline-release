@@ -9,6 +9,7 @@
 		Terminal,
 		TriangleAlert
 	} from '@lucide/svelte';
+	import ThinkingSpinner from '$lib/components/ThinkingSpinner.svelte';
 	import ThinkingBlock from '$lib/components/chat/ThinkingBlock.svelte';
 	import ToolFoldPanel from '$lib/components/chat/ToolFoldPanel.svelte';
 	import SubagentPanel from '$lib/components/chat/SubagentPanel.svelte';
@@ -101,7 +102,7 @@
 			{/if}
 			<span>{parentLabel(firstEntry)}</span>
 			{#if firstEntry.kind === 'reasoning' && showThinkingSpinner && thinkingActive(firstEntry.pending)}
-				<LoaderCircle size={12} class="spin" />
+				<ThinkingSpinner size={12} label="Thinking" />
 			{:else if firstEntry.kind === 'tool'}
 				{#if firstEntry.tool.pending}
 					<LoaderCircle size={12} class="spin" />

@@ -344,8 +344,10 @@
 			: `${item.toolName} → ${status}`;
 	}
 
+	let heroGlowColor = $derived(settingsStore.settings.appearance.heroComposer.glowColor);
+
 	function showAssistantActivitySpinner(item: Extract<ChatItem, { type: 'assistant' }>) {
-		return showAssistantPending(item);
+		return sessionStreaming && item.id === streamingAssistantId;
 	}
 
 	function assistantWaitSeconds(item: Extract<ChatItem, { type: 'assistant' }> | undefined) {
@@ -569,7 +571,11 @@
 
 {#snippet assistantActivitySpinner(item?: Extract<ChatItem, { type: 'assistant' }>)}
 	{@const wait = assistantThinkingWait(item)}
-	<AssistantThinkingWait label={wait.label} detail={wait.detail} />
+	<AssistantThinkingWait
+		label={wait.label}
+		detail={wait.detail}
+		color={heroGlowColor}
+	/>
 {/snippet}
 
 {#snippet assistantStack(item: Extract<ChatItem, { type: 'assistant' }>)}

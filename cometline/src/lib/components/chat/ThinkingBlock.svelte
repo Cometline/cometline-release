@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { slide } from 'svelte/transition';
-	import { Brain, ChevronDown, LoaderCircle } from '@lucide/svelte';
+	import { Brain, ChevronDown } from '@lucide/svelte';
+	import ThinkingSpinner from '$lib/components/ThinkingSpinner.svelte';
 	import type { InjectedMemory } from '$lib/conversation/thinking-attribution';
 
 	const FOLD_IN = { duration: 180 };
@@ -59,7 +60,7 @@
 			<Brain size={13} />
 			<span>{thinkingLabel(memories)}</span>
 			{#if showSpinner}
-				<LoaderCircle size={12} class="spin" />
+				<ThinkingSpinner size={12} label="Thinking" />
 			{/if}
 			<ChevronDown size={13} class={expanded ? 'expanded' : ''} />
 		</button>
