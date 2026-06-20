@@ -423,6 +423,24 @@ func (s *Service) UpdateSessionModel(ctx context.Context, sessionID, modelID, pr
 	return s.GetSession(ctx, sessionID)
 }
 
+// UpdateSessionPinned persists whether a session is pinned in the sidebar.
+func (s *Service) UpdateSessionPinned(ctx context.Context, sessionID string, pinned bool) (Session, error) {
+	if _, err := s.GetSession(ctx, sessionID); err != nil {
+		return Session{}, err
+	}
+	var pinnedInt int64
+	if pinned {
+		pinnedInt = 1
+	}
+	if err := s.q.UpdateSessionPinned(ctx, db.UpdateSessionPinnedParams{
+		Pinned: pinnedInt,
+		ID:     sessionID,
+	}); err != nil {
+		return Session{}, err
+	}
+	return s.GetSession(ctx, sessionID)
+}
+
 // AppendUserMessage persists a user turn.
 func (s *Service) AppendUserMessage(ctx context.Context, sessionID, text string) (Message, error) {
 	return s.AppendUserMessageContent(ctx, sessionID, []ContentBlock{{Type: "text", Text: text}})

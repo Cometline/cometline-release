@@ -115,6 +115,10 @@ var alterStatements = [][]string{
 	{
 		"ALTER TABLE messages ADD COLUMN injected_memories TEXT NOT NULL DEFAULT '[]'",
 	},
+	// v8 -> v9: pin sessions to the top of the workspace sidebar group.
+	{
+		"ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
+	},
 }
 
 // execAlter runs one incremental DDL statement, tolerating idempotent failures
@@ -153,7 +157,7 @@ func splitStatements(sql string) []string {
 	return out
 }
 
-const schemaVersion = 8
+const schemaVersion = 9
 
 // EnsureSchema runs [Migrate] once per database file using PRAGMA user_version.
 // For existing databases, it applies incremental ALTER statements to upgrade

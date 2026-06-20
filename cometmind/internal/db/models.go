@@ -78,6 +78,7 @@ type Session struct {
 	OutputSummary    string         `json:"output_summary"`
 	AcpSessionID     string         `json:"acp_session_id"`
 	PendingQuestion  string         `json:"pending_question"`
+	Pinned           int64          `json:"pinned"`
 	CreatedAt        int64          `json:"created_at"`
 	UpdatedAt        int64          `json:"updated_at"`
 }

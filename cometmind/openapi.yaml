@@ -247,6 +247,7 @@ paths:
                   output_tokens: 0
                   cache_read: 0
                   cache_write: 0
+                pinned: false
                 created_at: 1746880000000
                 updated_at: 1746880000000
         '400':
@@ -306,6 +307,7 @@ paths:
                       output_tokens: 340
                       cache_read: 0
                       cache_write: 0
+                    pinned: false
                     created_at: 1746880000000
                     updated_at: 1746880200000
         '400':
@@ -1016,12 +1018,14 @@ components:
     UpdateSessionRequest:
       type: object
       additionalProperties: false
-      required: [model_id, provider_id]
       properties:
         model_id:
           type: string
         provider_id:
           type: string
+        pinned:
+          type: boolean
+          description: Pin the session to the top of its workspace group in the sidebar.
 
     ChangeSessionWorkspaceRequest:
       type: object
@@ -1177,6 +1181,7 @@ components:
         - provider_id
         - status
         - token_usage
+        - pinned
         - created_at
         - updated_at
       properties:
@@ -1197,6 +1202,9 @@ components:
           enum: [active, archived]
         token_usage:
           $ref: '#/components/schemas/TokenUsage'
+        pinned:
+          type: boolean
+          description: Whether the session is pinned to the top of its workspace group.
         created_at:
           type: integer
           format: int64

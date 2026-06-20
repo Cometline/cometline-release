@@ -414,7 +414,10 @@ type Session struct {
 
 	// PendingQuestion Legacy field retained for persisted child session compatibility.
 	PendingQuestion *string `json:"pending_question,omitempty"`
-	ProviderId      string  `json:"provider_id"`
+
+	// Pinned Whether the session is pinned to the top of its workspace group.
+	Pinned     bool   `json:"pinned"`
+	ProviderId string `json:"provider_id"`
 
 	// Purpose Delegation task purpose for child sessions.
 	Purpose    *string       `json:"purpose,omitempty"`
@@ -575,8 +578,11 @@ type UpdateMemoryRequest struct {
 
 // UpdateSessionRequest defines model for UpdateSessionRequest.
 type UpdateSessionRequest struct {
-	ModelId    string `json:"model_id"`
-	ProviderId string `json:"provider_id"`
+	ModelId *string `json:"model_id,omitempty"`
+
+	// Pinned Pin the session to the top of its workspace group in the sidebar.
+	Pinned     *bool   `json:"pinned,omitempty"`
+	ProviderId *string `json:"provider_id,omitempty"`
 }
 
 // Workspace defines model for Workspace.

@@ -6,16 +6,21 @@
 	import { Settings } from '@lucide/svelte';
 	import type { Session } from '$lib/types';
 	import { sessionStore } from '$lib/stores/session.svelte';
-	import { deleteSession } from '$lib/client/cometmind';
+	import { deleteSession, updateSession } from '$lib/client/cometmind';
 	import { startNewChat } from '$lib/actions/new-chat';
 	import { navigateToSession } from '$lib/actions/navigate-to-session';
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { shellStore } from '$lib/stores/shell.svelte';
 	import { isNarrowViewport } from '$lib/layout/narrow-viewport';
-	import { groupSessionsByWorkspace } from '$lib/sessions/group-by-workspace';
+	import {
+		layoutSessionsForSidebar,
+		PINNED_GROUP_KEY
+	} from '$lib/sessions/group-by-workspace';
 	import SidebarSearch from '$lib/components/sidebar/SidebarSearch.svelte';
+	import PinnedGroup from '$lib/components/sidebar/PinnedGroup.svelte';
 	import WorkspaceGroup from '$lib/components/sidebar/WorkspaceGroup.svelte';
 	import DeleteConfirmDialog from '$lib/components/sidebar/DeleteConfirmDialog.svelte';
+	import SessionContextMenu from '$lib/components/sidebar/SessionContextMenu.svelte';
 
 	const WORKSPACE_GROUP_FLIP = { duration: 240 };
 
@@ -25,6 +30,8 @@
 		sessionStore.current?.workspace_path ?? shellStore.sidebarOrderWorkspacePath
 	);
 	let deletingID = $state<string | null>(null);
+	let pinningID = $state<string | null>(null);
+	let contextMenu = $state<{ session: Session; x: number; y: number } | null>(null);
 	let pendingDelete = $state<Session | null>(null);
 	let skipDeleteConfirm = $state(false);
 	let rememberDeleteChoice = $state(false);
@@ -92,6 +99,24 @@
 		}
 	}
 
+	async function togglePinSession(session: Session) {
+		pinningID = session.id;
+		try {
+			const updated = await updateSession(session.id, { pinned: !session.pinned });
+			sessionStore.updateSession(updated);
+		} finally {
+			pinningID = null;
+		}
+	}
+
+	function openSessionContextMenu(session: Session, event: MouseEvent) {
+		contextMenu = { session, x: event.clientX, y: event.clientY };
+	}
+
+	function closeSessionContextMenu() {
+		contextMenu = null;
+	}
+
 	let currentSessionId = $derived(page.params.id ?? null);
 	// Groups the user has explicitly collapsed. Groups default to expanded.
 	let collapsedGroups = $state<Record<string, boolean>>({});
@@ -102,7 +127,11 @@
 			(session.title || 'Untitled').toLowerCase().includes(query)
 		);
 	});
-	let groupedSessions = $derived(groupSessionsByWorkspace(filteredSessions, orderWorkspacePath));
+	let sidebarLayout = $derived(
+		layoutSessionsForSidebar(filteredSessions, orderWorkspacePath)
+	);
+	let pinnedSessions = $derived(sidebarLayout.pinnedSessions);
+	let groupedSessions = $derived(sidebarLayout.workspaceGroups);
 	let showWorkspaceDivider = $derived(
 		groupedSessions.length > 1 && groupedSessions[0].workspacePath === orderWorkspacePath
 	);
@@ -131,6 +160,20 @@
 		</div>
 
 		<div class="session-list">
+			{#if pinnedSessions.length > 0}
+				<PinnedGroup
+					sessions={pinnedSessions}
+					collapsed={isGroupCollapsed(PINNED_GROUP_KEY)}
+					{currentSessionId}
+					{deletingID}
+					{pinningID}
+					onToggle={() => toggleGroup(PINNED_GROUP_KEY)}
+					onSelectSession={selectSession}
+					onDeleteSession={removeSession}
+					onPinSession={togglePinSession}
+					onSessionContextMenu={openSessionContextMenu}
+				/>
+			{/if}
 			{#each groupedSessions as group, index (group.workspacePath)}
 				<div animate:flip={WORKSPACE_GROUP_FLIP}>
 					<WorkspaceGroup
@@ -142,9 +185,12 @@
 						showDivider={index === 0 && showWorkspaceDivider}
 						{currentSessionId}
 						{deletingID}
+						{pinningID}
 						onToggle={() => toggleGroup(group.workspacePath)}
 						onSelectSession={selectSession}
 						onDeleteSession={removeSession}
+						onPinSession={togglePinSession}
+						onSessionContextMenu={openSessionContextMenu}
 					/>
 				</div>
 			{/each}
@@ -169,6 +215,17 @@
 			bind:rememberDeleteChoice
 			onCancel={() => (pendingDelete = null)}
 			onConfirm={confirmDelete}
+		/>
+	{/if}
+
+	{#if contextMenu}
+		{@const menu = contextMenu}
+		<SessionContextMenu
+			session={menu.session}
+			x={menu.x}
+			y={menu.y}
+			onPin={() => togglePinSession(menu.session)}
+			onClose={closeSessionContextMenu}
 		/>
 	{/if}
 </aside>

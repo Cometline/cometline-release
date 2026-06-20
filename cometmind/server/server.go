@@ -189,6 +189,7 @@ type createSessionRequest struct {
 type patchSessionRequest struct {
 	ModelID    string `json:"model_id"`
 	ProviderID string `json:"provider_id"`
+	Pinned     *bool  `json:"pinned"`
 }
 
 type changeSessionWorkspaceRequest struct {
@@ -265,6 +266,7 @@ type sessionResource struct {
 	OutputSummary    string             `json:"output_summary,omitempty"`
 	ACPSessionID     string             `json:"acp_session_id,omitempty"`
 	PendingQuestion  string             `json:"pending_question,omitempty"`
+	Pinned           bool               `json:"pinned"`
 	CreatedAt        int64              `json:"created_at"`
 	UpdatedAt        int64              `json:"updated_at"`
 }
@@ -682,20 +684,48 @@ func (a *App) handlePatchSession(c *gin.Context) {
 		return
 	}
 
-	sessID := c.Param("id")
-	sess, err := a.sessions.UpdateSessionModel(
-		c.Request.Context(),
-		sessID,
-		req.ModelID,
-		req.ProviderID,
-	)
-	if errors.Is(err, session.ErrSessionNotFound) {
-		writeError(c, http.StatusNotFound, "session_not_found", "session was not found")
+	hasModel := strings.TrimSpace(req.ModelID) != "" || strings.TrimSpace(req.ProviderID) != ""
+	hasPinned := req.Pinned != nil
+	if !hasModel && !hasPinned {
+		writeError(c, http.StatusBadRequest, "bad_request", "at least one of model_id/provider_id or pinned is required")
 		return
 	}
-	if err != nil {
-		writeError(c, http.StatusBadRequest, "bad_request", err.Error())
+	if hasModel && (strings.TrimSpace(req.ModelID) == "" || strings.TrimSpace(req.ProviderID) == "") {
+		writeError(c, http.StatusBadRequest, "bad_request", "model_id and provider_id must both be provided")
 		return
+	}
+
+	sessID := c.Param("id")
+	var sess session.Session
+	var err error
+
+	if hasModel {
+		sess, err = a.sessions.UpdateSessionModel(
+			c.Request.Context(),
+			sessID,
+			req.ModelID,
+			req.ProviderID,
+		)
+		if errors.Is(err, session.ErrSessionNotFound) {
+			writeError(c, http.StatusNotFound, "session_not_found", "session was not found")
+			return
+		}
+		if err != nil {
+			writeError(c, http.StatusBadRequest, "bad_request", err.Error())
+			return
+		}
+	}
+
+	if hasPinned {
+		sess, err = a.sessions.UpdateSessionPinned(c.Request.Context(), sessID, *req.Pinned)
+		if errors.Is(err, session.ErrSessionNotFound) {
+			writeError(c, http.StatusNotFound, "session_not_found", "session was not found")
+			return
+		}
+		if err != nil {
+			writeError(c, http.StatusBadRequest, "bad_request", err.Error())
+			return
+		}
 	}
 
 	wsPath, err := a.sessions.WorkspacePath(c.Request.Context(), sess.WorkspaceID)
@@ -1204,6 +1234,7 @@ func sessionResourceFromModel(sess session.Session, workspacePath string) (sessi
 		OutputSummary:    sess.OutputSummary,
 		ACPSessionID:     sess.ACPSessionID,
 		PendingQuestion:  sess.PendingQuestion,
+		Pinned:           sess.Pinned,
 		CreatedAt:        sess.CreatedAt,
 		UpdatedAt:        sess.UpdatedAt,
 	}, nil

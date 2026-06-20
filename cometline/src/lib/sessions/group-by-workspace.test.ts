@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
 	flattenSessionsInSidebarOrder,
-	groupSessionsByWorkspace
+	groupSessionsByWorkspace,
+	layoutSessionsForSidebar,
+	partitionPinnedSessions,
+	sortSessionsByRecency
 } from '$lib/sessions/group-by-workspace';
 import type { Session } from '$lib/types';
 
-function session(id: string, workspacePath: string, updatedAt: number): Session {
+function session(
+	id: string,
+	workspacePath: string,
+	updatedAt: number,
+	pinned = false
+): Session {
 	return {
 		id,
 		workspace_id: `ws-${workspacePath}`,
@@ -20,6 +28,7 @@ function session(id: string, workspacePath: string, updatedAt: number): Session 
 			cache_read: 0,
 			cache_write: 0
 		},
+		pinned,
 		created_at: updatedAt,
 		updated_at: updatedAt
 	};
@@ -42,5 +51,70 @@ describe('flattenSessionsInSidebarOrder', () => {
 			'/ws-b',
 			'/ws-c'
 		]);
+	});
+});
+
+describe('sortSessionsByRecency', () => {
+	it('sorts sessions by updated_at descending', () => {
+		const sessions = [
+			session('older', '/ws-a', 50),
+			session('recent', '/ws-a', 100),
+			session('middle', '/ws-a', 80)
+		];
+
+		expect(sortSessionsByRecency(sessions).map((item) => item.id)).toEqual([
+			'recent',
+			'middle',
+			'older'
+		]);
+	});
+});
+
+describe('partitionPinnedSessions', () => {
+	it('splits pinned and unpinned while preserving order within each list', () => {
+		const sessions = [
+			session('pinned-a', '/ws-a', 50, true),
+			session('unpinned', '/ws-a', 100),
+			session('pinned-b', '/ws-a', 40, true)
+		];
+
+		expect(partitionPinnedSessions(sessions)).toEqual({
+			pinned: [sessions[0], sessions[2]],
+			unpinned: [sessions[1]]
+		});
+	});
+});
+
+describe('layoutSessionsForSidebar', () => {
+	it('keeps pinned sessions in a global section and removes them from workspace groups', () => {
+		const sessions = [
+			session('recent', '/ws-a', 100),
+			session('pinned-a', '/ws-a', 50, true),
+			session('pinned-b', '/ws-b', 60, true),
+			session('b1', '/ws-b', 90)
+		];
+
+		const layout = layoutSessionsForSidebar(sessions, '/ws-a');
+
+		expect(layout.pinnedSessions.map((item) => item.id)).toEqual(['pinned-b', 'pinned-a']);
+		expect(layout.workspaceGroups.map((group) => group.workspacePath)).toEqual([
+			'/ws-a',
+			'/ws-b'
+		]);
+		expect(layout.workspaceGroups[0].sessions.map((item) => item.id)).toEqual(['recent']);
+		expect(layout.workspaceGroups[1].sessions.map((item) => item.id)).toEqual(['b1']);
+	});
+});
+
+describe('pinned sidebar order', () => {
+	it('puts the global pinned section before workspace groups for keyboard navigation', () => {
+		const sessions = [
+			session('recent', '/ws-a', 100),
+			session('pinned', '/ws-a', 50, true),
+			session('b1', '/ws-b', 90)
+		];
+
+		const flat = flattenSessionsInSidebarOrder(sessions, '/ws-a');
+		expect(flat.map((item) => item.id)).toEqual(['pinned', 'recent', 'b1']);
 	});
 });

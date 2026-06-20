@@ -15,9 +15,12 @@
 		showDivider = false,
 		currentSessionId,
 		deletingID,
+		pinningID,
 		onToggle,
 		onSelectSession,
-		onDeleteSession
+		onDeleteSession,
+		onPinSession,
+		onSessionContextMenu
 	}: {
 		label: string;
 		workspacePath: string;
@@ -27,9 +30,12 @@
 		showDivider?: boolean;
 		currentSessionId: string | null;
 		deletingID: string | null;
+		pinningID: string | null;
 		onToggle: () => void;
 		onSelectSession: (session: Session) => void;
 		onDeleteSession: (session: Session) => void;
+		onPinSession: (session: Session) => void;
+		onSessionContextMenu: (session: Session, event: MouseEvent) => void;
 	} = $props();
 </script>
 
@@ -61,8 +67,11 @@
 						{session}
 						selected={currentSessionId === session.id}
 						deleting={deletingID === session.id}
+						pinning={pinningID === session.id}
 						onSelect={() => onSelectSession(session)}
 						onDelete={() => onDeleteSession(session)}
+						onPin={() => onPinSession(session)}
+						onContextMenu={(event) => onSessionContextMenu(session, event)}
 					/>
 				{/each}
 			</div>

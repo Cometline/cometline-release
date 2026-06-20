@@ -93,6 +93,11 @@
 	--pane-focus-glow: rgba(114, 192, 255, 0.06);
 	--user-bubble-bg: color-mix(in srgb, #72c0ff 70%, #1f2933);
 	--user-bubble-shadow: rgba(114, 192, 255, 0.22);
+
+	/* Sidebar pinned group — warm amber, distinct from active workspace glow */
+	--pinned-group-color: #b45309;
+	--pinned-group-bg: color-mix(in srgb, var(--pinned-group-color) 10%, transparent);
+	--pinned-group-bg-hover: color-mix(in srgb, var(--pinned-group-color) 16%, transparent);
 }
 
 @theme inline {

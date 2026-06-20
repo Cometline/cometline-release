@@ -90,13 +90,13 @@ ORDER BY updated_at ASC;
 SELECT *
 FROM sessions
 WHERE workspace_id = ?
-ORDER BY updated_at DESC;
+ORDER BY pinned DESC, updated_at DESC;
 
 -- name: ListAllSessions :many
 SELECT *
 FROM sessions
 WHERE parent_session_id IS NULL
-ORDER BY updated_at DESC;
+ORDER BY pinned DESC, updated_at DESC;
 
 -- name: UpdateSessionTitle :exec
 UPDATE sessions
@@ -128,6 +128,13 @@ UPDATE sessions
 SET
     model_id = ?,
     provider_id = ?,
+    updated_at = unixepoch ('now', 'subsec') * 1000
+WHERE id = ?;
+
+-- name: UpdateSessionPinned :exec
+UPDATE sessions
+SET
+    pinned = ?,
     updated_at = unixepoch ('now', 'subsec') * 1000
 WHERE id = ?;
 

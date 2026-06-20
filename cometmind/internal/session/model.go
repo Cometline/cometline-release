@@ -25,6 +25,7 @@ type Session struct {
 	OutputSummary    string
 	ACPSessionID     string
 	PendingQuestion  string
+	Pinned           bool
 	CreatedAt        int64
 	UpdatedAt        int64
 }
@@ -68,6 +69,7 @@ func sessionFromDB(s db.Session) Session {
 		OutputSummary:    s.OutputSummary,
 		ACPSessionID:     s.AcpSessionID,
 		PendingQuestion:  s.PendingQuestion,
+		Pinned:           s.Pinned != 0,
 		CreatedAt:        s.CreatedAt,
 		UpdatedAt:        s.UpdatedAt,
 	}

@@ -1,35 +1,74 @@
 <script lang="ts">
-	import { Trash2 } from '@lucide/svelte';
+	import { Pin, PinOff, Trash2 } from '@lucide/svelte';
 	import type { Session } from '$lib/types';
+	import { workspaceLabel } from '$lib/sessions/group-by-workspace';
 
 	let {
 		session,
 		selected = false,
 		deleting = false,
+		pinning = false,
+		showWorkspaceLabel = false,
 		onSelect,
-		onDelete
+		onDelete,
+		onPin,
+		onContextMenu
 	}: {
 		session: Session;
 		selected?: boolean;
 		deleting?: boolean;
+		pinning?: boolean;
+		showWorkspaceLabel?: boolean;
 		onSelect: () => void;
 		onDelete: () => void;
+		onPin: () => void;
+		onContextMenu: (event: MouseEvent) => void;
 	} = $props();
+
+	function handleContextMenu(event: MouseEvent) {
+		event.preventDefault();
+		onContextMenu(event);
+	}
 </script>
 
-<div class="session-row-wrap" class:selected>
+<div
+	class="session-row-wrap"
+	class:selected
+	class:pinned={session.pinned}
+	role="group"
+	oncontextmenu={handleContextMenu}
+>
 	<button class="session-row" onclick={onSelect}>
 		<span class="session-title">{session.title || 'Untitled'}</span>
+		{#if showWorkspaceLabel}
+			<span class="session-workspace">{workspaceLabel(session.workspace_path)}</span>
+		{/if}
 	</button>
-	<button
-		class="delete-session"
-		disabled={deleting}
-		onclick={onDelete}
-		aria-label={`Delete ${session.title || 'Untitled'}`}
-		title="Delete session"
-	>
-		<Trash2 size={13} stroke-width={1.9} />
-	</button>
+	<div class="session-actions">
+		<button
+			class="pin-session"
+			class:active={session.pinned}
+			disabled={pinning}
+			onclick={onPin}
+			aria-label={session.pinned ? `Unpin ${session.title || 'Untitled'}` : `Pin ${session.title || 'Untitled'}`}
+			title={session.pinned ? 'Unpin session' : 'Pin session'}
+		>
+			{#if session.pinned}
+				<Pin size={13} stroke-width={2} />
+			{:else}
+				<PinOff size={13} stroke-width={1.9} />
+			{/if}
+		</button>
+		<button
+			class="delete-session"
+			disabled={deleting}
+			onclick={onDelete}
+			aria-label={`Delete ${session.title || 'Untitled'}`}
+			title="Delete session"
+		>
+			<Trash2 size={13} stroke-width={1.9} />
+		</button>
+	</div>
 </div>
 
 <style>
@@ -52,7 +91,7 @@
 		width: 100%;
 		text-align: left;
 		padding: 7px 10px;
-		padding-right: 34px;
+		padding-right: 58px;
 		border-radius: 8px;
 		border: none;
 		background: transparent;
@@ -70,11 +109,30 @@
 		display: block;
 	}
 
-	.delete-session {
+	.session-workspace {
+		display: block;
+		margin-top: 1px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: 10px;
+		font-weight: 500;
+		line-height: 1.3;
+		color: var(--text-soft);
+	}
+
+	.session-actions {
 		position: absolute;
 		right: 5px;
 		top: 50%;
 		transform: translateY(-50%);
+		display: flex;
+		align-items: center;
+		gap: 2px;
+	}
+
+	.pin-session,
+	.delete-session {
 		width: 24px;
 		height: 24px;
 		border: none;
@@ -87,9 +145,25 @@
 		cursor: pointer;
 	}
 
-	.session-row-wrap:hover .delete-session,
-	.session-row-wrap:focus-within .delete-session {
+	.session-row-wrap.pinned .pin-session,
+	.session-row-wrap:hover .session-actions button,
+	.session-row-wrap:focus-within .session-actions button {
 		opacity: 1;
+	}
+
+	.pin-session.active {
+		opacity: 1;
+		color: var(--pinned-group-color, #b45309);
+	}
+
+	.pin-session:hover:not(:disabled),
+	.delete-session:hover:not(:disabled) {
+		background: rgba(0, 0, 0, 0.06);
+		color: var(--text-main);
+	}
+
+	.pin-session.active:hover:not(:disabled) {
+		color: var(--pinned-group-color, #b45309);
 	}
 
 	.delete-session:hover:not(:disabled) {
@@ -97,6 +171,7 @@
 		color: #b42318;
 	}
 
+	.pin-session:disabled,
 	.delete-session:disabled {
 		opacity: 0.35;
 	}

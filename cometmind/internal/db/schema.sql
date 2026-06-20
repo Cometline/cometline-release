@@ -32,6 +32,7 @@ CREATE TABLE sessions (
     output_summary     TEXT NOT NULL DEFAULT '',
     acp_session_id     TEXT NOT NULL DEFAULT '',
     pending_question   TEXT NOT NULL DEFAULT '',
+    pinned             INTEGER NOT NULL DEFAULT 0,
     created_at         INTEGER NOT NULL DEFAULT (unixepoch ('now', 'subsec') * 1000),
     updated_at         INTEGER NOT NULL DEFAULT (unixepoch ('now', 'subsec') * 1000)
 );

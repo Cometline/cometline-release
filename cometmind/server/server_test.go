@@ -552,6 +552,90 @@ func TestPatchSessionUpdatesModel(t *testing.T) {
 	}
 }
 
+func TestPatchSessionUpdatesPinned(t *testing.T) {
+	t.Parallel()
+
+	engine, svc, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
+		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
+			ch <- event.Done()
+			return nil
+		}), nil
+	})
+	defer cleanup()
+
+	ctx := context.Background()
+	ws, err := svc.EnsureWorkspace(ctx, t.TempDir())
+	if err != nil {
+		t.Fatalf("EnsureWorkspace() error = %v", err)
+	}
+	older, err := svc.NewSession(ctx, ws.ID, "model-a", "provider-a")
+	if err != nil {
+		t.Fatalf("NewSession() error = %v", err)
+	}
+	newer, err := svc.NewSession(ctx, ws.ID, "model-b", "provider-b")
+	if err != nil {
+		t.Fatalf("NewSession() error = %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/sessions/"+older.ID,
+		bytes.NewBufferString(`{"pinned":true}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch pin status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var pinned sessionResource
+	decodeJSON(t, rec.Body.Bytes(), &pinned)
+	if !pinned.Pinned {
+		t.Fatalf("patched session pinned = false, want true")
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/sessions?workspace_id="+ws.ID,
+		nil,
+	)
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var listed listSessionsResponse
+	decodeJSON(t, rec.Body.Bytes(), &listed)
+	if len(listed.Sessions) != 2 {
+		t.Fatalf("sessions = %d, want 2", len(listed.Sessions))
+	}
+	if listed.Sessions[0].ID != older.ID {
+		t.Fatalf("first session = %s, want pinned older session %s", listed.Sessions[0].ID, older.ID)
+	}
+	if listed.Sessions[1].ID != newer.ID {
+		t.Fatalf("second session = %s, want newer session %s", listed.Sessions[1].ID, newer.ID)
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/sessions/"+older.ID,
+		bytes.NewBufferString(`{"pinned":false}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch unpin status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	decodeJSON(t, rec.Body.Bytes(), &pinned)
+	if pinned.Pinned {
+		t.Fatalf("patched session pinned = true, want false")
+	}
+}
+
 func TestGetMessagesReturnsTranscriptItems(t *testing.T) {
 	t.Parallel()
 

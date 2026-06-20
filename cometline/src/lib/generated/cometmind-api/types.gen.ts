@@ -27,8 +27,12 @@ export type CreateSessionRequest = {
 };
 
 export type UpdateSessionRequest = {
-    model_id: string;
-    provider_id: string;
+    model_id?: string;
+    provider_id?: string;
+    /**
+     * Pin the session to the top of its workspace group in the sidebar.
+     */
+    pinned?: boolean;
 };
 
 export type ChangeSessionWorkspaceRequest = {
@@ -141,6 +145,10 @@ export type Session = {
     provider_id: string;
     status: 'active' | 'archived';
     token_usage: TokenUsage;
+    /**
+     * Whether the session is pinned to the top of its workspace group.
+     */
+    pinned: boolean;
     /**
      * Unix epoch milliseconds.
      */
