@@ -60,6 +60,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 		Sessions: rt.Sessions,
 		Memory:   rt.Memory,
 		ACPMgr:   rt.ACPManager(),
+		MCPMgr:   rt.MCPManager(),
 		NewRunner: func(sess session.Session, workspacePath string) (server.Runner, error) {
 			return rt.RunnerFor(sess, workspacePath)
 		},

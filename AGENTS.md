@@ -179,6 +179,22 @@ The `delegate_coding_task` tool spawns external coding agents (OpenCode, Claude 
 
 Configure this under Settings → CometMind → ACP, persisted in `~/.cometmind/cometline-settings.json`.
 
+### MCP client support
+
+CometMind connects to external MCP servers and exposes their tools to the **main agent only** (not ACP subagents). Tools are registered as `mcp_{serverId}_{toolName}` (provider-safe; invalid characters become `_`) alongside built-in tools.
+
+**Config:** Settings → CometMind → MCP, persisted in `cometmind.mcp` inside `~/.cometmind/cometline-settings.json`.
+
+**OAuth tokens:** Stored separately at `~/.cometmind/mcp-oauth/{serverId}.json` (mode `0600`), not in settings JSON. Connect via the desktop app's OAuth flow (Electron IPC).
+
+**Transports:** stdio subprocess, HTTP (streamable), and legacy SSE.
+
+**Management API:** `GET /api/v1/mcp/servers`, `GET /api/v1/mcp/tools`, `POST /api/v1/mcp/servers/{id}/test`, `POST /api/v1/mcp/servers/{id}/reconnect`
+
+**Library:** `github.com/modelcontextprotocol/go-sdk`
+
+**Import:** Settings UI can import Cursor-style `mcp.json` (`{ "mcpServers": { ... } }`).
+
 ### Discord gateway
 
 Run CometMind as a Discord bot with the same agent runtime.

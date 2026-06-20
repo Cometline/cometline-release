@@ -87,6 +87,34 @@ export interface CometMindStorageSettings {
 	vacuumAfterPurge: boolean;
 }
 
+export type MCPTransport = 'stdio' | 'http' | 'sse';
+
+export interface MCPOAuthSettings {
+	clientId?: string;
+	scopes?: string[];
+	authorizationUrl?: string;
+	tokenUrl?: string;
+}
+
+export interface MCPServerConfig {
+	id: string;
+	name: string;
+	enabled: boolean;
+	transport: MCPTransport;
+	command?: string;
+	args?: string[];
+	env?: Record<string, string>;
+	url?: string;
+	headers?: Record<string, string>;
+	oauth?: MCPOAuthSettings;
+	allowedTools?: string[];
+}
+
+export interface CometMindMCPSettings {
+	enabled: boolean;
+	servers: MCPServerConfig[];
+}
+
 export interface CometMindSettings {
 	systemPromptPath: string;
 	maxTokens: number;
@@ -99,6 +127,7 @@ export interface CometMindSettings {
 	gateway: {
 		discord: CometMindDiscordGatewaySettings;
 	};
+	mcp: CometMindMCPSettings;
 }
 
 export interface RuntimeProviderEntry {
@@ -122,6 +151,7 @@ export interface RuntimeSettingsSlice {
 	skills: CometMindSkillsSettings;
 	memory: CometMindMemorySettings;
 	gateway: CometMindSettings['gateway'];
+	mcp: CometMindMCPSettings;
 }
 
 const DEFAULT_PROVIDERS: ProviderConfig[] = [
@@ -215,6 +245,99 @@ function normalizePositiveInt(value: unknown, fallback: number): number {
 	return Math.max(1, Math.floor(value));
 }
 
+function cleanStringMap(values: unknown): Record<string, string> {
+	if (!values || typeof values !== 'object') return {};
+	const out: Record<string, string> = {};
+	for (const [key, value] of Object.entries(values as Record<string, unknown>)) {
+		const k = String(key).trim();
+		const v = String(value ?? '').trim();
+		if (k && v) out[k] = v;
+	}
+	return out;
+}
+
+function slugifyMCPId(name: string, existing: Set<string>): string {
+	const base =
+		name
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, '-')
+			.replace(/^-+|-+$/g, '') || 'server';
+	let candidate = base;
+	let n = 2;
+	while (existing.has(candidate)) {
+		candidate = `${base}-${n++}`;
+	}
+	existing.add(candidate);
+	return candidate;
+}
+
+const VALID_MCP_TRANSPORTS: MCPTransport[] = ['stdio', 'http', 'sse'];
+
+function normalizeMCPTransport(value: unknown, fallback: MCPTransport): MCPTransport {
+	const raw = String(value ?? '').trim() as MCPTransport;
+	return VALID_MCP_TRANSPORTS.includes(raw) ? raw : fallback;
+}
+
+function normalizeMCPOAuth(input: Partial<MCPOAuthSettings> | undefined): MCPOAuthSettings | undefined {
+	if (!input) return undefined;
+	const clientId = String(input.clientId ?? '').trim();
+	const authorizationUrl = String(input.authorizationUrl ?? '').trim();
+	const tokenUrl = String(input.tokenUrl ?? '').trim();
+	const scopes = cleanStringList(input.scopes);
+	if (!clientId && !authorizationUrl && !tokenUrl && scopes.length === 0) {
+		return undefined;
+	}
+	return {
+		clientId,
+		scopes,
+		authorizationUrl,
+		tokenUrl
+	};
+}
+
+export function defaultCometMindMCPSettings(): CometMindMCPSettings {
+	return { enabled: false, servers: [] };
+}
+
+function normalizeMCPServer(
+	input: Partial<MCPServerConfig> | undefined,
+	existingIds: Set<string>
+): MCPServerConfig | null {
+	if (!input) return null;
+	const name = String(input.name ?? '').trim();
+	const id = String(input.id ?? '').trim() || (name ? slugifyMCPId(name, existingIds) : '');
+	if (!id) return null;
+	if (!existingIds.has(id)) existingIds.add(id);
+	const transport = normalizeMCPTransport(input.transport, 'stdio');
+	return {
+		id,
+		name: name || id,
+		enabled: typeof input.enabled === 'boolean' ? input.enabled : true,
+		transport,
+		command: String(input.command ?? '').trim(),
+		args: cleanStringList(input.args),
+		env: cleanStringMap(input.env),
+		url: String(input.url ?? '').trim(),
+		headers: cleanStringMap(input.headers),
+		oauth: normalizeMCPOAuth(input.oauth),
+		allowedTools: cleanStringList(input.allowedTools)
+	};
+}
+
+function normalizeCometMindMCPSettings(input: Partial<CometMindMCPSettings> | undefined): CometMindMCPSettings {
+	const defaults = defaultCometMindMCPSettings();
+	const enabled = typeof input?.enabled === 'boolean' ? input.enabled : defaults.enabled;
+	const ids = new Set<string>();
+	const servers: MCPServerConfig[] = [];
+	if (Array.isArray(input?.servers)) {
+		for (const srv of input.servers) {
+			const normalized = normalizeMCPServer(srv, ids);
+			if (normalized) servers.push(normalized);
+		}
+	}
+	return { enabled, servers };
+}
+
 export function defaultCometMindStorageSettings(): CometMindStorageSettings {
 	return {
 		retentionDays: 90,
@@ -266,7 +389,8 @@ export function defaultCometMindSettings(workspacePath = ''): CometMindSettings 
 				requireMention: true,
 				workspacePath
 			}
-		}
+		},
+		mcp: defaultCometMindMCPSettings()
 	};
 }
 
@@ -281,6 +405,7 @@ export function normalizeCometMindSettings(
 	const embedding: Partial<CometMindMemorySettings['embedding']> = memory.embedding ?? {};
 	const storage: Partial<CometMindStorageSettings> = input?.storage ?? {};
 	const discord: Partial<CometMindDiscordGatewaySettings> = input?.gateway?.discord ?? {};
+	const mcp = normalizeCometMindMCPSettings(input?.mcp);
 	const args = Array.isArray(acp.args)
 		? acp.args.map((a) => String(a).trim()).filter(Boolean)
 		: defaults.acp.args;
@@ -370,7 +495,8 @@ export function normalizeCometMindSettings(
 						discord.workspacePath ?? defaults.gateway.discord.workspacePath
 					).trim() || defaults.gateway.discord.workspacePath
 			}
-		}
+		},
+		mcp
 	};
 }
 
@@ -401,6 +527,17 @@ export function cloneCometMindSettings(settings: CometMindSettings): CometMindSe
 				allowedUsers: [...settings.gateway.discord.allowedUsers],
 				allowedChannels: [...settings.gateway.discord.allowedChannels]
 			}
+		},
+		mcp: {
+			enabled: settings.mcp.enabled,
+			servers: settings.mcp.servers.map((server) => ({
+				...server,
+				args: [...(server.args ?? [])],
+				env: { ...(server.env ?? {}) },
+				headers: { ...(server.headers ?? {}) },
+				oauth: server.oauth ? { ...server.oauth, scopes: [...(server.oauth.scopes ?? [])] } : undefined,
+				allowedTools: [...(server.allowedTools ?? [])]
+			}))
 		}
 	};
 }
@@ -653,7 +790,8 @@ export function runtimeSlice(settings: ProviderSettings): RuntimeSettingsSlice |
 			extractionModel: settings.cometmind.memory.extractionModel,
 			embedding: { ...settings.cometmind.memory.embedding }
 		},
-		gateway: cloneCometMindSettings(settings.cometmind).gateway
+		gateway: cloneCometMindSettings(settings.cometmind).gateway,
+		mcp: cloneCometMindSettings(settings.cometmind).mcp
 	};
 }
 
@@ -737,6 +875,31 @@ const providerSettingsSchema = z.object({
 				requireMention: z.boolean(),
 				workspacePath: z.string()
 			})
+		}),
+		mcp: z.object({
+			enabled: z.boolean(),
+			servers: z.array(
+				z.object({
+					id: z.string().min(1),
+					name: z.string(),
+					enabled: z.boolean(),
+					transport: z.enum(['stdio', 'http', 'sse']),
+					command: z.string().optional(),
+					args: z.array(z.string()).optional(),
+					env: z.record(z.string(), z.string()).optional(),
+					url: z.string().optional(),
+					headers: z.record(z.string(), z.string()).optional(),
+					oauth: z
+						.object({
+							clientId: z.string().optional(),
+							scopes: z.array(z.string()).optional(),
+							authorizationUrl: z.string().optional(),
+							tokenUrl: z.string().optional()
+						})
+						.optional(),
+					allowedTools: z.array(z.string()).optional()
+				})
+			)
 		})
 	})
 });

@@ -130,6 +130,34 @@ declare global {
 		vacuumAfterPurge: boolean;
 	}
 
+	type MCPTransport = 'stdio' | 'http' | 'sse';
+
+	interface MCPOAuthSettings {
+		clientId?: string;
+		scopes?: string[];
+		authorizationUrl?: string;
+		tokenUrl?: string;
+	}
+
+	interface MCPServerConfig {
+		id: string;
+		name: string;
+		enabled: boolean;
+		transport: MCPTransport;
+		command?: string;
+		args?: string[];
+		env?: Record<string, string>;
+		url?: string;
+		headers?: Record<string, string>;
+		oauth?: MCPOAuthSettings;
+		allowedTools?: string[];
+	}
+
+	interface CometMindMCPSettings {
+		enabled: boolean;
+		servers: MCPServerConfig[];
+	}
+
 	interface CometMindSettings {
 		systemPromptPath: string;
 		maxTokens: number;
@@ -142,6 +170,7 @@ declare global {
 		gateway: {
 			discord: CometMindDiscordGatewaySettings;
 		};
+		mcp: CometMindMCPSettings;
 	}
 
 	interface SidebarChromeState {
@@ -176,6 +205,21 @@ declare global {
 				error?: string;
 			}>;
 			startCodexLogin?: () => Promise<{ started: boolean; message: string }>;
+			getMcpOAuthStatus?: (serverId: string) => Promise<{
+				authenticated: boolean;
+				authPath: string;
+				expiry?: string;
+				error?: string;
+			}>;
+			startMcpOAuth?: (payload: {
+				serverId: string;
+				oauth: {
+					clientId: string;
+					scopes?: string[];
+					authorizationUrl: string;
+					tokenUrl: string;
+				};
+			}) => Promise<{ started: boolean; message: string }>;
 			getDiscordGatewayStatus?: () => Promise<{ running: boolean; enabled: boolean }>;
 			setDiscordGatewayEnabled?: (
 				enabled: boolean

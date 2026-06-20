@@ -248,6 +248,44 @@ export type SyncSkillsResponse = {
     errors?: Array<string>;
 };
 
+export type McpServerStatus = {
+    id: string;
+    name: string;
+    enabled: boolean;
+    transport: string;
+    status: 'disabled' | 'connected' | 'error' | 'disconnected';
+    tool_count: number;
+    last_error?: string;
+    oauth_connected?: boolean;
+};
+
+export type ListMcpServersResponse = {
+    servers: Array<McpServerStatus>;
+};
+
+export type McpToolInfo = {
+    server_id: string;
+    server_name: string;
+    tool_name: string;
+    registry_name: string;
+    description: string;
+};
+
+export type ListMcpToolsResponse = {
+    tools: Array<McpToolInfo>;
+};
+
+export type McpTestResult = {
+    ok: boolean;
+    tool_count: number;
+    tools?: Array<string>;
+    error?: string;
+};
+
+export type McpReconnectResponse = {
+    ok: boolean;
+};
+
 export type CreateWorkspaceRequest = {
     /**
      * Absolute filesystem path for the workspace.
@@ -1273,6 +1311,126 @@ export type ExportSkillResponses = {
 };
 
 export type ExportSkillResponse = ExportSkillResponses[keyof ExportSkillResponses];
+
+export type ListMcpServersData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/mcp/servers';
+};
+
+export type ListMcpServersErrors = {
+    /**
+     * Unexpected server error
+     */
+    500: ErrorResponse;
+};
+
+export type ListMcpServersError = ListMcpServersErrors[keyof ListMcpServersErrors];
+
+export type ListMcpServersResponses = {
+    /**
+     * MCP server statuses
+     */
+    200: ListMcpServersResponse;
+};
+
+export type ListMcpServersResponse2 = ListMcpServersResponses[keyof ListMcpServersResponses];
+
+export type ListMcpToolsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/mcp/tools';
+};
+
+export type ListMcpToolsErrors = {
+    /**
+     * Unexpected server error
+     */
+    500: ErrorResponse;
+};
+
+export type ListMcpToolsError = ListMcpToolsErrors[keyof ListMcpToolsErrors];
+
+export type ListMcpToolsResponses = {
+    /**
+     * MCP tool index
+     */
+    200: ListMcpToolsResponse;
+};
+
+export type ListMcpToolsResponse2 = ListMcpToolsResponses[keyof ListMcpToolsResponses];
+
+export type TestMcpServerData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/mcp/servers/{id}/test';
+};
+
+export type TestMcpServerErrors = {
+    /**
+     * Unexpected server error
+     */
+    500: ErrorResponse;
+    /**
+     * Connection failed
+     */
+    502: McpTestResult;
+    /**
+     * Unexpected server error
+     */
+    503: ErrorResponse;
+};
+
+export type TestMcpServerError = TestMcpServerErrors[keyof TestMcpServerErrors];
+
+export type TestMcpServerResponses = {
+    /**
+     * Connection succeeded
+     */
+    200: McpTestResult;
+};
+
+export type TestMcpServerResponse = TestMcpServerResponses[keyof TestMcpServerResponses];
+
+export type ReconnectMcpServerData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/mcp/servers/{id}/reconnect';
+};
+
+export type ReconnectMcpServerErrors = {
+    /**
+     * Unexpected server error
+     */
+    500: ErrorResponse;
+    /**
+     * Unexpected server error
+     */
+    502: ErrorResponse;
+    /**
+     * Unexpected server error
+     */
+    503: ErrorResponse;
+};
+
+export type ReconnectMcpServerError = ReconnectMcpServerErrors[keyof ReconnectMcpServerErrors];
+
+export type ReconnectMcpServerResponses = {
+    /**
+     * Reconnected
+     */
+    200: McpReconnectResponse;
+};
+
+export type ReconnectMcpServerResponse = ReconnectMcpServerResponses[keyof ReconnectMcpServerResponses];
 
 export type ListMemoriesData = {
     body?: never;

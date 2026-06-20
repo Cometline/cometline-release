@@ -156,6 +156,26 @@ Cometline is a three-layer system: a desktop chat UI, a local agent runtime, and
 8. CometMind emits subagent_complete, continues agent loop
 ```
 
+### MCP tool integration
+
+```
+1. User configures MCP servers in Cometline Settings → CometMind → MCP
+   ↓
+2. Settings saved to ~/.cometmind/cometline-settings.json (cometmind.mcp)
+   ↓
+3. Sidecar restart → runtime.New() starts mcp.Manager
+   ↓
+4. Manager connects enabled servers (stdio / HTTP / SSE) via go-sdk
+   ↓
+5. tools.Registry merges MCP tools as mcp/{serverId}/{toolName}
+   ↓
+6. Agent loop calls MCP tools through the same tool_call / tool_result SSE path
+```
+
+OAuth tokens for remote MCP servers live in `~/.cometmind/mcp-oauth/{serverId}.json`. The Electron shell runs the browser OAuth callback flow; CometMind reads tokens at connect time.
+
+Management endpoints (`/api/v1/mcp/*`) expose connection status, tool previews, test, and reconnect without editing settings.
+
 ### Discord gateway
 
 ```
@@ -182,6 +202,10 @@ CometMind serves a REST/SSE API on `127.0.0.1:7700`. The OpenAPI spec is `cometm
 - `GET /api/v1/sessions?workspace_path=...` — list sessions
 - `POST /api/v1/sessions/{id}/message` — send message, receive SSE stream
 - `POST /api/v1/sessions/{id}/abort` — cancel in-flight run
+- `GET /api/v1/mcp/servers` — MCP server connection status
+- `GET /api/v1/mcp/tools` — registered MCP tools preview
+- `POST /api/v1/mcp/servers/{id}/test` — test MCP connection
+- `POST /api/v1/mcp/servers/{id}/reconnect` — reconnect one MCP server
 
 **Client:** `cometline/src/lib/client/cometmind.ts`
 

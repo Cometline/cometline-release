@@ -18,6 +18,7 @@ import (
 	"github.com/cometline/cometmind/internal/agent"
 	"github.com/cometline/cometmind/internal/config"
 	"github.com/cometline/cometmind/internal/memory"
+	mcppkg "github.com/cometline/cometmind/internal/mcp"
 	"github.com/cometline/cometmind/internal/paths"
 	"github.com/cometline/cometmind/internal/provider"
 	"github.com/cometline/cometmind/internal/retention"
@@ -41,6 +42,7 @@ type Runtime struct {
 	Memory       *memory.Service
 	SystemPrompt string
 	acpMgr       *acp.SessionManager
+	mcpMgr       *mcppkg.Manager
 	memorySem    chan struct{} // bounds concurrent memory-extraction goroutines
 }
 
@@ -82,6 +84,8 @@ func New(ctx context.Context) (*Runtime, error) {
 		}
 	}
 	runRetention(ctx, sqlDB, sessions, r.Memory, cfg.EffectiveStorageConfig())
+	r.mcpMgr = mcppkg.NewManager(cfg.MCPSettings())
+	r.mcpMgr.Start(ctx)
 	return r, nil
 }
 
@@ -114,6 +118,9 @@ func loadSystemPrompt(path string) (string, error) {
 
 // Close releases runtime resources.
 func (r *Runtime) Close() error {
+	if r.mcpMgr != nil {
+		_ = r.mcpMgr.Close()
+	}
 	return r.DB.Close()
 }
 
@@ -144,6 +151,11 @@ func (r *Runtime) ACPManager() *acp.SessionManager {
 	return r.acpMgr
 }
 
+// MCPManager returns the shared MCP client manager.
+func (r *Runtime) MCPManager() *mcppkg.Manager {
+	return r.mcpMgr
+}
+
 // RunnerFor returns an agent runner wired for a specific session and workspace.
 func (r *Runtime) RunnerFor(sess session.Session, workspacePath string) (*agent.Runner, error) {
 	p, err := r.ProviderForSession(sess)
@@ -157,7 +169,7 @@ func (r *Runtime) RunnerFor(sess session.Session, workspacePath string) (*agent.
 		Provider:     p,
 		Sessions:     r.Sessions,
 		Memory:       r.Memory,
-		Registry:     tools.NewRegistry(workspacePath, tools.RegistryOptions{Sessions: r.Sessions, ACP: r.Config.ACPSettings(), ACPMgr: r.ACPManager(), Skills: &skillRegistry}),
+		Registry:     tools.NewRegistry(workspacePath, tools.RegistryOptions{Sessions: r.Sessions, ACP: r.Config.ACPSettings(), ACPMgr: r.ACPManager(), Skills: &skillRegistry, MCP: r.mcpMgr}),
 		MaxSteps:     r.Config.MaxSteps,
 		MaxTokens:    r.Config.MaxTokens,
 		SystemPrompt: r.SystemPrompt,

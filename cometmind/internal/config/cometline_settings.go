@@ -60,6 +60,32 @@ type cometlineStorageJSON struct {
 	VacuumAfterPurge        bool `json:"vacuumAfterPurge"`
 }
 
+type cometlineMCPOAuthJSON struct {
+	ClientID         string   `json:"clientId"`
+	Scopes           []string `json:"scopes"`
+	AuthorizationURL string   `json:"authorizationUrl"`
+	TokenURL         string   `json:"tokenUrl"`
+}
+
+type cometlineMCPServerJSON struct {
+	ID           string                `json:"id"`
+	Name         string                `json:"name"`
+	Enabled      bool                  `json:"enabled"`
+	Transport    string                `json:"transport"`
+	Command      string                `json:"command"`
+	Args         []string              `json:"args"`
+	Env          map[string]string     `json:"env"`
+	URL          string                `json:"url"`
+	Headers      map[string]string     `json:"headers"`
+	OAuth        *cometlineMCPOAuthJSON `json:"oauth"`
+	AllowedTools []string              `json:"allowedTools"`
+}
+
+type cometlineMCPJSON struct {
+	Enabled bool                     `json:"enabled"`
+	Servers []cometlineMCPServerJSON `json:"servers"`
+}
+
 type cometlineCometmindJSON struct {
 	SystemPromptPath string              `json:"systemPromptPath"`
 	MaxTokens        int                 `json:"maxTokens"`
@@ -76,6 +102,7 @@ type cometlineCometmindJSON struct {
 	Gateway struct {
 		Discord cometlineDiscordJSON `json:"discord"`
 	} `json:"gateway"`
+	MCP cometlineMCPJSON `json:"mcp"`
 }
 
 type cometlineSettingsJSON struct {
@@ -202,6 +229,7 @@ func adaptCometlineSettings(raw cometlineSettingsJSON) (*Config, error) {
 				Model:           strings.TrimSpace(cm.Gateway.Discord.ModelID),
 			},
 		},
+		MCP: adaptMCPJSON(cm.MCP),
 	}
 
 	if cfg.ACP.Command == "" {
@@ -230,6 +258,47 @@ func adaptCometlineSettings(raw cometlineSettingsJSON) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func adaptMCPJSON(raw cometlineMCPJSON) MCPConfig {
+	out := MCPConfig{Enabled: raw.Enabled}
+	for _, srv := range raw.Servers {
+		entry := MCPServerConfig{
+			ID:           strings.TrimSpace(srv.ID),
+			Name:         strings.TrimSpace(srv.Name),
+			Enabled:      srv.Enabled,
+			Transport:    MCPTransport(strings.TrimSpace(srv.Transport)),
+			Command:      strings.TrimSpace(srv.Command),
+			Args:         append([]string(nil), srv.Args...),
+			Env:          copyStringMapGo(srv.Env),
+			URL:          strings.TrimSpace(srv.URL),
+			Headers:      copyStringMapGo(srv.Headers),
+			AllowedTools: append([]string(nil), srv.AllowedTools...),
+		}
+		if srv.OAuth != nil {
+			entry.OAuth = &MCPOAuthConfig{
+				ClientID:         strings.TrimSpace(srv.OAuth.ClientID),
+				Scopes:           append([]string(nil), srv.OAuth.Scopes...),
+				AuthorizationURL: strings.TrimSpace(srv.OAuth.AuthorizationURL),
+				TokenURL:         strings.TrimSpace(srv.OAuth.TokenURL),
+			}
+		}
+		if entry.ID != "" {
+			out.Servers = append(out.Servers, entry)
+		}
+	}
+	return out
+}
+
+func copyStringMapGo(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 func loadCometlineSettingsJSON(path string) (*Config, error) {

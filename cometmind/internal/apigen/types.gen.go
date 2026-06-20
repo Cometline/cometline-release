@@ -34,6 +34,30 @@ func (e ImageAttachmentMediaType) Valid() bool {
 	}
 }
 
+// Defines values for McpServerStatusStatus.
+const (
+	Connected    McpServerStatusStatus = "connected"
+	Disabled     McpServerStatusStatus = "disabled"
+	Disconnected McpServerStatusStatus = "disconnected"
+	Error        McpServerStatusStatus = "error"
+)
+
+// Valid indicates whether the value is a known member of the McpServerStatusStatus enum.
+func (e McpServerStatusStatus) Valid() bool {
+	switch e {
+	case Connected:
+		return true
+	case Disabled:
+		return true
+	case Disconnected:
+		return true
+	case Error:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MemoryChangeWireAction.
 const (
 	Create    MemoryChangeWireAction = "create"
@@ -249,6 +273,16 @@ type ImageAttachment struct {
 // ImageAttachmentMediaType defines model for ImageAttachment.MediaType.
 type ImageAttachmentMediaType string
 
+// ListMcpServersResponse defines model for ListMcpServersResponse.
+type ListMcpServersResponse struct {
+	Servers []McpServerStatus `json:"servers"`
+}
+
+// ListMcpToolsResponse defines model for ListMcpToolsResponse.
+type ListMcpToolsResponse struct {
+	Tools []McpToolInfo `json:"tools"`
+}
+
 // ListMemoriesResponse defines model for ListMemoriesResponse.
 type ListMemoriesResponse struct {
 	Memories []MemoryResource `json:"memories"`
@@ -258,6 +292,43 @@ type ListMemoriesResponse struct {
 type ListSkillsResponse struct {
 	Errors *[]string `json:"errors,omitempty"`
 	Skills []Skill   `json:"skills"`
+}
+
+// McpReconnectResponse defines model for McpReconnectResponse.
+type McpReconnectResponse struct {
+	Ok bool `json:"ok"`
+}
+
+// McpServerStatus defines model for McpServerStatus.
+type McpServerStatus struct {
+	Enabled        bool                  `json:"enabled"`
+	Id             string                `json:"id"`
+	LastError      *string               `json:"last_error,omitempty"`
+	Name           string                `json:"name"`
+	OauthConnected *bool                 `json:"oauth_connected,omitempty"`
+	Status         McpServerStatusStatus `json:"status"`
+	ToolCount      int                   `json:"tool_count"`
+	Transport      string                `json:"transport"`
+}
+
+// McpServerStatusStatus defines model for McpServerStatus.Status.
+type McpServerStatusStatus string
+
+// McpTestResult defines model for McpTestResult.
+type McpTestResult struct {
+	Error     *string   `json:"error,omitempty"`
+	Ok        bool      `json:"ok"`
+	ToolCount int       `json:"tool_count"`
+	Tools     *[]string `json:"tools,omitempty"`
+}
+
+// McpToolInfo defines model for McpToolInfo.
+type McpToolInfo struct {
+	Description  string `json:"description"`
+	RegistryName string `json:"registry_name"`
+	ServerId     string `json:"server_id"`
+	ServerName   string `json:"server_name"`
+	ToolName     string `json:"tool_name"`
 }
 
 // MemoryChangeWire defines model for MemoryChangeWire.

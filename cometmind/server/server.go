@@ -18,6 +18,7 @@ import (
 	"github.com/cometline/cometmind/internal/event"
 	"github.com/cometline/cometmind/internal/logging"
 	"github.com/cometline/cometmind/internal/memory"
+	mcppkg "github.com/cometline/cometmind/internal/mcp"
 	"github.com/cometline/cometmind/internal/session"
 	skillpkg "github.com/cometline/cometmind/internal/skills"
 	"github.com/cometline/cometmind/internal/tools/sandbox"
@@ -52,6 +53,7 @@ type Deps struct {
 	NewRunner RunnerFactory
 	Runs      *RunManager
 	ACPMgr    *acp.SessionManager
+	MCPMgr    *mcppkg.Manager
 }
 
 type App struct {
@@ -61,6 +63,7 @@ type App struct {
 	newRunner RunnerFactory
 	runs      *RunManager
 	acpMgr    *acp.SessionManager
+	mcpMgr    *mcppkg.Manager
 }
 
 func New(deps Deps) (*gin.Engine, error) {
@@ -84,6 +87,7 @@ func New(deps Deps) (*gin.Engine, error) {
 		newRunner: deps.NewRunner,
 		runs:      deps.Runs,
 		acpMgr:    deps.ACPMgr,
+		mcpMgr:    deps.MCPMgr,
 	}
 
 	r := gin.New()
@@ -123,6 +127,12 @@ func New(deps Deps) (*gin.Engine, error) {
 	api.GET("/skills/:name/export", app.handleExportSkill)
 	api.DELETE("/skills/:name", app.handleDeleteSkill)
 	api.GET("/skills/:name", app.handleGetSkill)
+
+	// MCP
+	api.GET("/mcp/servers", app.handleListMCPServers)
+	api.GET("/mcp/tools", app.handleListMCPTools)
+	api.POST("/mcp/servers/:id/test", app.handleTestMCPServer)
+	api.POST("/mcp/servers/:id/reconnect", app.handleReconnectMCPServer)
 
 	// Memories
 	api.GET("/memories", app.handleListMemories)

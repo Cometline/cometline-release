@@ -16,6 +16,7 @@ tags:
   - name: Files
   - name: Sessions
   - name: Skills
+  - name: MCP
   - name: Memory
 paths:
   /api/v1/health:
@@ -713,6 +714,90 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/mcp/servers:
+    get:
+      tags: [MCP]
+      summary: List configured MCP servers and runtime status
+      operationId: listMcpServers
+      responses:
+        '200':
+          description: MCP server statuses
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListMcpServersResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/mcp/tools:
+    get:
+      tags: [MCP]
+      summary: List MCP tools currently registered with the runtime
+      operationId: listMcpTools
+      responses:
+        '200':
+          description: MCP tool index
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListMcpToolsResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/mcp/servers/{id}/test:
+    post:
+      tags: [MCP]
+      summary: Test connect to one MCP server without persisting
+      operationId: testMcpServer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Connection succeeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpTestResult'
+        '502':
+          description: Connection failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpTestResult'
+        '503':
+          $ref: '#/components/responses/InternalError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/mcp/servers/{id}/reconnect:
+    post:
+      tags: [MCP]
+      summary: Disconnect and reconnect one MCP server
+      operationId: reconnectMcpServer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Reconnected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpReconnectResponse'
+        '502':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/InternalError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/memories:
     get:
       tags: [Memory]
@@ -1376,6 +1461,89 @@ components:
           type: array
           items:
             type: string
+
+    McpServerStatus:
+      type: object
+      additionalProperties: false
+      required: [id, name, enabled, transport, status, tool_count]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        enabled:
+          type: boolean
+        transport:
+          type: string
+        status:
+          type: string
+          enum: [disabled, connected, error, disconnected]
+        tool_count:
+          type: integer
+        last_error:
+          type: string
+        oauth_connected:
+          type: boolean
+
+    ListMcpServersResponse:
+      type: object
+      additionalProperties: false
+      required: [servers]
+      properties:
+        servers:
+          type: array
+          items:
+            $ref: '#/components/schemas/McpServerStatus'
+
+    McpToolInfo:
+      type: object
+      additionalProperties: false
+      required: [server_id, server_name, tool_name, registry_name, description]
+      properties:
+        server_id:
+          type: string
+        server_name:
+          type: string
+        tool_name:
+          type: string
+        registry_name:
+          type: string
+        description:
+          type: string
+
+    ListMcpToolsResponse:
+      type: object
+      additionalProperties: false
+      required: [tools]
+      properties:
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/McpToolInfo'
+
+    McpTestResult:
+      type: object
+      additionalProperties: false
+      required: [ok, tool_count]
+      properties:
+        ok:
+          type: boolean
+        tool_count:
+          type: integer
+        tools:
+          type: array
+          items:
+            type: string
+        error:
+          type: string
+
+    McpReconnectResponse:
+      type: object
+      additionalProperties: false
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
 
     CreateWorkspaceRequest:
       type: object

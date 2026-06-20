@@ -49,3 +49,16 @@ func DBPath() (string, error) {
 	}
 	return filepath.Join(d, "cometmind.db"), nil
 }
+
+// MCPOAuthDir returns ~/.cometmind/mcp-oauth (created if missing).
+func MCPOAuthDir() (string, error) {
+	d, err := DataDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(d, "mcp-oauth")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	return dir, nil
+}

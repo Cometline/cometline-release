@@ -17,6 +17,8 @@ import {
 	listMemories as listMemoriesApi,
 	listSessions as listSessionsApi,
 	listSkills as listSkillsApi,
+	listMcpServers as listMcpServersApi,
+	listMcpTools as listMcpToolsApi,
 	listWorkspaces as listWorkspacesApi,
 	pruneWorkspaces as pruneWorkspacesApi,
 	listWorkspaceFiles as listWorkspaceFilesApi,
@@ -24,8 +26,10 @@ import {
 	writeWorkspaceFileContent as writeWorkspaceFileContentApi,
 	patchSession as patchSessionApi,
 	putMemorySettings as putMemorySettingsApi,
+	reconnectMcpServer as reconnectMcpServerApi,
 	searchMemories as searchMemoriesApi,
-	syncSkills as syncSkillsApi
+	syncSkills as syncSkillsApi,
+	testMcpServer as testMcpServerApi
 } from '$lib/generated/cometmind-api';
 import type {
 	CompactMemoryPreviewResponse,
@@ -33,6 +37,9 @@ import type {
 	CreateSessionRequest,
 	ListMemoriesResponse,
 	ListSkillsResponse,
+	McpServerStatus,
+	McpTestResult,
+	McpToolInfo,
 	MemoryResource,
 	MemorySettings as MemorySettingsWire,
 	PostMessageRequest,
@@ -51,6 +58,9 @@ import { createSSEParser } from '$lib/sse/parser';
 export type {
 	CompactMemoryPreviewResponse,
 	CreateMemoryRequest,
+	McpServerStatus,
+	McpTestResult,
+	McpToolInfo,
 	MemoryResource
 } from '$lib/generated/cometmind-api';
 
@@ -235,6 +245,31 @@ export function syncSkills(workspacePath = ''): Promise<SyncSkillsResponse> {
 		query: skillQuery(workspacePath),
 		throwOnError: true
 	}).then(({ data }) => data);
+}
+
+export async function listMcpServers(): Promise<McpServerStatus[]> {
+	const { data } = await listMcpServersApi({ throwOnError: true });
+	return data.servers;
+}
+
+export async function listMcpTools(): Promise<McpToolInfo[]> {
+	const { data } = await listMcpToolsApi({ throwOnError: true });
+	return data.tools;
+}
+
+export async function testMcpServer(serverId: string): Promise<McpTestResult> {
+	const { data } = await testMcpServerApi({
+		path: { id: serverId },
+		throwOnError: true
+	});
+	return data;
+}
+
+export async function reconnectMcpServer(serverId: string): Promise<void> {
+	await reconnectMcpServerApi({
+		path: { id: serverId },
+		throwOnError: true
+	});
 }
 
 export async function deleteSkill(name: string, workspacePath = ''): Promise<void> {

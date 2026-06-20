@@ -1,13 +1,18 @@
 export {
 	cloneCometMindSettings,
+	defaultCometMindMCPSettings,
 	defaultCometMindSettings,
 	normalizeCometMindSettings,
 	type CometMindACPSettings,
 	type CometMindDiscordGatewaySettings,
+	type CometMindMCPSettings,
 	type CometMindMemorySettings,
 	type CometMindSettings,
 	type CometMindSkillsSettings,
-	type CometMindStorageSettings
+	type CometMindStorageSettings,
+	type MCPOAuthSettings,
+	type MCPServerConfig,
+	type MCPTransport
 } from './settings/schema';
 
 /** Parse comma- or newline-separated IDs for text inputs. */

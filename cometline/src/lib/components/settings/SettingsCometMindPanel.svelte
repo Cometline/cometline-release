@@ -7,6 +7,7 @@
 	import { listSkills, syncSkills, deleteSkill, exportSkill } from '$lib/client/cometmind';
 	import type { SkillResource } from '$lib/types';
 	import { onMount } from 'svelte';
+	import SettingsMCPPanel from './SettingsMCPPanel.svelte';
 
 	let {
 		cometmind = $bindable(),
@@ -75,6 +76,7 @@
 	let deletePending = $state<string | null>(null);
 	let gatewayRunning = $state(false);
 	let gatewayBusy = $state(false);
+	let mcpPanel: SettingsMCPPanel | undefined = $state();
 
 	onMount(() => {
 		void refreshGatewayStatus();
@@ -188,6 +190,7 @@
 
 	export function syncFields() {
 		syncListsFromText();
+		mcpPanel?.syncFields();
 	}
 
 	function syncListsFromText() {
@@ -417,6 +420,8 @@
 			</div>
 		{/if}
 	</div>
+
+	<SettingsMCPPanel bind:this={mcpPanel} bind:cometmind />
 
 	<div class="settings-section">
 		<div class="settings-section-heading">

@@ -2,6 +2,7 @@ package tools
 
 import (
 	"github.com/cometline/cometmind/internal/acp"
+	mcppkg "github.com/cometline/cometmind/internal/mcp"
 	"github.com/cometline/cometmind/internal/session"
 	"github.com/cometline/cometmind/internal/skills"
 )
@@ -12,4 +13,5 @@ type RegistryOptions struct {
 	ACP      acp.Config
 	ACPMgr   *acp.SessionManager
 	Skills   *skills.Registry
+	MCP      *mcppkg.Manager
 }

@@ -79,6 +79,7 @@ type Config struct {
 	Memory           MemoryConfig    `mapstructure:"memory"`
 	Storage          StorageConfig   `mapstructure:"storage"`
 	Gateway          GatewayConfig   `mapstructure:"gateway"`
+	MCP              MCPConfig       `mapstructure:"mcp"`
 }
 
 // Defaults returns baseline values when the config file is missing keys.

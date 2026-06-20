@@ -61,6 +61,8 @@ const CODEX_CLIENT_VERSION = '1.0.0';
 const CODEX_AUTH_CALLBACK_PORT = 1455;
 const CODEX_AUTH_CALLBACK_PATH = '/auth/callback';
 const CODEX_AUTH_TIMEOUT_MS = 5 * 60 * 1000;
+const MCP_OAUTH_CALLBACK_PORT = 1456;
+const MCP_OAUTH_CALLBACK_PATH = '/mcp/oauth/callback';
 
 function rotateLogIfNeeded(logPath) {
 	try {
@@ -1804,6 +1806,175 @@ async function startCodexLogin() {
 	}
 }
 
+function mcpOAuthTokenPath(serverId) {
+	const id = String(serverId || '').trim();
+	return path.join(os.homedir(), '.cometmind', 'mcp-oauth', `${id}.json`);
+}
+
+function mcpOAuthRedirectURI() {
+	return `http://localhost:${MCP_OAUTH_CALLBACK_PORT}${MCP_OAUTH_CALLBACK_PATH}`;
+}
+
+function getMcpOAuthStatus(serverId) {
+	const authPath = mcpOAuthTokenPath(serverId);
+	try {
+		if (!fs.existsSync(authPath)) {
+			return { authenticated: false, authPath };
+		}
+		const raw = JSON.parse(fs.readFileSync(authPath, 'utf8'));
+		return {
+			authenticated: Boolean(raw?.access_token),
+			authPath,
+			expiry: raw?.expiry || raw?.expires_at || undefined
+		};
+	} catch (err) {
+		return {
+			authenticated: false,
+			authPath,
+			error: err instanceof Error ? err.message : String(err)
+		};
+	}
+}
+
+function writeMcpOAuthToken(serverId, tokens) {
+	const authPath = mcpOAuthTokenPath(serverId);
+	fs.mkdirSync(path.dirname(authPath), { recursive: true, mode: 0o700 });
+	fs.writeFileSync(authPath, JSON.stringify(tokens, null, 2), { mode: 0o600 });
+}
+
+async function exchangeMcpOAuthCode(oauth, code, codeVerifier) {
+	const body = new URLSearchParams({
+		grant_type: 'authorization_code',
+		client_id: String(oauth.clientId || '').trim(),
+		code,
+		redirect_uri: mcpOAuthRedirectURI(),
+		code_verifier: codeVerifier
+	});
+	const res = await fetch(String(oauth.tokenUrl || '').trim(), {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/x-www-form-urlencoded',
+			Accept: 'application/json'
+		},
+		body
+	});
+	const payload = await res.json().catch(() => ({}));
+	if (!res.ok || payload.error) {
+		const detail = payload.error_description || payload.error || res.statusText;
+		throw new Error(`MCP OAuth failed: ${detail}`);
+	}
+	if (!payload.access_token) {
+		throw new Error('MCP OAuth did not return an access token');
+	}
+	if (payload.expires_in && !payload.expiry) {
+		payload.expiry = new Date(Date.now() + Number(payload.expires_in) * 1000).toISOString();
+	}
+	return payload;
+}
+
+function mcpAuthorizeURL(oauth, state, codeChallenge) {
+	const params = new URLSearchParams({
+		response_type: 'code',
+		client_id: String(oauth.clientId || '').trim(),
+		redirect_uri: mcpOAuthRedirectURI(),
+		state,
+		code_challenge: codeChallenge,
+		code_challenge_method: 'S256'
+	});
+	const scopes = Array.isArray(oauth.scopes)
+		? oauth.scopes.map((scope) => String(scope).trim()).filter(Boolean)
+		: [];
+	if (scopes.length > 0) params.set('scope', scopes.join(' '));
+	const base = String(oauth.authorizationUrl || '').trim();
+	return `${base}${base.includes('?') ? '&' : '?'}${params.toString()}`;
+}
+
+async function startMcpOAuth({ serverId, oauth }) {
+	const id = String(serverId || '').trim();
+	if (!id) throw new Error('MCP server id is required');
+	if (!oauth?.clientId || !oauth?.authorizationUrl || !oauth?.tokenUrl) {
+		throw new Error('OAuth client ID, authorization URL, and token URL are required');
+	}
+
+	const state = base64URLEncode(crypto.randomBytes(32));
+	const codeVerifier = codexCodeVerifier();
+	const codeChallenge = codexCodeChallenge(codeVerifier);
+	let server;
+
+	try {
+		const code = await new Promise((resolve, reject) => {
+			const timeout = setTimeout(() => {
+				reject(new Error('Timed out waiting for MCP OAuth to complete.'));
+			}, CODEX_AUTH_TIMEOUT_MS);
+
+			server = http.createServer((req, res) => {
+				const requestURL = new URL(req.url || '/', mcpOAuthRedirectURI());
+				if (requestURL.pathname !== MCP_OAUTH_CALLBACK_PATH) {
+					res.writeHead(404, { 'Content-Type': 'text/plain' });
+					res.end('Not found');
+					return;
+				}
+
+				const error = requestURL.searchParams.get('error');
+				const returnedState = requestURL.searchParams.get('state');
+				const returnedCode = requestURL.searchParams.get('code');
+				if (returnedState !== state) {
+					res.writeHead(400, { 'Content-Type': 'text/html' });
+					res.end('<h1>MCP OAuth failed</h1><p>Invalid OAuth state.</p>');
+					clearTimeout(timeout);
+					reject(new Error('MCP OAuth failed: invalid OAuth state.'));
+					return;
+				}
+				if (error) {
+					res.writeHead(400, { 'Content-Type': 'text/html' });
+					res.end(`<h1>MCP OAuth failed</h1><p>${error}</p>`);
+					clearTimeout(timeout);
+					reject(new Error(`MCP OAuth failed: ${error}`));
+					return;
+				}
+				if (!returnedCode) {
+					res.writeHead(400, { 'Content-Type': 'text/html' });
+					res.end('<h1>MCP OAuth failed</h1><p>No authorization code returned.</p>');
+					clearTimeout(timeout);
+					reject(new Error('MCP OAuth failed: no authorization code returned.'));
+					return;
+				}
+
+				res.writeHead(200, { 'Content-Type': 'text/html' });
+				res.end('<h1>MCP connected</h1><p>You can return to Cometline.</p>');
+				clearTimeout(timeout);
+				resolve(returnedCode);
+			});
+
+			server.once('error', (err) => {
+				clearTimeout(timeout);
+				reject(err);
+			});
+			server.listen(MCP_OAUTH_CALLBACK_PORT, async () => {
+				try {
+					await shell.openExternal(mcpAuthorizeURL(oauth, state, codeChallenge));
+				} catch (err) {
+					clearTimeout(timeout);
+					reject(
+						new Error(
+							`Failed to open MCP OAuth in your browser: ${err instanceof Error ? err.message : err}`
+						)
+					);
+				}
+			});
+		});
+
+		const tokens = await exchangeMcpOAuthCode(oauth, code, codeVerifier);
+		writeMcpOAuthToken(id, tokens);
+		return {
+			started: true,
+			message: `Saved MCP OAuth token for ${id}. Reconnect the server to apply.`
+		};
+	} finally {
+		if (server) server.close();
+	}
+}
+
 function normalizeCodexModelsURL(rawBaseURL) {
 	const base = String(rawBaseURL || CODEX_BASE_URL).replace(/\/+$/, '');
 	return `${base}/models?client_version=${encodeURIComponent(CODEX_CLIENT_VERSION)}`;
@@ -2026,6 +2197,12 @@ ipcMain.handle('cometline:get-provider-settings', () => readProviderSettings());
 ipcMain.handle('cometline:get-codex-auth-status', () => getCodexAuthStatus());
 
 ipcMain.handle('cometline:start-codex-login', () => startCodexLogin());
+
+ipcMain.handle('cometline:get-mcp-oauth-status', (_event, serverId) =>
+	getMcpOAuthStatus(serverId)
+);
+
+ipcMain.handle('cometline:start-mcp-oauth', (_event, payload) => startMcpOAuth(payload));
 
 ipcMain.handle('cometline:fetch-provider-models', async (_event, config) => {
 	return fetchProviderModels(config);

@@ -48,6 +48,11 @@ func NewRegistry(workspaceRoot string, opts ...RegistryOptions) *Registry {
 			ACPMgr:    opt.ACPMgr,
 		})
 	}
+	if opt.MCP != nil {
+		for _, tool := range mcpToolsFromManager(opt.MCP) {
+			add(tool)
+		}
+	}
 
 	return r
 }
