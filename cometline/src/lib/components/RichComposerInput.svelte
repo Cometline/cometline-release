@@ -56,8 +56,12 @@
 	let originY = 0;
 	let targetX = 0; // head target (where the caret is heading)
 	let targetY = 0;
+	let visualX = 0; // current rendered caret position (may lag target during animation)
+	let visualY = 0;
 	let animStart = 0; // performance.now() when the current move began
 	let animating = false;
+	// Timestamp of the last user text input — used to snap the caret during fast typing.
+	let lastInputAt = 0;
 
 	let caretTrailEnabled = $derived(caretTrail.enabled);
 	let baseTrailOpacity = $derived(0.32 + clampUnit(caretTrail.intensity) * 0.5);
@@ -131,8 +135,22 @@
 	}
 
 	function setCaretVisual(x: number, y: number) {
+		visualX = x;
+		visualY = y;
 		if (!customCaret) return;
 		customCaret.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+	}
+
+	function snapCaretTo(x: number, y: number) {
+		if (raf) {
+			cancelAnimationFrame(raf);
+			raf = 0;
+		}
+		animating = false;
+		targetX = originX = x;
+		targetY = originY = y;
+		setCaretVisual(x, y);
+		clearTrail();
 	}
 
 	function clearTrail() {
@@ -223,26 +241,28 @@
 
 		if (!caretReady) {
 			// First placement — snap, no trail.
-			targetX = originX = measured.x;
-			targetY = originY = measured.y;
 			caretReady = true;
-			setCaretVisual(targetX, targetY);
-			clearTrail();
+			snapCaretTo(measured.x, measured.y);
 			return;
 		}
 
-		const dx = measured.x - targetX;
-		const dy = measured.y - targetY;
+		const dx = measured.x - visualX;
+		const dy = measured.y - visualY;
 		const dist = Math.hypot(dx, dy);
 		if (dist < 0.5) return; // no meaningful move
 
 		if (Math.abs(dy) > maxTrailVerticalJump()) {
 			// Real teleport (click far away, multi-line programmatic jump): snap
 			// without streaking a trail across the editor.
-			targetX = originX = measured.x;
-			targetY = originY = measured.y;
-			setCaretVisual(targetX, targetY);
-			clearTrail();
+			snapCaretTo(measured.x, measured.y);
+			return;
+		}
+
+		// Fast same-line typing: snap immediately so the custom caret never lags
+		// behind the hidden native caret. Trail animation is reserved for clicks,
+		// arrow keys, and selection drags.
+		if (performance.now() - lastInputAt < 50 && !isLineCrossing(dy)) {
+			snapCaretTo(measured.x, measured.y);
 			return;
 		}
 
@@ -254,9 +274,9 @@
 			originX = measured.x;
 			originY = measured.y - dy;
 		} else {
-			// Same-line move: smear from the current head toward the new target.
-			originX = targetX;
-			originY = targetY;
+			// Same-line move: smear from the current rendered head toward the new target.
+			originX = visualX;
+			originY = visualY;
 		}
 		targetX = measured.x;
 		targetY = measured.y;
@@ -323,8 +343,7 @@
 			animating = false;
 			originX = targetX;
 			originY = targetY;
-			setCaretVisual(targetX, targetY);
-			clearTrail();
+			snapCaretTo(targetX, targetY);
 			raf = 0;
 			return;
 		}
@@ -336,6 +355,8 @@
 		raf = 0;
 		caretReady = false;
 		animating = false;
+		visualX = 0;
+		visualY = 0;
 		clearTrail();
 	}
 
@@ -624,6 +645,7 @@
 
 	function onInput() {
 		if (syncing || !editor) return;
+		lastInputAt = performance.now();
 		syncing = true;
 		decorateEditor();
 		syncing = false;
@@ -665,6 +687,7 @@
 		// Defer reset: some browsers fire the confirming keydown after compositionend.
 		setTimeout(() => {
 			composing = false;
+			lastInputAt = performance.now();
 			scheduleCaretMeasure();
 		}, 0);
 	}
@@ -826,6 +849,13 @@
 		if (editor) editor.innerHTML = '';
 		value = '';
 		resetCaretTrail();
+		// Editor often keeps focus after send, but innerHTML = '' drops the selection.
+		// Re-seat the caret and remeasure so the custom caret layer becomes visible.
+		if (focused && editor) {
+			editor.focus({ preventScroll: true });
+			setCaretPosition(false);
+			scheduleCaretMeasure();
+		}
 	}
 
 	// Keep the DOM in sync when `value` is set externally to empty (e.g. cleared
@@ -864,6 +894,14 @@
 			window.removeEventListener('resize', onResize);
 			resetCaretTrail();
 		};
+	});
+
+	$effect(() => {
+		const el = editor;
+		if (!el || !caretTrailEnabled) return;
+		const onScroll = () => scheduleCaretMeasure();
+		el.addEventListener('scroll', onScroll, { passive: true });
+		return () => el.removeEventListener('scroll', onScroll);
 	});
 
 	onDestroy(resetCaretTrail);
