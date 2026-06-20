@@ -213,7 +213,7 @@
 	}
 
 	.preset-chip:hover {
-		background: rgba(15, 23, 42, 0.04);
+		background: rgba(15, 23, 42, 0.08);
 	}
 
 	.preset-swatch {
@@ -316,21 +316,6 @@
 		inset: 44px 22% 36px;
 		border: 1px solid var(--hero-composer-ring);
 		box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.42) inset;
-	}
-
-	.secondary {
-		border: none;
-		border-radius: 10px;
-		padding: 8px 11px;
-		font: inherit;
-		font-size: 12px;
-		font-weight: 600;
-		background: rgba(15, 23, 42, 0.04);
-		color: var(--text-main);
-	}
-
-	.secondary:hover {
-		background: rgba(15, 23, 42, 0.05);
 	}
 
 	.switch {

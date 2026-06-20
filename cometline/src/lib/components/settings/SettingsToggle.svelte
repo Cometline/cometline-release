@@ -81,11 +81,28 @@
 		align-items: center;
 		justify-content: flex-start;
 		cursor: pointer;
+		transition:
+			background 160ms ease,
+			transform 80ms cubic-bezier(0.2, 0, 0, 1);
+		-webkit-tap-highlight-color: transparent;
 	}
 
 	.switch:disabled {
-		opacity: 0.45;
+		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	.switch:not(:disabled):hover {
+		filter: brightness(0.92);
+	}
+
+	.switch:not(:disabled):active {
+		transform: scale(0.96);
+	}
+
+	.switch:focus-visible {
+		outline: none;
+		box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.22);
 	}
 
 	.switch span {

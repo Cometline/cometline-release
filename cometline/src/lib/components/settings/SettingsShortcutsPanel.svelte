@@ -178,29 +178,8 @@
 		font-style: italic;
 	}
 
-	button {
-		border: none;
-		border-radius: 9px;
-		padding: 7px 10px;
-		font: inherit;
-		font-size: 12px;
-		font-weight: 600;
-		cursor: pointer;
-		color: var(--text-main);
-		background: rgba(15, 23, 42, 0.04);
-	}
-
-	button:hover:not(:disabled) {
-		background: rgba(15, 23, 42, 0.08);
-	}
-
-	button:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
-	}
-
 	.icon-only {
-		padding: 7px;
+		padding: 8px;
 		display: inline-grid;
 		place-items: center;
 	}

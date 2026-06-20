@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { LoaderCircle, Search, Trash2 } from '@lucide/svelte';
+	import { LoaderCircle, Trash2 } from '@lucide/svelte';
 	import SettingsToggle from './SettingsToggle.svelte';
 	import {
 		compactMemory,
@@ -35,8 +35,10 @@
 	let { providers = [], savedEmbedding, onEmbeddingSaved }: Props = $props();
 
 	let settings = $state<MemorySettings | null>(null);
+	let fullMemories = $state<MemoryResource[]>([]);
 	let memories = $state<MemoryResource[]>([]);
 	let searchQuery = $state('');
+	let searching = $state(false);
 	let newContent = $state('');
 	let status = $state('');
 	let loading = $state(true);
@@ -126,11 +128,14 @@
 			}
 			settings = nextSettings;
 			selectedEmbeddingKey = embeddingKeyForSettings(nextSettings);
-			memories = list.memories ?? [];
+			fullMemories = list.memories ?? [];
+			memories = fullMemories;
+			searchQuery = '';
 		} catch (error) {
 			loadError = error instanceof Error ? error.message : 'Failed to load memory settings';
 			settings = defaultMemorySettings();
 			selectedEmbeddingKey = '';
+			fullMemories = [];
 			memories = [];
 		} finally {
 			loading = false;
@@ -180,6 +185,43 @@
 		// Memory settings persist via SettingsPanel footer Save.
 	}
 
+	async function applyMemorySearch(query: string) {
+		if (!query) {
+			memories = fullMemories;
+			searching = false;
+			return;
+		}
+		searching = true;
+		try {
+			const res = await searchMemories(query, 20);
+			if (searchQuery.trim() !== query) return;
+			memories = res.memories;
+		} catch (error) {
+			if (searchQuery.trim() !== query) return;
+			status = error instanceof Error ? error.message : 'Search failed';
+		} finally {
+			if (searchQuery.trim() === query) {
+				searching = false;
+			}
+		}
+	}
+
+	$effect(() => {
+		const query = searchQuery.trim();
+		if (!query) {
+			memories = fullMemories;
+			searching = false;
+			return;
+		}
+
+		searching = true;
+		const timer = setTimeout(() => {
+			void applyMemorySearch(query);
+		}, 300);
+
+		return () => clearTimeout(timer);
+	});
+
 	async function addMemory() {
 		if (!newContent.trim()) return;
 		try {
@@ -188,7 +230,10 @@
 				kind: 'fact',
 				pinned: false
 			});
-			memories = [rec, ...memories];
+			fullMemories = [rec, ...fullMemories];
+			if (!searchQuery.trim()) {
+				memories = fullMemories;
+			}
 			newContent = '';
 			status = 'Memory added.';
 		} catch (error) {
@@ -199,22 +244,10 @@
 	async function removeMemory(id: string) {
 		try {
 			await deleteMemory(id);
+			fullMemories = fullMemories.filter((m) => m.id !== id);
 			memories = memories.filter((m) => m.id !== id);
 		} catch (error) {
 			status = error instanceof Error ? error.message : 'Failed to delete memory';
-		}
-	}
-
-	async function runSearch() {
-		if (!searchQuery.trim()) {
-			await reload();
-			return;
-		}
-		try {
-			const res = await searchMemories(searchQuery.trim(), 20);
-			memories = res.memories;
-		} catch (error) {
-			status = error instanceof Error ? error.message : 'Search failed';
 		}
 	}
 
@@ -365,19 +398,27 @@
 				</div>
 
 				<div class="search-row">
-			<input bind:value={searchQuery} placeholder="Search memories…" spellcheck="false" />
-			<button class="secondary" onclick={runSearch}><Search size={14} /> Search</button>
-		</div>
+					<input
+						type="search"
+						bind:value={searchQuery}
+						placeholder="Search memories…"
+						spellcheck="false"
+						aria-busy={searching}
+					/>
+				</div>
 
-		<label class="add-row">
-			<span>Add memory</span>
-			<textarea
-				bind:value={newContent}
-				rows="3"
-				placeholder="Something the agent should remember…"
-			></textarea>
-			<button class="secondary" onclick={addMemory}>Add</button>
-		</label>
+				<div class="add-row">
+					<div class="add-row-header">
+						<span>Add memory</span>
+						<button type="button" class="secondary" onclick={addMemory}>Add</button>
+					</div>
+					<textarea
+						bind:value={newContent}
+						rows="3"
+						placeholder="Something the agent should remember…"
+						aria-label="Memory content"
+					></textarea>
+				</div>
 
 		<div class="memory-list">
 			{#each memories as memory (memory.id)}
@@ -495,11 +536,30 @@
 	}
 
 	.search-row input {
-		flex: 1;
-		min-width: 180px;
+		width: 100%;
+		min-width: 0;
+	}
+
+	.add-row {
+		display: grid;
+		gap: 6px;
+	}
+
+	.add-row-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	.add-row-header span {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--text-muted);
 	}
 
 	.add-row textarea {
+		width: 100%;
 		resize: vertical;
 	}
 
@@ -530,20 +590,6 @@
 	.memory-card small {
 		font-size: 11px;
 		color: var(--text-soft);
-	}
-
-	.secondary {
-		border: none;
-		border-radius: 10px;
-		padding: 8px 11px;
-		font: inherit;
-		font-size: 12px;
-		font-weight: 600;
-		display: inline-flex;
-		align-items: center;
-		gap: 7px;
-		background: rgba(15, 23, 42, 0.04);
-		color: var(--text-main);
 	}
 
 	.icon {

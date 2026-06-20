@@ -455,26 +455,6 @@
 		margin-bottom: 10px;
 	}
 
-	.secondary {
-		border: none;
-		border-radius: 10px;
-		padding: 8px 11px;
-		font: inherit;
-		font-size: 12px;
-		font-weight: 600;
-		display: inline-flex;
-		align-items: center;
-		gap: 7px;
-		background: rgba(15, 23, 42, 0.04);
-		color: var(--text-main);
-		cursor: pointer;
-	}
-
-	.secondary.danger:hover {
-		background: rgba(180, 35, 24, 0.08);
-		color: #b42318;
-	}
-
 	.switch {
 		flex-shrink: 0;
 		width: 44px;

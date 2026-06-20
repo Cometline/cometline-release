@@ -390,7 +390,8 @@
 	}
 
 	.model-button:hover:not(:disabled) {
-		border-color: rgba(0, 102, 204, 0.3);
+		background: rgba(15, 23, 42, 0.08);
+		border-color: rgba(15, 23, 42, 0.18);
 	}
 
 	.model-button:disabled {

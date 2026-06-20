@@ -30,7 +30,15 @@ function createConnectionState() {
 	function reconnect() {
 		status = 'connecting';
 		message = '';
-		void check();
+		void pollUntilReady();
+	}
+
+	async function pollUntilReady(maxAttempts = 15) {
+		for (let attempt = 0; attempt < maxAttempts; attempt++) {
+			await check();
+			if (status === 'ready') return;
+			await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+		}
 	}
 
 	function startPolling() {

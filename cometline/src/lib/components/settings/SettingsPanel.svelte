@@ -35,6 +35,7 @@
 	import SettingsMemoryPanel from './SettingsMemoryPanel.svelte';
 	import SettingsShortcutsPanel from './SettingsShortcutsPanel.svelte';
 	import SettingsProvidersPanel from './SettingsProvidersPanel.svelte';
+	import SettingsButton from './SettingsButton.svelte';
 	import { cloneCometMindSettings, normalizeCometMindSettings } from '$lib/cometmind-settings';
 	import { ICON_VARIANT_OPTIONS, projectAvatarSrc } from '$lib/project-icon';
 	import type { IconVariant } from '$lib/types';
@@ -691,7 +692,7 @@
 <div class="settings-layer" transition:fade={{ duration: 120 }}>
 	<button class="scrim" aria-label="Close settings" onclick={shellStore.closeSettings}></button>
 	<div
-		class="modal"
+		class="modal settings-ui"
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="settings-title"
@@ -909,7 +910,7 @@
 											</p>
 										</div>
 									</div>
-									<div class="settings-row-actions">
+									<div class="settings-row-actions mb-1">
 										<button
 											class="secondary"
 											onclick={exportSettings}
@@ -1080,19 +1081,18 @@
 					&nbsp;
 				{/if}
 			</p>
-			<button class="secondary" onclick={shellStore.closeSettings}>Cancel</button>
-			<button
-				class="primary"
+			<SettingsButton variant="secondary" onclick={shellStore.closeSettings}>Cancel</SettingsButton>
+			<SettingsButton
+				variant="secondary"
 				onclick={save}
 				disabled={settingsStore.isSaving ||
 					settingsStore.isFetchingModels ||
 					(activeSection === 'models' && enabledModelCount === 0) ||
 					(activeSection === 'memory' && memoryPanel?.isBusy?.())}
 			>
-				{#if settingsStore.isSaving}<span class="spin"><LoaderCircle size={14} /></span
-					>{/if}
+				{#if settingsStore.isSaving}<span class="spin"><LoaderCircle size={14} /></span>{/if}
 				Save
-			</button>
+			</SettingsButton>
 		</footer>
 	</div>
 </div>
@@ -1190,11 +1190,7 @@
 		color: var(--text-muted);
 		display: grid;
 		place-items: center;
-	}
-
-	.icon-button:hover,
-	.secondary:hover {
-		background: rgba(15, 23, 42, 0.05);
+		cursor: pointer;
 	}
 
 	.settings-body {
@@ -1227,6 +1223,7 @@
 		font-weight: 650;
 		color: var(--text-main);
 		text-align: left;
+		cursor: pointer;
 	}
 
 	.settings-nav-item.selected {
@@ -1234,43 +1231,11 @@
 		box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.08);
 	}
 
-	.settings-nav-item:hover {
-		background: rgba(15, 23, 42, 0.05);
-	}
-
 	.settings-pane {
 		min-width: 0;
 		min-height: 0;
 		overflow-y: auto;
 		scrollbar-gutter: stable;
-	}
-
-	.secondary,
-	.primary {
-		border: none;
-		border-radius: 10px;
-		padding: 8px 11px;
-		font: inherit;
-		font-size: 12px;
-		font-weight: 600;
-		display: inline-flex;
-		align-items: center;
-		gap: 7px;
-	}
-
-	.secondary {
-		background: rgba(15, 23, 42, 0.04);
-		color: var(--text-main);
-	}
-
-	.primary {
-		background: var(--text-main);
-		color: white;
-	}
-
-	button:disabled {
-		opacity: 0.45;
-		cursor: not-allowed;
 	}
 
 	.message {
@@ -1368,7 +1333,7 @@
 	}
 
 	.icon-variant-chip:hover {
-		background: rgba(15, 23, 42, 0.04);
+		background: rgba(15, 23, 42, 0.08);
 	}
 
 	@media (max-width: 780px) {

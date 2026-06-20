@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { FolderOpen } from '@lucide/svelte';
+	import { FolderOpen, Search } from '@lucide/svelte';
 	import SettingsToggle from './SettingsToggle.svelte';
 	import { formatIdList, parseIdList, type CometMindSettings } from '$lib/cometmind-settings';
 	import type { ProviderConfig } from '$lib/types';
@@ -18,6 +18,25 @@
 		providers?: ProviderConfig[];
 		onPickWorkspace?: () => void | Promise<void>;
 	} = $props();
+
+	type SkillSourceFilter = 'all' | 'cometmind' | 'workspace' | 'opencode' | 'claude' | 'other';
+
+	const SKILL_SOURCE_FILTERS: { id: SkillSourceFilter; label: string }[] = [
+		{ id: 'all', label: 'All' },
+		{ id: 'cometmind', label: 'CometMind' },
+		{ id: 'workspace', label: 'Workspace' },
+		{ id: 'opencode', label: 'OpenCode' },
+		{ id: 'claude', label: 'Claude Code' },
+		{ id: 'other', label: 'Other' }
+	];
+
+	const SKILL_SOURCE_LABELS: Record<Exclude<SkillSourceFilter, 'all'>, string> = {
+		cometmind: 'CometMind',
+		workspace: 'Workspace',
+		opencode: 'OpenCode',
+		claude: 'Claude Code',
+		other: 'Other'
+	};
 
 	const runtimeProviders = $derived(
 		providers.filter((provider) => provider.enabled && provider.enabledModels.length > 0)
@@ -68,7 +87,6 @@
 	let allowedUsersText = $state(formatIdList(cometmind.gateway.discord.allowedUsers));
 	let allowedChannelsText = $state(formatIdList(cometmind.gateway.discord.allowedChannels));
 	let argsText = $state(cometmind.acp.args.join(' '));
-	let rootsText = $state(formatIdList(cometmind.skills.roots));
 	let skills = $state<SkillResource[]>([]);
 	let skillErrors = $state<string[]>([]);
 	let skillsBusy = $state(false);
@@ -77,6 +95,59 @@
 	let gatewayRunning = $state(false);
 	let gatewayBusy = $state(false);
 	let mcpPanel: SettingsMCPPanel | undefined = $state();
+	let skillSearch = $state('');
+	let skillSourceFilter = $state<SkillSourceFilter>('all');
+
+	function normalizeSkillPath(path: string) {
+		return path.replace(/\\/g, '/').toLowerCase();
+	}
+
+	function skillSourceCategory(skill: SkillResource): Exclude<SkillSourceFilter, 'all'> {
+		const path = normalizeSkillPath(skill.path);
+		if (path.includes('/.cometmind/skills/')) return 'cometmind';
+		if (path.includes('/.config/opencode/skills/')) return 'opencode';
+		if (path.includes('/.agents/skills/')) return 'workspace';
+		if (path.includes('/.claude/skills/')) {
+			const workspacePath = shellStore.workspacePath
+				? normalizeSkillPath(shellStore.workspacePath)
+				: '';
+			if (workspacePath && path.startsWith(`${workspacePath}/`)) return 'workspace';
+			return 'claude';
+		}
+		return 'other';
+	}
+
+	let filteredSkills = $derived.by(() => {
+		const query = skillSearch.trim().toLowerCase();
+		return skills.filter((skill) => {
+			if (skillSourceFilter !== 'all' && skillSourceCategory(skill) !== skillSourceFilter) {
+				return false;
+			}
+			if (!query) return true;
+			const sourceLabel = SKILL_SOURCE_LABELS[skillSourceCategory(skill)].toLowerCase();
+			return (
+				skill.name.toLowerCase().includes(query) ||
+				skill.description.toLowerCase().includes(query) ||
+				skill.path.toLowerCase().includes(query) ||
+				sourceLabel.includes(query)
+			);
+		});
+	});
+
+	let skillSourceCounts = $derived.by(() => {
+		const counts: Record<SkillSourceFilter, number> = {
+			all: skills.length,
+			cometmind: 0,
+			workspace: 0,
+			opencode: 0,
+			claude: 0,
+			other: 0
+		};
+		for (const skill of skills) {
+			counts[skillSourceCategory(skill)] += 1;
+		}
+		return counts;
+	});
 
 	onMount(() => {
 		void refreshGatewayStatus();
@@ -203,10 +274,6 @@
 					.map((part) => part.trim())
 					.filter(Boolean)
 			},
-			skills: {
-				...cometmind.skills,
-				roots: parseIdList(rootsText)
-			},
 			gateway: {
 				discord: {
 					...cometmind.gateway.discord,
@@ -301,8 +368,8 @@
 			<h3>Skills</h3>
 			<p>
 				CometMind reads Agent Skills from <code>~/.cometmind/skills</code>, workspace
-				<code>.agents/skills</code>/<code>.claude/skills</code>, and optional OpenCode or
-				Claude global skill folders.
+				<code>.agents/skills</code>/<code>.claude/skills</code>, OpenCode, and Claude Code
+				skill folders.
 			</p>
 		</div>
 		<SettingsToggle
@@ -310,31 +377,6 @@
 			description="Expose a compact skill index to CometMind and allow read-only loading via load_skill."
 			bind:checked={cometmind.skills.enabled}
 		/>
-		<div class="skills-options">
-			<label class="checkbox-row">
-				<input type="checkbox" bind:checked={cometmind.skills.includeOpenCode} />
-				<span>Include OpenCode skills</span>
-			</label>
-			<label class="checkbox-row">
-				<input type="checkbox" bind:checked={cometmind.skills.includeClaude} />
-				<span>Include Claude Code skills</span>
-			</label>
-			<label class="checkbox-row">
-				<input type="checkbox" bind:checked={cometmind.skills.mirrorToCometMind} />
-				<span>Mirror symlinks to ~/.cometmind/skills when syncing</span>
-			</label>
-		</div>
-		<label>
-			<span>Additional skill roots (one per line)</span>
-			<textarea
-				bind:value={rootsText}
-				onchange={syncListsFromText}
-				onblur={syncListsFromText}
-				rows="3"
-				placeholder="/path/to/skills"
-				spellcheck="false"
-			></textarea>
-		</label>
 		<div class="skills-actions">
 			<button class="secondary" type="button" onclick={refreshSkills} disabled={skillsBusy}>
 				{skillsBusy ? 'Loading...' : 'Refresh skills'}
@@ -346,27 +388,63 @@
 		{#if skillsStatus}
 			<p class="settings-field-hint">{skillsStatus}</p>
 		{/if}
+		<div class="skills-toolbar">
+			<div class="skills-search">
+				<Search size={14} aria-hidden="true" />
+				<input
+					type="search"
+					bind:value={skillSearch}
+					placeholder="Search skills by name, description, or path…"
+					spellcheck="false"
+				/>
+			</div>
+			<div class="skills-filters" role="group" aria-label="Filter skills by source">
+				{#each SKILL_SOURCE_FILTERS as filter (filter.id)}
+					<button
+						type="button"
+						class="skills-filter-chip"
+						class:active={skillSourceFilter === filter.id}
+						aria-pressed={skillSourceFilter === filter.id}
+						onclick={() => (skillSourceFilter = filter.id)}
+					>
+						{filter.label}
+						<span class="skills-filter-count">{skillSourceCounts[filter.id]}</span>
+					</button>
+				{/each}
+			</div>
+		</div>
 		<div class="skills-list">
 			<div class="skills-list-header">
 				<span>Available skills</span>
-				<strong>{skills.length}</strong>
+				<strong>
+					{#if filteredSkills.length === skills.length}
+						{skills.length}
+					{:else}
+						{filteredSkills.length} / {skills.length}
+					{/if}
+				</strong>
 			</div>
 			{#if skills.length === 0}
-				<p class="settings-field-hint">
+				<p class="settings-field-hint skills-empty">
 					No skills discovered yet. Try <code>npx skills add ...</code> or add a custom root.
 				</p>
+			{:else if filteredSkills.length === 0}
+				<p class="settings-field-hint skills-empty">No skills match your search or filter.</p>
 			{:else}
-				{#each skills as skill (skill.name)}
+				{#each filteredSkills as skill (skill.name)}
 					<div class="skill-row" title={skill.path}>
 						<div class="skill-row-main">
-							<strong>{skill.name}</strong>
-							{#if skill.is_symlink}
-								<span class="skill-badge">symlink</span>
-							{/if}
+							<div class="skill-row-title">
+								<strong>{skill.name}</strong>
+								<span class="skill-badge">{SKILL_SOURCE_LABELS[skillSourceCategory(skill)]}</span>
+								{#if skill.is_symlink}
+									<span class="skill-badge">symlink</span>
+								{/if}
+							</div>
 							<p>{skill.description}</p>
 						</div>
 						<div class="skill-row-actions">
-							{#if deletePending === skill.name}
+							{#if deletePending === skill.name && skill.can_delete}
 								<span class="skill-delete-prompt">Delete {skill.name}?</span>
 								<button
 									class="secondary danger"
@@ -395,17 +473,17 @@
 										Export
 									</button>
 								{/if}
-								<button
-									class="secondary danger"
-									type="button"
-									disabled={skillsBusy || !skill.can_delete}
-									title={skill.can_delete
-										? 'Delete from ~/.cometmind/skills'
-										: 'External or symlink skills cannot be deleted'}
-									onclick={() => requestDeleteSkill(skill.name)}
-								>
-									Delete
-								</button>
+								{#if skill.can_delete}
+									<button
+										class="secondary danger"
+										type="button"
+										disabled={skillsBusy}
+										title="Delete from ~/.cometmind/skills"
+										onclick={() => requestDeleteSkill(skill.name)}
+									>
+										Delete
+									</button>
+								{/if}
 							{/if}
 						</div>
 					</div>
@@ -551,11 +629,85 @@
 		color: #2f6f4f;
 	}
 
-	.skills-options,
 	.skills-actions {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 10px 14px;
+	}
+
+	.skills-toolbar {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.skills-search {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		border: 1px solid var(--border-soft);
+		border-radius: 10px;
+		padding: 8px 10px;
+		background: rgba(255, 255, 255, 0.82);
+		color: var(--text-muted);
+	}
+
+	.skills-search input {
+		flex: 1;
+		min-width: 0;
+		border: 0;
+		background: transparent;
+		padding: 0;
+		font-size: 12px;
+		color: var(--text-main);
+		outline: none;
+	}
+
+	.skills-search input::placeholder {
+		color: var(--text-muted);
+	}
+
+	.skills-filters {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.skills-filter-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		border: 1px solid var(--border-soft);
+		background: rgba(255, 255, 255, 0.72);
+		color: var(--text-muted);
+		border-radius: 999px;
+		padding: 5px 10px;
+		font-size: 11px;
+		font-weight: 600;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	.skills-filter-chip:hover {
+		background: rgba(15, 23, 42, 0.06);
+		border-color: rgba(15, 23, 42, 0.16);
+		color: var(--text-main);
+	}
+
+	.skills-filter-chip.active {
+		border-color: rgba(0, 102, 204, 0.28);
+		background: rgba(0, 102, 204, 0.08);
+		color: var(--text-main);
+	}
+
+	.skills-filter-count {
+		min-width: 1.2em;
+		text-align: center;
+		padding: 1px 5px;
+		border-radius: 999px;
+		background: rgba(15, 23, 42, 0.06);
+		font-size: 10px;
+		font-weight: 700;
 	}
 
 	.skills-list {
@@ -593,6 +745,13 @@
 		flex: 1;
 	}
 
+	.skill-row-title {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px;
+	}
+
 	.skill-row-actions {
 		display: flex;
 		align-items: center;
@@ -602,7 +761,6 @@
 
 	.skill-badge {
 		display: inline-block;
-		margin-left: 6px;
 		padding: 1px 6px;
 		border-radius: 999px;
 		font-size: 10px;
@@ -610,6 +768,10 @@
 		color: var(--text-muted);
 		background: rgba(15, 23, 42, 0.06);
 		vertical-align: middle;
+	}
+
+	.skills-empty {
+		padding: 10px 11px;
 	}
 
 	.skill-delete-prompt {
@@ -626,7 +788,6 @@
 	}
 
 	.skill-row strong {
-		display: block;
 		font-size: 12px;
 		color: var(--text-main);
 	}
@@ -668,28 +829,5 @@
 	.path-row input {
 		flex: 1;
 		min-width: 0;
-	}
-
-	.secondary {
-		border: 1px solid var(--border-soft);
-		background: rgba(255, 255, 255, 0.82);
-		color: var(--text-main);
-		border-radius: 9px;
-		padding: 8px 10px;
-		font-size: 12px;
-		font-weight: 600;
-		cursor: pointer;
-		white-space: nowrap;
-	}
-
-	.secondary.icon {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		padding: 8px;
-	}
-
-	.secondary:hover {
-		background: white;
 	}
 </style>

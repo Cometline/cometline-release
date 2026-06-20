@@ -193,3 +193,166 @@
 	border-color: rgba(0, 102, 204, 0.35);
 	box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
 }
+
+/* ---- Settings UI: click / hover feedback ---- */
+
+.settings-ui {
+	--settings-control-transition:
+		background 140ms ease, border-color 140ms ease, color 140ms ease,
+		box-shadow 140ms ease, transform 80ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.settings-ui button {
+	-webkit-tap-highlight-color: transparent;
+}
+
+.settings-ui button:not(:disabled):not(.scrim) {
+	cursor: pointer;
+}
+
+.settings-ui button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.settings-ui .secondary,
+.settings-ui .primary,
+.settings-ui .btn {
+	transition: var(--settings-control-transition);
+	border: 1px solid var(--border-soft);
+	border-radius: 10px;
+	padding: 8px 11px;
+	font: inherit;
+	font-size: 12px;
+	font-weight: 600;
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+}
+
+.settings-ui .secondary,
+.settings-ui .btn.secondary {
+	background: rgba(255, 255, 255, 0.82);
+	color: var(--text-main);
+}
+
+.settings-ui .primary,
+.settings-ui .btn.primary {
+	background: var(--text-main);
+	color: white;
+	border-color: transparent;
+}
+
+.settings-ui .btn.danger,
+.settings-ui .secondary.danger {
+	background: rgba(255, 255, 255, 0.82);
+	color: var(--text-main);
+}
+
+.settings-ui .secondary.icon-only,
+.settings-ui .btn.icon-only,
+.settings-ui .secondary.icon {
+	padding: 8px;
+	justify-content: center;
+}
+
+.settings-ui .secondary:not(:disabled):hover,
+.settings-ui .btn.secondary:not(:disabled):hover {
+	background: rgba(15, 23, 42, 0.08);
+	border-color: rgba(15, 23, 42, 0.18);
+	box-shadow: none;
+}
+
+.settings-ui .primary:not(:disabled):hover,
+.settings-ui .btn.primary:not(:disabled):hover {
+	background: #0f172a;
+	box-shadow: none;
+}
+
+.settings-ui .btn.danger:not(:disabled):hover,
+.settings-ui .secondary.danger:not(:disabled):hover {
+	background: rgba(180, 35, 24, 0.08);
+	border-color: rgba(180, 35, 24, 0.22);
+	color: #b42318;
+}
+
+.settings-ui .secondary:not(:disabled):active,
+.settings-ui .primary:not(:disabled):active,
+.settings-ui .btn:not(:disabled):active,
+.settings-ui .settings-nav-item:not(:disabled):active,
+.settings-ui .icon-button:not(:disabled):active,
+.settings-ui .skills-filter-chip:not(:disabled):active,
+.settings-ui .row-remove:not(:disabled):active,
+.settings-ui .advanced-toggle:not(:disabled):active,
+.settings-ui .icon-variant-chip:not(:disabled):active {
+	transform: scale(0.97);
+}
+
+.settings-ui .secondary:not(:disabled):active,
+.settings-ui .btn.secondary:not(:disabled):active {
+	background: rgba(15, 23, 42, 0.12);
+}
+
+.settings-ui .primary:not(:disabled):active,
+.settings-ui .btn.primary:not(:disabled):active {
+	background: #020617;
+}
+
+.settings-ui button:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.22);
+}
+
+.settings-ui .settings-nav-item {
+	transition: var(--settings-control-transition);
+}
+
+.settings-ui .settings-nav-item:not(.selected):not(:disabled):hover {
+	background: rgba(15, 23, 42, 0.05);
+	border-color: rgba(15, 23, 42, 0.16);
+	box-shadow: none;
+}
+
+.settings-ui header .icon-button {
+	transition: var(--settings-control-transition);
+}
+
+.settings-ui header .icon-button:not(:disabled):hover {
+	background: rgba(15, 23, 42, 0.07);
+	color: var(--text-main);
+}
+
+.settings-ui .switch {
+	transition:
+		background 160ms ease,
+		transform 80ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.settings-ui .switch:not(:disabled):hover {
+	filter: brightness(0.92);
+}
+
+.settings-ui .switch:not(:disabled):active {
+	transform: scale(0.96);
+}
+
+.settings-ui .skills-filter-chip,
+.settings-ui .row-remove,
+.settings-ui .advanced-toggle,
+.settings-ui .icon-variant-chip,
+.settings-ui .mcp-server-row,
+.settings-ui .model-button,
+.settings-ui .clear-default-button {
+	transition: var(--settings-control-transition);
+}
+
+.settings-ui .skills-filter-chip:not(.active):not(:disabled):hover {
+	background: rgba(15, 23, 42, 0.06);
+	border-color: rgba(15, 23, 42, 0.16);
+}
+
+.settings-ui .row-remove:not(:disabled):hover {
+	color: #b42318;
+	background: rgba(180, 35, 24, 0.08);
+	border-color: rgba(180, 35, 24, 0.18);
+}

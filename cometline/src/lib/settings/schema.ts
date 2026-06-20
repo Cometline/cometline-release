@@ -363,7 +363,7 @@ export function defaultCometMindSettings(workspacePath = ''): CometMindSettings 
 			roots: [],
 			includeOpenCode: true,
 			includeClaude: true,
-			mirrorToCometMind: false
+			mirrorToCometMind: true
 		},
 		memory: {
 			extractionProviderId: '',
@@ -423,19 +423,10 @@ export function normalizeCometMindSettings(
 		},
 		skills: {
 			enabled: typeof skills.enabled === 'boolean' ? skills.enabled : defaults.skills.enabled,
-			roots: cleanStringList(skills.roots),
-			includeOpenCode:
-				typeof skills.includeOpenCode === 'boolean'
-					? skills.includeOpenCode
-					: defaults.skills.includeOpenCode,
-			includeClaude:
-				typeof skills.includeClaude === 'boolean'
-					? skills.includeClaude
-					: defaults.skills.includeClaude,
-			mirrorToCometMind:
-				typeof skills.mirrorToCometMind === 'boolean'
-					? skills.mirrorToCometMind
-					: defaults.skills.mirrorToCometMind
+			roots: [],
+			includeOpenCode: true,
+			includeClaude: true,
+			mirrorToCometMind: true
 		},
 		memory: {
 			extractionProviderId: String(

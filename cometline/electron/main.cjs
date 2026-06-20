@@ -749,7 +749,7 @@ async function importProviderSettings() {
 	const saved = writeProviderSettings(imported);
 	await stopCometMind();
 	startCometMind();
-	void waitForHealth();
+	await waitForHealth();
 	await syncDiscordGatewayFromSettings(saved);
 	applyOpenAtLoginSetting(saved.app?.openAtLogin);
 	applyIconVariant(saved.app?.iconVariant);
@@ -977,8 +977,15 @@ function applyIconVariant(variant = getIconVariant()) {
 	if (trayImageSource) tray.setImage(trayImageSource);
 }
 
+function isCometMindRunning() {
+	return cometMindProcess != null && cometMindProcess.exitCode === null;
+}
+
 function startCometMind() {
-	if (cometMindProcess) return;
+	if (isCometMindRunning()) return;
+	if (cometMindProcess && cometMindProcess.exitCode !== null) {
+		cometMindProcess = null;
+	}
 
 	const binary = resolveCometMindBinary();
 	const logPath = getLogPath();
@@ -989,7 +996,7 @@ function startCometMind() {
 		return;
 	}
 
-	cometMindProcess = spawn(
+	const child = spawn(
 		binary,
 		['serve', '--port', String(COMETMIND_PORT), '--watch-parent'],
 		{
@@ -997,20 +1004,25 @@ function startCometMind() {
 			env: providerEnv()
 		}
 	);
+	cometMindProcess = child;
 
-	cometMindProcess.stdout.on('data', (data) => logStream.write(data));
-	cometMindProcess.stderr.on('data', (data) => logStream.write(data));
+	child.stdout.on('data', (data) => logStream.write(data));
+	child.stderr.on('data', (data) => logStream.write(data));
 
-	cometMindProcess.on('exit', (code) => {
+	child.on('exit', (code) => {
 		console.log(`CometMind exited with code ${code}`);
 		logStream.end();
-		cometMindProcess = null;
+		if (cometMindProcess === child) {
+			cometMindProcess = null;
+		}
 	});
 
-	cometMindProcess.on('error', (err) => {
+	child.on('error', (err) => {
 		console.error('CometMind spawn error:', err);
 		logStream.end();
-		cometMindProcess = null;
+		if (cometMindProcess === child) {
+			cometMindProcess = null;
+		}
 	});
 }
 
@@ -1185,8 +1197,8 @@ async function syncDiscordGatewayFromSettings(settings) {
 
 function stopCometMind() {
 	const proc = cometMindProcess;
-	if (!proc) return Promise.resolve();
 	cometMindProcess = null;
+	if (!proc) return Promise.resolve();
 
 	return new Promise((resolve) => {
 		let settled = false;
@@ -1197,6 +1209,11 @@ function stopCometMind() {
 			if (forceTimer) clearTimeout(forceTimer);
 			resolve();
 		};
+
+		if (proc.exitCode !== null) {
+			finish();
+			return;
+		}
 
 		// Wait for the process to actually exit so it releases the TCP port
 		// (127.0.0.1:7700) and the SQLite WAL lock before a new `serve` spawns.
@@ -2149,6 +2166,7 @@ process.on('exit', () => {
 ipcMain.on('cometmind:restart', async () => {
 	await stopCometMind();
 	startCometMind();
+	await waitForHealth();
 });
 
 ipcMain.on('cometline:shortcut-capture-active', (_event, active) => {
@@ -2217,7 +2235,7 @@ ipcMain.handle('cometline:save-provider-settings', async (_event, settings, opti
 	if (shouldRestartCometMind) {
 		await stopCometMind();
 		startCometMind();
-		void waitForHealth();
+		await waitForHealth();
 	}
 	await syncDiscordGatewayFromSettings(saved);
 	applyOpenAtLoginSetting(saved.app?.openAtLogin);

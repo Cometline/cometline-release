@@ -10,7 +10,6 @@
 		type MCPServerConfig,
 		type MCPTransport
 	} from '$lib/cometmind-settings';
-	import { importCursorMcpJson } from '$lib/settings/mcp-import';
 	import {
 		listMcpServers,
 		listMcpTools,
@@ -19,7 +18,7 @@
 		type McpServerStatus,
 		type McpToolInfo
 	} from '$lib/client/cometmind';
-	import { ChevronDown, ChevronRight, FileJson, Plus, RefreshCw, Upload } from '@lucide/svelte';
+	import { ChevronDown, ChevronRight, Plus, RefreshCw, Trash2 } from '@lucide/svelte';
 	import { onMount } from 'svelte';
 
 	let { cometmind = $bindable() }: { cometmind: CometMindSettings } = $props();
@@ -42,8 +41,6 @@
 	let scopesTexts = $state<Record<string, string>>({});
 	let expandedServerId = $state<string | null>(null);
 	let advancedOpen = $state<Record<string, boolean>>({});
-	let showPasteImport = $state(false);
-	let pasteJsonText = $state('');
 
 	function syncTextFieldsFromSettings() {
 		const nextEnv: Record<string, string> = {};
@@ -177,20 +174,6 @@
 		return transportOptions.find((option) => option.value === value)?.hint ?? '';
 	}
 
-	function importServers(parsed: unknown): number {
-		const imported = importCursorMcpJson(
-			parsed,
-			cometmind.mcp.servers.map((server) => server.id)
-		);
-		if (imported.length === 0) return 0;
-		updateMcp({ enabled: true, servers: [...cometmind.mcp.servers, ...imported] });
-		syncTextFieldsFromSettings();
-		if (imported.length === 1) {
-			expandedServerId = imported[0].id;
-		}
-		return imported.length;
-	}
-
 	async function refreshMcpRuntime() {
 		mcpBusy = true;
 		mcpStatus = '';
@@ -272,48 +255,6 @@
 		}
 	}
 
-	async function onImportMcpJson() {
-		const input = document.createElement('input');
-		input.type = 'file';
-		input.accept = 'application/json,.json';
-		input.onchange = async () => {
-			const file = input.files?.[0];
-			if (!file) return;
-			try {
-				const text = await file.text();
-				const parsed = JSON.parse(text) as unknown;
-				const count = importServers(parsed);
-				if (count === 0) {
-					mcpStatus = 'No MCP servers found in file.';
-					return;
-				}
-				showPasteImport = false;
-				pasteJsonText = '';
-				mcpStatus = `Imported ${count} server(s). Save settings to apply.`;
-			} catch (err) {
-				mcpStatus = err instanceof Error ? err.message : 'Failed to import mcp.json';
-			}
-		};
-		input.click();
-	}
-
-	function onPasteImport() {
-		mcpStatus = '';
-		try {
-			const parsed = JSON.parse(pasteJsonText) as unknown;
-			const count = importServers(parsed);
-			if (count === 0) {
-				mcpStatus = 'No MCP servers found in pasted JSON.';
-				return;
-			}
-			showPasteImport = false;
-			pasteJsonText = '';
-			mcpStatus = `Imported ${count} server(s). Save settings to apply.`;
-		} catch (err) {
-			mcpStatus = err instanceof Error ? err.message : 'Invalid JSON';
-		}
-	}
-
 	export function syncFields() {
 		cometmind = {
 			...cometmind,
@@ -364,7 +305,8 @@
 		<h3>MCP servers</h3>
 		<p>
 			Connect external tool servers so CometMind can search, browse, and interact with services
-			beyond built-in tools. Import from Cursor or add servers manually.
+			beyond built-in tools. You can also add servers manually under
+			<code>cometmind.mcp</code> in <code>~/.cometmind/cometline-settings.json</code>.
 		</p>
 	</div>
 
@@ -380,92 +322,26 @@
 		</p>
 	{/if}
 
-	{#if cometmind.mcp.servers.length === 0}
-		<div class="mcp-empty">
-			<div class="import-card">
-				<div class="import-card-icon" aria-hidden="true">
-					<FileJson size={20} strokeWidth={1.75} />
-				</div>
-				<div class="import-card-copy">
-					<strong>Import from Cursor</strong>
-					<p>Use an existing <code>mcp.json</code> file — the same format Cursor uses for MCP servers.</p>
-				</div>
-				<div class="import-card-actions">
-					<SettingsButton variant="primary" disabled={mcpBusy} onclick={onImportMcpJson}>
-						<Upload size={14} strokeWidth={2} />
-						Choose file
-					</SettingsButton>
-					<SettingsButton
-						variant="secondary"
-						onclick={() => {
-							showPasteImport = !showPasteImport;
-						}}
-					>
-						Paste JSON
-					</SettingsButton>
-				</div>
-			</div>
+	<div class="mcp-toolbar">
+		<SettingsButton variant="secondary" onclick={addServer}>
+			<Plus size={14} strokeWidth={2} />
+			Add server
+		</SettingsButton>
+		<SettingsButton variant="secondary" disabled={mcpBusy} onclick={refreshMcpRuntime}>
+			<RefreshCw size={14} strokeWidth={2} class={mcpBusy ? 'spin' : ''} />
+			{mcpBusy ? 'Refreshing…' : 'Refresh status'}
+		</SettingsButton>
+	</div>
 
-			{#if showPasteImport}
-				<div class="paste-import">
-					<SettingsField
-						label="Paste mcp.json contents"
-						note="Cursor-style JSON with a top-level mcpServers object."
-					>
-						<textarea
-							bind:value={pasteJsonText}
-							rows="6"
-							placeholder={'{\n  "mcpServers": {\n    "github": {\n      "command": "npx",\n      "args": ["-y", "@modelcontextprotocol/server-github"],\n      "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "..." }\n    }\n  }\n}'}
-							spellcheck="false"
-						></textarea>
-					</SettingsField>
-					<div class="mcp-toolbar">
-						<SettingsButton variant="primary" disabled={!pasteJsonText.trim()} onclick={onPasteImport}>
-							Import servers
-						</SettingsButton>
-						<SettingsButton
-							variant="secondary"
-							onclick={() => {
-								showPasteImport = false;
-								pasteJsonText = '';
-							}}
-						>
-							Cancel
-						</SettingsButton>
-					</div>
-				</div>
-			{/if}
-
-			<div class="mcp-empty-footer">
-				<span>Or start from scratch</span>
-				<SettingsButton variant="secondary" onclick={addServer}>
-					<Plus size={14} strokeWidth={2} />
-					Add custom server
-				</SettingsButton>
-			</div>
-		</div>
-	{:else}
-		<div class="mcp-toolbar">
-			<SettingsButton variant="secondary" disabled={mcpBusy} onclick={onImportMcpJson}>
-				<Upload size={14} strokeWidth={2} />
-				Import more
-			</SettingsButton>
-			<SettingsButton variant="secondary" onclick={addServer}>
-				<Plus size={14} strokeWidth={2} />
-				Add server
-			</SettingsButton>
-			<SettingsButton variant="secondary" disabled={mcpBusy} onclick={refreshMcpRuntime}>
-				<RefreshCw size={14} strokeWidth={2} class={mcpBusy ? 'spin' : ''} />
-				{mcpBusy ? 'Refreshing…' : 'Refresh status'}
-			</SettingsButton>
+	<div class="mcp-server-list">
+		<div class="mcp-server-list-header">
+			<span>Configured servers</span>
+			<strong>{cometmind.mcp.servers.length}</strong>
 		</div>
 
-		<div class="mcp-server-list">
-			<div class="mcp-server-list-header">
-				<span>Configured servers</span>
-				<strong>{cometmind.mcp.servers.length}</strong>
-			</div>
-
+		{#if cometmind.mcp.servers.length === 0}
+			<p class="settings-field-hint mcp-list-empty">No servers configured yet.</p>
+		{:else}
 			{#each cometmind.mcp.servers as server (server.id)}
 				{@const status = statusFor(server.id)}
 				{@const expanded = expandedServerId === server.id}
@@ -497,14 +373,28 @@
 								<span class="row-summary">{connectionSummary(server)}</span>
 							</span>
 						</button>
-						<label class="row-toggle" title="Enable this server">
-							<input
-								type="checkbox"
-								checked={server.enabled}
-								onchange={(e) => updateServer(server.id, { enabled: e.currentTarget.checked })}
-							/>
-							<span>On</span>
-						</label>
+						<div class="mcp-server-actions">
+							<label class="row-toggle" title="Enable this server">
+								<input
+									type="checkbox"
+									checked={server.enabled}
+									onchange={(e) => updateServer(server.id, { enabled: e.currentTarget.checked })}
+								/>
+								<span>On</span>
+							</label>
+							<button
+								type="button"
+								class="row-remove"
+								aria-label={`Remove ${server.name}`}
+								title="Remove server"
+								onclick={(e) => {
+									e.stopPropagation();
+									removeServer(server.id);
+								}}
+							>
+								<Trash2 size={14} />
+							</button>
+						</div>
 					</div>
 
 					{#if status?.last_error && !expanded}
@@ -549,7 +439,7 @@
 										spellcheck="false"
 									/>
 								</SettingsField>
-								<SettingsField label="Arguments" note="Space-separated, same as Cursor mcp.json args.">
+								<SettingsField label="Arguments" note="Space-separated command arguments.">
 									<input
 										type="text"
 										bind:value={argsTexts[server.id]}
@@ -624,7 +514,7 @@
 
 							{#if advancedOpen[server.id]}
 								<div class="advanced-panel">
-									<SettingsField label="Server ID" note="Used in tool names like mcp_{server.id}_tool_name. Auto-generated on import.">
+									<SettingsField label="Server ID" note="Used in tool names like mcp_{server.id}_tool_name.">
 										<input type="text" value={server.id} readonly spellcheck="false" />
 									</SettingsField>
 
@@ -739,78 +629,20 @@
 					{/if}
 				</div>
 			{/each}
-		</div>
-
-		{#if toolPreview.length > 0}
-			<p class="settings-field-hint mcp-footnote">
-				{toolPreview.length} tool(s) registered across all servers. Save settings to apply changes.
-			</p>
 		{/if}
+	</div>
+
+	{#if toolPreview.length > 0}
+		<p class="settings-field-hint mcp-footnote">
+			{toolPreview.length} tool(s) registered across all servers. Save settings to apply changes.
+		</p>
 	{/if}
 </div>
 
 <style>
-	.mcp-empty {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-	}
-
-	.import-card {
-		display: grid;
-		grid-template-columns: auto 1fr;
-		gap: 12px 14px;
-		padding: 14px;
-		border: 1px solid var(--border-soft);
-		border-radius: 14px;
-		background: rgba(255, 255, 255, 0.72);
-	}
-
-	.import-card-icon {
-		display: flex;
-		align-items: flex-start;
-		justify-content: center;
-		padding-top: 2px;
-		color: var(--text-muted);
-	}
-
-	.import-card-copy strong {
-		display: block;
-		font-size: 13px;
-		margin-bottom: 4px;
-	}
-
-	.import-card-copy p {
+	.mcp-list-empty {
 		margin: 0;
-		font-size: 12px;
-		line-height: 1.45;
-		color: var(--text-muted);
-	}
-
-	.import-card-actions {
-		grid-column: 1 / -1;
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-	}
-
-	.paste-import {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-		padding: 12px;
-		border: 1px dashed rgba(0, 0, 0, 0.12);
-		border-radius: 12px;
-		background: rgba(255, 255, 255, 0.45);
-	}
-
-	.mcp-empty-footer {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		font-size: 12px;
-		color: var(--text-muted);
+		padding: 12px 11px;
 	}
 
 	.mcp-toolbar,
@@ -856,8 +688,33 @@
 		padding: 10px 11px;
 	}
 
+	.mcp-server-actions {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		flex-shrink: 0;
+	}
+
+	.row-remove {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		border: 1px solid transparent;
+		background: transparent;
+		color: var(--text-muted);
+		border-radius: 8px;
+		padding: 6px;
+		cursor: pointer;
+	}
+
+	.row-remove:hover {
+		color: #b42318;
+		background: rgba(180, 35, 24, 0.08);
+		border-color: rgba(180, 35, 24, 0.18);
+	}
+
 	.mcp-server-row-wrap:hover {
-		background: rgba(15, 23, 42, 0.03);
+		background: rgba(15, 23, 42, 0.06);
 	}
 
 	.mcp-server-item.expanded .mcp-server-row-wrap {
