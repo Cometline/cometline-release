@@ -94,25 +94,16 @@ func (s *Service) LoadTranscript(ctx context.Context, sessionID string) ([]Trans
 			if err != nil {
 				return nil, err
 			}
-			var reasoning strings.Builder
 			for _, b := range blocks {
 				if rb, ok := b.(cometsdk.ReasoningBlock); ok {
-					reasoning.WriteString(rb.Text)
+					rs := strings.TrimSpace(rb.Text)
+					if rs != "" {
+						out = append(out, TranscriptEntry{
+							Kind: TranscriptKindReasoning,
+							Text: rs,
+						})
+					}
 				}
-			}
-			txt := strings.TrimSpace(m.Content)
-			rs := strings.TrimSpace(reasoning.String())
-			if txt != "" {
-				out = append(out, TranscriptEntry{
-					Kind: TranscriptKindAssistant,
-					Text: txt,
-				})
-			}
-			if rs != "" {
-				out = append(out, TranscriptEntry{
-					Kind: TranscriptKindReasoning,
-					Text: rs,
-				})
 			}
 			if mems := unmarshalInjectedMemories(m.InjectedMemories); len(mems) > 0 {
 				out = append(out, TranscriptEntry{
@@ -127,6 +118,13 @@ func (s *Service) LoadTranscript(ctx context.Context, sessionID string) ([]Trans
 					ToolInput:   tc.Arguments,
 					ToolOutput:  trimTranscriptToolOutput(tc.Result),
 					ToolIsError: toolErr[tc.ID],
+				})
+			}
+			txt := strings.TrimSpace(m.Content)
+			if txt != "" {
+				out = append(out, TranscriptEntry{
+					Kind: TranscriptKindAssistant,
+					Text: txt,
 				})
 			}
 		case "system":

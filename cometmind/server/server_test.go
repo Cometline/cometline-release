@@ -616,15 +616,15 @@ func TestGetMessagesReturnsTranscriptItems(t *testing.T) {
 	if len(got.Items) != 4 {
 		t.Fatalf("items len = %d, want 4 (%+v)", len(got.Items), got.Items)
 	}
-	if got.Items[0].Type != "user" || got.Items[1].Type != "assistant" || got.Items[2].Type != "reasoning" || got.Items[3].Type != "tool" {
+	if got.Items[0].Type != "user" || got.Items[1].Type != "reasoning" || got.Items[2].Type != "tool" || got.Items[3].Type != "assistant" {
 		t.Fatalf("item types = %+v", got.Items)
 	}
-	inputMap, ok := got.Items[3].ToolInput.(map[string]any)
+	inputMap, ok := got.Items[2].ToolInput.(map[string]any)
 	if !ok || inputMap["path"] != "main.go" {
-		t.Fatalf("tool input = %#v, want path main.go", got.Items[3].ToolInput)
+		t.Fatalf("tool input = %#v, want path main.go", got.Items[2].ToolInput)
 	}
-	if got.Items[3].ToolOutput != "package main" {
-		t.Fatalf("tool output = %q, want %q", got.Items[3].ToolOutput, "package main")
+	if got.Items[2].ToolOutput != "package main" {
+		t.Fatalf("tool output = %q, want %q", got.Items[2].ToolOutput, "package main")
 	}
 }
 
