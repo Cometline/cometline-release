@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildAssistantTimeline, buildThinkingAttribution } from './thinking-attribution';
+import {
+	buildAssistantTimeline,
+	buildThinkingAttribution,
+	defaultActivityGroupExpanded,
+	shouldGroupAssistantTimeline
+} from './thinking-attribution';
 import type { ChatItem } from '$lib/types';
 
 describe('buildThinkingAttribution', () => {
@@ -220,5 +225,110 @@ describe('buildThinkingAttribution', () => {
 
 		expect(attribution.subagentIdsInBuffer.has('s1')).toBe(true);
 		expect(timeline.map((entry) => entry.kind)).toEqual(['reasoning', 'tool', 'subagent']);
+	});
+});
+
+describe('shouldGroupAssistantTimeline', () => {
+	const assistantWithText: Extract<ChatItem, { type: 'assistant' }> = {
+		id: 'a1',
+		type: 'assistant',
+		text: 'Here is the reply.'
+	};
+	const assistantNoText: Extract<ChatItem, { type: 'assistant' }> = {
+		id: 'a1',
+		type: 'assistant',
+		text: ''
+	};
+	const reasoningEntry = {
+		kind: 'reasoning' as const,
+		segmentIndex: 0,
+		text: 'planning',
+		pending: false
+	};
+	const toolEntry = {
+		kind: 'tool' as const,
+		tool: {
+			id: 't1',
+			type: 'tool' as const,
+			toolName: 'read_file',
+			input: {},
+			output: 'ok',
+			pending: false
+		}
+	};
+
+	it('does not group when assistant text is empty', () => {
+		expect(shouldGroupAssistantTimeline(assistantNoText, [reasoningEntry])).toBe(false);
+		expect(shouldGroupAssistantTimeline(assistantNoText, [reasoningEntry, toolEntry])).toBe(
+			false
+		);
+	});
+
+	it('does not group when timeline is empty', () => {
+		expect(shouldGroupAssistantTimeline(assistantWithText, [])).toBe(false);
+	});
+
+	it('groups when text exists and timeline has entries', () => {
+		expect(shouldGroupAssistantTimeline(assistantWithText, [reasoningEntry])).toBe(true);
+		expect(shouldGroupAssistantTimeline(assistantWithText, [reasoningEntry, toolEntry])).toBe(
+			true
+		);
+	});
+
+	it('groups refresh-like persisted data with all steps done', () => {
+		const refreshedAssistant: Extract<ChatItem, { type: 'assistant' }> = {
+			id: 'a1',
+			type: 'assistant',
+			text: 'Done.',
+			reasoning: {
+				segments: [
+					{ text: 'first', pending: false },
+					{ text: 'second', pending: false }
+				]
+			}
+		};
+		const timeline = [
+			{ kind: 'reasoning' as const, segmentIndex: 0, text: 'first', pending: false },
+			{ kind: 'reasoning' as const, segmentIndex: 1, text: 'second', pending: false },
+			toolEntry
+		];
+		expect(shouldGroupAssistantTimeline(refreshedAssistant, timeline)).toBe(true);
+	});
+});
+
+describe('defaultActivityGroupExpanded', () => {
+	const assistant: Extract<ChatItem, { type: 'assistant' }> = {
+		id: 'a1',
+		type: 'assistant',
+		text: 'Reply text'
+	};
+
+	it('defaults collapsed once response exists and turn is idle', () => {
+		expect(defaultActivityGroupExpanded(assistant, null, false)).toBe(false);
+		expect(defaultActivityGroupExpanded(assistant, 'other-id', false)).toBe(false);
+	});
+
+	it('defaults expanded while the same assistant is still streaming text', () => {
+		expect(defaultActivityGroupExpanded(assistant, 'a1', true)).toBe(true);
+	});
+
+	it('defaults expanded when no response text yet', () => {
+		const pendingAssistant: Extract<ChatItem, { type: 'assistant' }> = {
+			id: 'a1',
+			type: 'assistant',
+			text: ''
+		};
+		expect(defaultActivityGroupExpanded(pendingAssistant, 'a1', true)).toBe(true);
+		expect(defaultActivityGroupExpanded(pendingAssistant, null, false)).toBe(true);
+	});
+
+	it('defaults collapsed after reload when all steps are done', () => {
+		const refreshedAssistant: Extract<ChatItem, { type: 'assistant' }> = {
+			id: 'a1',
+			type: 'assistant',
+			text: 'Done.',
+			reasoning: { segments: [{ text: 'thought', pending: false }] }
+		};
+		expect(defaultActivityGroupExpanded(refreshedAssistant, null, false)).toBe(false);
 	});
 });

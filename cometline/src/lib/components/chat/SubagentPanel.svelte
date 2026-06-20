@@ -16,11 +16,15 @@
 	let {
 		item,
 		expanded,
-		onToggle
+		onToggle,
+		nested = false,
+		contentOnly = false
 	}: {
 		item: Extract<ChatItem, { type: 'subagent' }>;
 		expanded: boolean;
 		onToggle: () => void;
+		nested?: boolean;
+		contentOnly?: boolean;
 	} = $props();
 
 	function subagentProgressLabel(subagent: Extract<ChatItem, { type: 'subagent' }>) {
@@ -47,28 +51,40 @@
 	}
 </script>
 
-<div class="fold-panel subagent-panel" class:pending={item.pending}>
-	<div class="subagent-header">
-		<button
-			type="button"
-			class="fold-toggle subagent-toggle"
-			aria-expanded={expanded}
-			onclick={onToggle}
-		>
-			<Terminal size={13} />
-			<span>{subagentProgressLabel(item)}</span>
+<div class="fold-panel subagent-panel" class:pending={item.pending} class:nested class:content-only={contentOnly}>
+	{#if !contentOnly}
+		<div class="subagent-header">
+			<button
+				type="button"
+				class="fold-toggle subagent-toggle"
+				aria-expanded={expanded}
+				onclick={onToggle}
+			>
+				<Terminal size={13} />
+				<span>{subagentProgressLabel(item)}</span>
+				{#if item.pending}
+					<LoaderCircle size={12} class="spin" />
+				{:else if item.status === 'failed'}
+					<TriangleAlert size={12} />
+				{:else if item.status === 'cancelled'}
+					<CircleX size={12} />
+				{:else}
+					<CircleCheck size={12} />
+				{/if}
+				<ChevronDown size={13} class={expanded ? 'expanded' : ''} />
+			</button>
 			{#if item.pending}
-				<LoaderCircle size={12} class="spin" />
-			{:else if item.status === 'failed'}
-				<TriangleAlert size={12} />
-			{:else if item.status === 'cancelled'}
-				<CircleX size={12} />
-			{:else}
-				<CircleCheck size={12} />
+				<button
+					type="button"
+					class="subagent-cancel"
+					onclick={() => chatStore.cancelSubagent(item.childSessionId)}
+				>
+					Cancel
+				</button>
 			{/if}
-			<ChevronDown size={13} class={expanded ? 'expanded' : ''} />
-		</button>
-		{#if item.pending}
+		</div>
+	{:else if item.pending}
+		<div class="subagent-header content-only-header">
 			<button
 				type="button"
 				class="subagent-cancel"
@@ -76,9 +92,9 @@
 			>
 				Cancel
 			</button>
-		{/if}
-	</div>
-	{#if expanded}
+		</div>
+	{/if}
+	{#if contentOnly || expanded}
 		{@const visibleProgress = subagentVisibleProgress(item)}
 		<div class="fold-body subagent-body" transition:slide={FOLD_IN}>
 			<p class="subagent-purpose">{item.purpose}</p>
@@ -127,6 +143,24 @@
 		gap: 6px;
 		width: 100%;
 		min-width: 0;
+	}
+
+	.fold-panel.nested {
+		gap: 4px;
+	}
+
+	.fold-panel.nested .fold-toggle {
+		font-size: 11px;
+		padding: 4px 9px;
+	}
+
+	.fold-panel.content-only {
+		gap: 0;
+	}
+
+	.content-only-header {
+		justify-content: flex-end;
+		margin-bottom: 6px;
 	}
 
 	.subagent-panel.pending .subagent-toggle {

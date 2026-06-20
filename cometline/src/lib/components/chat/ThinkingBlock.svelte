@@ -13,7 +13,9 @@
 		memoryExpanded,
 		showSpinner = false,
 		onToggle,
-		onToggleMemory
+		onToggleMemory,
+		nested = false,
+		contentOnly = false
 	}: {
 		text: string;
 		pending?: boolean;
@@ -23,6 +25,8 @@
 		showSpinner?: boolean;
 		onToggle: () => void;
 		onToggleMemory: () => void;
+		nested?: boolean;
+		contentOnly?: boolean;
 	} = $props();
 
 	function thinkingLabel(memoriesList?: InjectedMemory[]) {
@@ -44,21 +48,23 @@
 	}
 </script>
 
-<div class="fold-panel thinking-panel">
-	<button
-		type="button"
-		class="fold-toggle thinking-toggle"
-		aria-expanded={expanded}
-		onclick={onToggle}
-	>
-		<Brain size={13} />
-		<span>{thinkingLabel(memories)}</span>
-		{#if showSpinner}
-			<LoaderCircle size={12} class="spin" />
-		{/if}
-		<ChevronDown size={13} class={expanded ? 'expanded' : ''} />
-	</button>
-	{#if expanded}
+<div class="fold-panel thinking-panel" class:nested class:content-only={contentOnly}>
+	{#if !contentOnly}
+		<button
+			type="button"
+			class="fold-toggle thinking-toggle"
+			aria-expanded={expanded}
+			onclick={onToggle}
+		>
+			<Brain size={13} />
+			<span>{thinkingLabel(memories)}</span>
+			{#if showSpinner}
+				<LoaderCircle size={12} class="spin" />
+			{/if}
+			<ChevronDown size={13} class={expanded ? 'expanded' : ''} />
+		</button>
+	{/if}
+	{#if contentOnly || expanded}
 		<div class="fold-body thinking-body" transition:slide={FOLD_IN}>
 			{#if memories?.length}
 				<div class="thinking-memories">
@@ -137,6 +143,21 @@
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
+	}
+
+	.fold-panel.nested {
+		align-self: stretch;
+		gap: 4px;
+	}
+
+	.fold-panel.nested .fold-toggle {
+		font-size: 11px;
+		padding: 4px 9px;
+		align-self: stretch;
+	}
+
+	.fold-panel.content-only {
+		gap: 0;
 	}
 
 	.fold-toggle {

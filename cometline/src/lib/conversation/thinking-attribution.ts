@@ -4,7 +4,7 @@ import { getReasoningSegments } from './reasoning';
 export type InjectedMemory = Extract<ChatItem, { type: 'memory' }>['memories'][number];
 export type ToolChatItem = Extract<ChatItem, { type: 'tool' }>;
 export type SubagentChatItem = Extract<ChatItem, { type: 'subagent' }>;
-type AssistantItem = Extract<ChatItem, { type: 'assistant' }>;
+export type AssistantItem = Extract<ChatItem, { type: 'assistant' }>;
 
 export type ThinkingBlock = {
 	reasoning?: { text: string; pending?: boolean };
@@ -163,4 +163,24 @@ export function buildAssistantTimeline(
 	}
 
 	return timeline;
+}
+
+/** Collapse pre-response timeline into one parent block once assistant text exists. */
+export function shouldGroupAssistantTimeline(
+	assistant: AssistantItem,
+	timeline: TimelineEntry[]
+): boolean {
+	return assistant.text.trim().length > 0 && timeline.length >= 1;
+}
+
+/** Default parent activity group fold: collapsed after response, open while streaming. */
+export function defaultActivityGroupExpanded(
+	assistant: AssistantItem,
+	streamingAssistantId: string | null,
+	sessionStreaming: boolean
+): boolean {
+	if (assistant.text.trim() && !(assistant.id === streamingAssistantId && sessionStreaming)) {
+		return false;
+	}
+	return true;
 }

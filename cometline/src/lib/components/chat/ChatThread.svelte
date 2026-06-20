@@ -10,6 +10,7 @@
 	import ThinkingBlock from '$lib/components/chat/ThinkingBlock.svelte';
 	import ToolFoldPanel from '$lib/components/chat/ToolFoldPanel.svelte';
 	import SubagentPanel from '$lib/components/chat/SubagentPanel.svelte';
+	import AssistantActivityGroup from '$lib/components/chat/AssistantActivityGroup.svelte';
 	import JumpToBottom from '$lib/components/chat/JumpToBottom.svelte';
 	import ThreadAvatar from '$lib/components/chat/ThreadAvatar.svelte';
 	import { imageDataURL } from '$lib/files/images';
@@ -17,6 +18,8 @@
 	import {
 		buildAssistantTimeline,
 		buildThinkingAttribution,
+		defaultActivityGroupExpanded,
+		shouldGroupAssistantTimeline,
 		type InjectedMemory,
 		type TimelineEntry
 	} from '$lib/conversation/thinking-attribution';
@@ -72,6 +75,7 @@
 	let viewportHeight = $state(0);
 	let expandedToolOutput = $state(new Set<string>());
 	let thinkingOverrides = $state(new Map<string, boolean>());
+	let activityGroupOverrides = $state(new Map<string, boolean>());
 	let expandedMemoryInThinking = $state(new Set<string>());
 	let subagentFold = $state(new Map<string, boolean>());
 	let copiedId = $state<string | null>(null);
@@ -153,6 +157,21 @@
 		thinkingOverrides = next;
 	}
 
+	function activityGroupExpanded(assistantId: string, item: Extract<ChatItem, { type: 'assistant' }>) {
+		const override = activityGroupOverrides.get(assistantId);
+		if (override !== undefined) return override;
+		return defaultActivityGroupExpanded(item, streamingAssistantId, sessionStreaming);
+	}
+
+	function toggleActivityGroup(
+		assistantId: string,
+		item: Extract<ChatItem, { type: 'assistant' }>
+	) {
+		const next = new Map(activityGroupOverrides);
+		next.set(assistantId, !activityGroupExpanded(assistantId, item));
+		activityGroupOverrides = next;
+	}
+
 	function memoryInThinkingExpanded(segmentKey: string) {
 		return expandedMemoryInThinking.has(segmentKey);
 	}
@@ -222,6 +241,7 @@
 	$effect(() => {
 		void sessionId;
 		thinkingOverrides = new Map();
+		activityGroupOverrides = new Map();
 		// Treat the session's existing latest user message as already-positioned so
 		// switching sessions doesn't trigger the send auto-scroll.
 		lastScrolledUserId = untrack(() => lastUserId);
@@ -563,36 +583,58 @@
 
 {#snippet assistantStack(item: Extract<ChatItem, { type: 'assistant' }>)}
 	{@const timeline = buildAssistantTimeline(item.id, threadItems, thinkingForAssistant)}
+	{@const grouped = shouldGroupAssistantTimeline(item, timeline)}
 	<div class="assistant-stack">
-		{#each timeline as entry (timelineEntryKey(entry))}
-			{#if entry.kind === 'reasoning'}
-				{@const segmentKey = `${item.id}-seg-${entry.segmentIndex}`}
-				<ThinkingBlock
-					text={entry.text}
-					pending={entry.pending}
-					memories={entry.memories}
-					expanded={thinkingExpanded(segmentKey, entry.pending)}
-					memoryExpanded={memoryInThinkingExpanded(segmentKey)}
-					showSpinner={thinkingActive(entry.pending) &&
-						!(item.id === streamingAssistantId && sessionStreaming)}
-					onToggle={() => toggleThinking(segmentKey, entry.pending)}
-					onToggleMemory={() => toggleMemoryInThinking(segmentKey)}
-				/>
-			{:else if entry.kind === 'tool'}
-				<ToolFoldPanel
-					item={entry.tool}
-					label={toolFoldLabel(entry.tool)}
-					expanded={toolOutputExpanded(entry.tool)}
-					onToggle={() => toggleToolOutput(entry.tool.id)}
-				/>
-			{:else}
-				<SubagentPanel
-					item={entry.subagent}
-					expanded={subagentExpanded(entry.subagent.id)}
-					onToggle={() => toggleSubagent(entry.subagent.id)}
-				/>
-			{/if}
-		{/each}
+		{#if grouped}
+			<AssistantActivityGroup
+				assistantId={item.id}
+				{timeline}
+				parentExpanded={activityGroupExpanded(item.id, item)}
+				onToggleParent={() => toggleActivityGroup(item.id, item)}
+				{timelineEntryKey}
+				{toolFoldLabel}
+				{thinkingExpanded}
+				{toggleThinking}
+				{memoryInThinkingExpanded}
+				{toggleMemoryInThinking}
+				{thinkingActive}
+				showThinkingSpinner={!(item.id === streamingAssistantId && sessionStreaming)}
+				{toolOutputExpanded}
+				{toggleToolOutput}
+				{subagentExpanded}
+				{toggleSubagent}
+			/>
+		{:else}
+			{#each timeline as entry (timelineEntryKey(entry))}
+				{#if entry.kind === 'reasoning'}
+					{@const segmentKey = `${item.id}-seg-${entry.segmentIndex}`}
+					<ThinkingBlock
+						text={entry.text}
+						pending={entry.pending}
+						memories={entry.memories}
+						expanded={thinkingExpanded(segmentKey, entry.pending)}
+						memoryExpanded={memoryInThinkingExpanded(segmentKey)}
+						showSpinner={thinkingActive(entry.pending) &&
+							!(item.id === streamingAssistantId && sessionStreaming)}
+						onToggle={() => toggleThinking(segmentKey, entry.pending)}
+						onToggleMemory={() => toggleMemoryInThinking(segmentKey)}
+					/>
+				{:else if entry.kind === 'tool'}
+					<ToolFoldPanel
+						item={entry.tool}
+						label={toolFoldLabel(entry.tool)}
+						expanded={toolOutputExpanded(entry.tool)}
+						onToggle={() => toggleToolOutput(entry.tool.id)}
+					/>
+				{:else}
+					<SubagentPanel
+						item={entry.subagent}
+						expanded={subagentExpanded(entry.subagent.id)}
+						onToggle={() => toggleSubagent(entry.subagent.id)}
+					/>
+				{/if}
+			{/each}
+		{/if}
 		{#if item.text}
 			<div class="bubble assistant-bubble">
 				<AssistantMarkdown

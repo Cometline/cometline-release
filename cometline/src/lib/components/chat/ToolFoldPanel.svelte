@@ -15,12 +15,16 @@
 		item,
 		label,
 		expanded,
-		onToggle
+		onToggle,
+		nested = false,
+		contentOnly = false
 	}: {
 		item: Extract<ChatItem, { type: 'tool' }>;
 		label: string;
 		expanded: boolean;
 		onToggle: () => void;
+		nested?: boolean;
+		contentOnly?: boolean;
 	} = $props();
 
 	function formatToolInput(input: unknown) {
@@ -34,25 +38,27 @@
 	}
 </script>
 
-<div class="fold-panel tool-fold-panel" class:error={!!item.error}>
-	<button
-		type="button"
-		class="fold-toggle tool-fold-toggle"
-		aria-expanded={expanded}
-		onclick={onToggle}
-	>
-		<Terminal size={13} />
-		<span>{label}</span>
-		{#if item.pending}
-			<LoaderCircle size={12} class="spin" />
-		{:else if item.error}
-			<TriangleAlert size={12} />
-		{:else}
-			<CircleCheck size={12} />
-		{/if}
-		<ChevronDown size={13} class={expanded ? 'expanded' : ''} />
-	</button>
-	{#if expanded}
+<div class="fold-panel tool-fold-panel" class:error={!!item.error} class:nested class:content-only={contentOnly}>
+	{#if !contentOnly}
+		<button
+			type="button"
+			class="fold-toggle tool-fold-toggle"
+			aria-expanded={expanded}
+			onclick={onToggle}
+		>
+			<Terminal size={13} />
+			<span>{label}</span>
+			{#if item.pending}
+				<LoaderCircle size={12} class="spin" />
+			{:else if item.error}
+				<TriangleAlert size={12} />
+			{:else}
+				<CircleCheck size={12} />
+			{/if}
+			<ChevronDown size={13} class={expanded ? 'expanded' : ''} />
+		</button>
+	{/if}
+	{#if contentOnly || expanded}
 		<div class="fold-body tool-output-body" transition:slide={FOLD_IN}>
 			{#if formatToolInput(item.input)}
 				<pre class="tool-input-text">{formatToolInput(item.input)}</pre>
@@ -74,6 +80,21 @@
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
+	}
+
+	.fold-panel.nested {
+		align-self: stretch;
+		gap: 4px;
+	}
+
+	.fold-panel.nested .fold-toggle {
+		font-size: 11px;
+		padding: 4px 9px;
+		align-self: stretch;
+	}
+
+	.fold-panel.content-only .tool-output-body {
+		margin-top: 0;
 	}
 
 	.tool-fold-panel.error .tool-fold-toggle {
