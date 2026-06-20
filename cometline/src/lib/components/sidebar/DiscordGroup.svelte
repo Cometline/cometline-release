@@ -10,7 +10,6 @@
 		sessions,
 		collapsed,
 		active = false,
-		showDivider = false,
 		currentSessionId,
 		deletingID,
 		onToggle,
@@ -21,7 +20,6 @@
 		sessions: Session[];
 		collapsed: boolean;
 		active?: boolean;
-		showDivider?: boolean;
 		currentSessionId: string | null;
 		deletingID: string | null;
 		onToggle: () => void;
@@ -75,9 +73,6 @@
 			</div>
 		{/if}
 	</div>
-	{#if showDivider}
-		<div class="discord-divider" role="separator" aria-hidden="true"></div>
-	{/if}
 </div>
 
 <style>
@@ -182,13 +177,5 @@
 		flex-direction: column;
 		gap: 2px;
 		padding-left: 6px;
-	}
-
-	.discord-divider {
-		height: 2px;
-		margin: 8px 6px 6px;
-		background: rgba(15, 23, 42, 0.16);
-		border-radius: 1px;
-		flex-shrink: 0;
 	}
 </style>

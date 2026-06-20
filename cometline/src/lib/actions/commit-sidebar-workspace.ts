@@ -10,7 +10,7 @@ export function commitSidebarWorkspace(path: string) {
 }
 
 export function commitSidebarWorkspaceForSession(session: Session | null | undefined) {
-	if (!session?.workspace_path) return;
+	if (!session?.workspace_path || session.pinned) return;
 	if (session.workspace_path !== shellStore.sidebarOrderWorkspacePath) {
 		shellStore.setSidebarOrderWorkspacePath(session.workspace_path);
 	}

@@ -6,13 +6,13 @@ import { isDiscordSession } from '$lib/sessions/group-by-workspace';
 import type { Session } from '$lib/types';
 
 export interface NavigateToSessionOptions {
-	/** When true, reorder sidebar groups immediately. Defaults to true. */
+	/** When true, reorder sidebar groups immediately. Defaults to true for unpinned sessions. */
 	commitSidebarOrder?: boolean;
 }
 
 /** Activate a session; composer follows the session workspace immediately. */
 export function navigateToSession(session: Session, options: NavigateToSessionOptions = {}) {
-	const commitSidebarOrder = options.commitSidebarOrder ?? true;
+	const commitSidebarOrder = options.commitSidebarOrder ?? !session.pinned;
 
 	sessionStore.selectSession(session);
 	modelStore.selectFromSession(session);

@@ -30,9 +30,13 @@
 	let { collapsed = false }: { collapsed?: boolean } = $props();
 	let orderWorkspacePath = $derived(shellStore.sidebarOrderWorkspacePath);
 	let orderDiscordActive = $derived(shellStore.sidebarOrderDiscordActive);
-	let highlightWorkspacePath = $derived(
-		sessionStore.current?.workspace_path ?? shellStore.sidebarOrderWorkspacePath
-	);
+	let highlightWorkspacePath = $derived.by(() => {
+		const current = sessionStore.current;
+		if (current?.pinned) {
+			return shellStore.sidebarOrderWorkspacePath;
+		}
+		return current?.workspace_path ?? shellStore.sidebarOrderWorkspacePath;
+	});
 	let deletingID = $state<string | null>(null);
 	let pinningID = $state<string | null>(null);
 	let renamingID = $state<string | null>(null);
@@ -160,8 +164,17 @@
 	let groupedSessions = $derived(sidebarLayout.workspaceGroups);
 	let discordSessions = $derived(sidebarLayout.discordSessions);
 	let discordFirst = $derived(sidebarLayout.discordFirst);
-	let showActiveWorkspaceDivider = $derived(
-		groupedSessions.length > 0 && groupedSessions[0].workspacePath === orderWorkspacePath
+	let hasPinnedSection = $derived(pinnedSessions.length > 0);
+	let hasWorkspaceSection = $derived(groupedSessions.length > 0);
+	let hasDiscordSection = $derived(discordSessions.length > 0);
+	let showDividerAfterPinned = $derived(
+		hasPinnedSection && (hasWorkspaceSection || hasDiscordSection)
+	);
+	let showDividerAfterDiscordFirst = $derived(
+		discordFirst && hasDiscordSection && hasWorkspaceSection
+	);
+	let showDividerBeforeDiscordLast = $derived(
+		!discordFirst && hasDiscordSection && hasWorkspaceSection
 	);
 	let totalSessions = $derived(filteredSessions.length);
 
@@ -206,12 +219,14 @@
 					onSessionContextMenu={openSessionContextMenu}
 				/>
 			{/if}
+			{#if showDividerAfterPinned}
+				<div class="sidebar-section-divider" role="separator" aria-hidden="true"></div>
+			{/if}
 			{#if discordFirst && discordSessions.length > 0}
 				<DiscordGroup
 					sessions={discordSessions}
 					collapsed={isGroupCollapsed(DISCORD_GROUP_KEY)}
 					active
-					showDivider
 					{currentSessionId}
 					{deletingID}
 					onToggle={() => toggleGroup(DISCORD_GROUP_KEY)}
@@ -220,7 +235,10 @@
 					onSessionContextMenu={openSessionContextMenu}
 				/>
 			{/if}
-			{#each groupedSessions as group, index (group.workspacePath)}
+			{#if showDividerAfterDiscordFirst}
+				<div class="sidebar-section-divider" role="separator" aria-hidden="true"></div>
+			{/if}
+			{#each groupedSessions as group (group.workspacePath)}
 				<div animate:flip={WORKSPACE_GROUP_FLIP}>
 					<WorkspaceGroup
 						label={group.label}
@@ -228,7 +246,6 @@
 						sessions={group.sessions}
 						collapsed={isGroupCollapsed(group.workspacePath)}
 						active={group.workspacePath === highlightWorkspacePath}
-						showDivider={index === 0 && showActiveWorkspaceDivider}
 						{currentSessionId}
 						{deletingID}
 						{pinningID}
@@ -240,6 +257,9 @@
 					/>
 				</div>
 			{/each}
+			{#if showDividerBeforeDiscordLast}
+				<div class="sidebar-section-divider" role="separator" aria-hidden="true"></div>
+			{/if}
 			{#if !discordFirst && discordSessions.length > 0}
 				<DiscordGroup
 					sessions={discordSessions}
@@ -382,6 +402,14 @@
 		line-height: 1.4;
 		color: var(--text-soft);
 		text-align: center;
+	}
+
+	.sidebar-section-divider {
+		height: 2px;
+		margin: 8px 6px 6px;
+		background: rgba(15, 23, 42, 0.16);
+		border-radius: 1px;
+		flex-shrink: 0;
 	}
 
 	.sidebar-footer {

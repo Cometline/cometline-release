@@ -69,7 +69,6 @@
 			</div>
 		{/if}
 	</div>
-	<div class="pinned-divider" role="separator" aria-hidden="true"></div>
 </div>
 
 <style>
@@ -150,13 +149,5 @@
 		flex-direction: column;
 		gap: 2px;
 		padding-left: 6px;
-	}
-
-	.pinned-divider {
-		height: 2px;
-		margin: 8px 6px 6px;
-		background: rgba(15, 23, 42, 0.16);
-		border-radius: 1px;
-		flex-shrink: 0;
 	}
 </style>
