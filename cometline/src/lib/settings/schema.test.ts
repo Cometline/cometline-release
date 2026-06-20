@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	defaultSettings,
+	mergeFetchedModelMetadata,
 	migrateSingleProvider,
 	normalizeSettings,
 	parseAndNormalizeSettings,
@@ -173,5 +174,35 @@ describe('settings schema', () => {
 
 		expect(settings.cometmind.maxTokens).toBe(3072);
 		expect(runtimeSlice(settings)?.maxTokens).toBe(3072);
+	});
+
+	it('preserves optional provider model context metadata', () => {
+		const settings = normalizeSettings({
+			...defaultSettings(),
+			providers: defaultSettings().providers.map((provider) =>
+				provider.id === 'anthropic'
+					? {
+							...provider,
+							modelMetadata: {
+								'claude-sonnet-4-20250514': { contextWindow: 200000 }
+							},
+							defaultContextWindow: 200000
+						}
+					: provider
+			)
+		});
+
+		const anthropic = settings.providers.find((provider) => provider.id === 'anthropic');
+		expect(anthropic?.defaultContextWindow).toBe(200000);
+		expect(anthropic?.modelMetadata?.['claude-sonnet-4-20250514']?.contextWindow).toBe(200000);
+	});
+
+	it('merges fetched model metadata without dropping existing entries', () => {
+		const merged = mergeFetchedModelMetadata(
+			{ 'gpt-4.1': { contextWindow: 128000 } },
+			{ 'gpt-4.1-mini': { contextWindow: 32000 } }
+		);
+		expect(merged?.['gpt-4.1']?.contextWindow).toBe(128000);
+		expect(merged?.['gpt-4.1-mini']?.contextWindow).toBe(32000);
 	});
 });

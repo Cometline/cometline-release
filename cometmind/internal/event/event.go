@@ -2,6 +2,7 @@ package event
 
 import (
 	"encoding/json"
+	"strings"
 
 	cometsdk "github.com/cometline/comet-sdk"
 )
@@ -22,8 +23,21 @@ const (
 	KindSubagentFinished Kind = "subagent_finished"
 	KindMemoryInjected   Kind = "memory_injected"
 	KindMemoryUpdated    Kind = "memory_updated"
+	KindTurnStatus       Kind = "turn_status"
 	KindError            Kind = "error"
 	KindDone             Kind = "done"
+)
+
+// TurnPhase identifies what the agent is doing before visible output streams.
+type TurnPhase string
+
+const (
+	PhaseRetrievingMemories TurnPhase = "retrieving_memories"
+	PhaseCompactingContext  TurnPhase = "compacting_context"
+	PhaseContactingModel    TurnPhase = "contacting_model"
+	PhaseComposingResponse  TurnPhase = "composing_response"
+	PhaseRunningTools       TurnPhase = "running_tools"
+	PhaseContinuing         TurnPhase = "continuing"
 )
 
 // MemoryWire is the SSE payload for an injected memory.
@@ -83,6 +97,9 @@ type Event struct {
 	Memories []MemoryWire
 	// memory_updated
 	MemoryChanges []MemoryChangeWire
+	// turn_status
+	Phase   TurnPhase
+	StatusMessage string
 	// error
 	Message string
 	Code    string
@@ -160,6 +177,16 @@ func (e Event) MarshalJSON() ([]byte, error) {
 			Type    string             `json:"type"`
 			Changes []MemoryChangeWire `json:"changes"`
 		}{t, e.MemoryChanges})
+	case KindTurnStatus:
+		out := struct {
+			Type    string `json:"type"`
+			Phase   string `json:"phase"`
+			Message string `json:"message,omitempty"`
+		}{Type: t, Phase: string(e.Phase)}
+		if strings.TrimSpace(e.StatusMessage) != "" {
+			out.Message = e.StatusMessage
+		}
+		return json.Marshal(out)
 	case KindError:
 		return json.Marshal(struct {
 			Type    string `json:"type"`
@@ -238,6 +265,11 @@ func MemoryInjected(wire []MemoryWire) Event {
 // MemoryUpdated builds a memory_updated event.
 func MemoryUpdated(changes []MemoryChangeWire) Event {
 	return Event{Kind: KindMemoryUpdated, MemoryChanges: changes}
+}
+
+// TurnStatus builds a turn_status event for pre-stream activity feedback.
+func TurnStatus(phase TurnPhase, message string) Event {
+	return Event{Kind: KindTurnStatus, Phase: phase, StatusMessage: message}
 }
 
 // SubagentFinished builds a subagent_finished event.

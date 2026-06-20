@@ -49,6 +49,16 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (M
 	return i, err
 }
 
+const deleteMessagesBySession = `-- name: DeleteMessagesBySession :exec
+DELETE FROM messages
+WHERE session_id = ?
+`
+
+func (q *Queries) DeleteMessagesBySession(ctx context.Context, sessionID string) error {
+	_, err := q.db.ExecContext(ctx, deleteMessagesBySession, sessionID)
+	return err
+}
+
 const getMessage = `-- name: GetMessage :one
 SELECT id, session_id, role, content, reasoning_content, injected_memories, token_count, created_at
 FROM messages

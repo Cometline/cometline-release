@@ -2,14 +2,16 @@ package session
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 
 	cometsdk "github.com/cometline/comet-sdk"
+	"github.com/cometline/cometmind/internal/db"
 	"github.com/cometline/cometmind/internal/store"
 )
 
-func newForkTestService(t *testing.T) *Service {
+func newForkTestService(t *testing.T) (*Service, *db.Queries) {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "fork-test.db")
 	sqlDB, err := store.OpenSQLite(context.Background(), dbPath)
@@ -17,12 +19,12 @@ func newForkTestService(t *testing.T) *Service {
 		t.Fatalf("OpenSQLite() error = %v", err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	return New(sqlDB)
+	return New(sqlDB), db.New(sqlDB)
 }
 
 func TestForkSessionRemapsToolCallIDs(t *testing.T) {
 	ctx := context.Background()
-	svc := newForkTestService(t)
+	svc, _ := newForkTestService(t)
 
 	srcWs, err := svc.EnsureWorkspace(ctx, t.TempDir())
 	if err != nil {
@@ -79,5 +81,47 @@ func TestForkSessionRemapsToolCallIDs(t *testing.T) {
 	}
 	if toolCallID == persistedID {
 		t.Fatalf("forked tool_call ID should be remapped, but equals original %q", persistedID)
+	}
+}
+
+func TestForkSessionResetsContextSummary(t *testing.T) {
+	ctx := context.Background()
+	svc, q := newForkTestService(t)
+
+	srcWs, err := svc.EnsureWorkspace(ctx, t.TempDir())
+	if err != nil {
+		t.Fatalf("EnsureWorkspace() error = %v", err)
+	}
+	src, err := svc.NewSession(ctx, srcWs.ID, "model", "provider")
+	if err != nil {
+		t.Fatalf("NewSession() error = %v", err)
+	}
+
+	if err := q.UpdateSessionContextSummary(ctx, db.UpdateSessionContextSummaryParams{
+		ContextSummary:          "prior goals and decisions",
+		CompactedUntilMessageID: sql.NullString{String: "msg-old", Valid: true},
+		ContextSummaryUpdatedAt: sql.NullString{String: "2026-01-01T00:00:00Z", Valid: true},
+		ID:                      src.ID,
+	}); err != nil {
+		t.Fatalf("UpdateSessionContextSummary() error = %v", err)
+	}
+
+	forked, err := svc.ForkSession(ctx, src.ID, t.TempDir())
+	if err != nil {
+		t.Fatalf("ForkSession() error = %v", err)
+	}
+
+	got, err := svc.GetSession(ctx, forked.ID)
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if got.ContextSummary != "" {
+		t.Fatalf("ContextSummary = %q, want empty", got.ContextSummary)
+	}
+	if got.CompactedUntilMessageID != "" {
+		t.Fatalf("CompactedUntilMessageID = %q, want empty", got.CompactedUntilMessageID)
+	}
+	if got.ContextSummaryUpdatedAt != "" {
+		t.Fatalf("ContextSummaryUpdatedAt = %q, want empty", got.ContextSummaryUpdatedAt)
 	}
 }

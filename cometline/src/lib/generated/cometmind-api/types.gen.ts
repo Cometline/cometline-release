@@ -390,6 +390,12 @@ export type DoneEvent = {
     type: 'done';
 };
 
+export type TurnStatusEvent = {
+    type: 'turn_status';
+    phase: 'retrieving_memories' | 'compacting_context' | 'contacting_model' | 'composing_response' | 'running_tools' | 'continuing';
+    message?: string;
+};
+
 export type StreamEvent = ({
     type?: 'text_delta';
 } & TextDeltaEvent) | ({
@@ -413,6 +419,8 @@ export type StreamEvent = ({
 } & MemoryInjectedEvent) | ({
     type?: 'memory_updated';
 } & MemoryUpdatedEvent) | ({
+    type?: 'turn_status';
+} & TurnStatusEvent) | ({
     type?: 'error';
 } & ErrorEvent) | ({
     type?: 'done';
@@ -923,6 +931,44 @@ export type PatchSessionResponses = {
 };
 
 export type PatchSessionResponse = PatchSessionResponses[keyof PatchSessionResponses];
+
+export type ClearSessionData = {
+    body?: never;
+    path: {
+        /**
+         * Persisted CometMind session identifier.
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/sessions/{id}/clear';
+};
+
+export type ClearSessionErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorResponse;
+    /**
+     * Session is running
+     */
+    409: ErrorResponse;
+    /**
+     * Unexpected server error
+     */
+    500: ErrorResponse;
+};
+
+export type ClearSessionError = ClearSessionErrors[keyof ClearSessionErrors];
+
+export type ClearSessionResponses = {
+    /**
+     * Transcript cleared
+     */
+    204: void;
+};
+
+export type ClearSessionResponse = ClearSessionResponses[keyof ClearSessionResponses];
 
 export type ChangeSessionWorkspaceData = {
     body: ChangeSessionWorkspaceRequest;

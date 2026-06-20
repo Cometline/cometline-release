@@ -65,22 +65,25 @@ type Message struct {
 }
 
 type Session struct {
-	ID               string         `json:"id"`
-	WorkspaceID      string         `json:"workspace_id"`
-	Title            string         `json:"title"`
-	ModelID          string         `json:"model_id"`
-	ProviderID       string         `json:"provider_id"`
-	Status           string         `json:"status"`
-	TokenUsage       string         `json:"token_usage"`
-	ParentSessionID  sql.NullString `json:"parent_session_id"`
-	Purpose          string         `json:"purpose"`
-	DelegationStatus string         `json:"delegation_status"`
-	OutputSummary    string         `json:"output_summary"`
-	AcpSessionID     string         `json:"acp_session_id"`
-	PendingQuestion  string         `json:"pending_question"`
-	Pinned           int64          `json:"pinned"`
-	CreatedAt        int64          `json:"created_at"`
-	UpdatedAt        int64          `json:"updated_at"`
+	ID                      string         `json:"id"`
+	WorkspaceID             string         `json:"workspace_id"`
+	Title                   string         `json:"title"`
+	ModelID                 string         `json:"model_id"`
+	ProviderID              string         `json:"provider_id"`
+	Status                  string         `json:"status"`
+	TokenUsage              string         `json:"token_usage"`
+	ParentSessionID         sql.NullString `json:"parent_session_id"`
+	Purpose                 string         `json:"purpose"`
+	DelegationStatus        string         `json:"delegation_status"`
+	OutputSummary           string         `json:"output_summary"`
+	AcpSessionID            string         `json:"acp_session_id"`
+	PendingQuestion         string         `json:"pending_question"`
+	Pinned                  int64          `json:"pinned"`
+	ContextSummary          string         `json:"context_summary"`
+	CompactedUntilMessageID sql.NullString `json:"compacted_until_message_id"`
+	ContextSummaryUpdatedAt sql.NullString `json:"context_summary_updated_at"`
+	CreatedAt               int64          `json:"created_at"`
+	UpdatedAt               int64          `json:"updated_at"`
 }
 
 type ToolCall struct {

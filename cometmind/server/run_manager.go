@@ -56,3 +56,11 @@ func (m *RunManager) Cancel(sessionID string) bool {
 	}
 	return ok
 }
+
+// Running reports whether a session has an in-flight agent loop.
+func (m *RunManager) Running(sessionID string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, ok := m.cancels[sessionID]
+	return ok
+}

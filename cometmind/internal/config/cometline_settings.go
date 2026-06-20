@@ -7,16 +7,22 @@ import (
 	"strings"
 )
 
+type cometlineModelMetadataJSON struct {
+	ContextWindow int `json:"contextWindow,omitempty"`
+}
+
 type cometlineProviderJSON struct {
-	ID            string   `json:"id"`
-	Name          string   `json:"name"`
-	Method        string   `json:"method"`
-	Enabled       bool     `json:"enabled"`
-	BaseURL       string   `json:"baseURL"`
-	APIKey        string   `json:"apiKey"`
-	SelectedModel string   `json:"selectedModel"`
-	Models        []string `json:"models"`
-	EnabledModels []string `json:"enabledModels"`
+	ID                   string                              `json:"id"`
+	Name                 string                              `json:"name"`
+	Method               string                              `json:"method"`
+	Enabled              bool                                `json:"enabled"`
+	BaseURL              string                              `json:"baseURL"`
+	APIKey               string                              `json:"apiKey"`
+	SelectedModel        string                              `json:"selectedModel"`
+	Models               []string                            `json:"models"`
+	EnabledModels        []string                            `json:"enabledModels"`
+	ModelMetadata        map[string]cometlineModelMetadataJSON `json:"modelMetadata,omitempty"`
+	DefaultContextWindow int                                 `json:"defaultContextWindow,omitempty"`
 }
 
 type cometlineACPJSON struct {
@@ -159,13 +165,23 @@ func adaptCometlineSettings(raw cometlineSettingsJSON) (*Config, error) {
 
 	providers := make([]ProviderEntry, 0, len(runtimeProviders))
 	for _, provider := range runtimeProviders {
+		modelMetadata := make(map[string]ModelMetadata)
+		for modelID, meta := range provider.ModelMetadata {
+			id := strings.TrimSpace(modelID)
+			if id == "" || meta.ContextWindow <= 0 {
+				continue
+			}
+			modelMetadata[id] = ModelMetadata{ContextWindow: meta.ContextWindow}
+		}
 		providers = append(providers, ProviderEntry{
-			ID:      strings.TrimSpace(provider.ID),
-			Name:    strings.TrimSpace(provider.Name),
-			Method:  strings.TrimSpace(provider.Method),
-			BaseURL: strings.TrimSpace(provider.BaseURL),
-			APIKey:  provider.APIKey,
-			Model:   primaryModel(provider),
+			ID:                   strings.TrimSpace(provider.ID),
+			Name:                 strings.TrimSpace(provider.Name),
+			Method:               strings.TrimSpace(provider.Method),
+			BaseURL:              strings.TrimSpace(provider.BaseURL),
+			APIKey:               provider.APIKey,
+			Model:                primaryModel(provider),
+			ModelMetadata:        modelMetadata,
+			DefaultContextWindow: provider.DefaultContextWindow,
 		})
 	}
 

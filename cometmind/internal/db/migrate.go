@@ -119,6 +119,12 @@ var alterStatements = [][]string{
 	{
 		"ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
 	},
+	// v9 -> v10: rolling context compaction summary state on sessions.
+	{
+		"ALTER TABLE sessions ADD COLUMN context_summary TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE sessions ADD COLUMN compacted_until_message_id TEXT",
+		"ALTER TABLE sessions ADD COLUMN context_summary_updated_at TEXT",
+	},
 }
 
 // execAlter runs one incremental DDL statement, tolerating idempotent failures
@@ -157,7 +163,7 @@ func splitStatements(sql string) []string {
 	return out
 }
 
-const schemaVersion = 9
+const schemaVersion = 10
 
 // EnsureSchema runs [Migrate] once per database file using PRAGMA user_version.
 // For existing databases, it applies incremental ALTER statements to upgrade

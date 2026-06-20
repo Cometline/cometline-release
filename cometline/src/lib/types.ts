@@ -22,6 +22,10 @@ export type MemoryUpdate = MemoryChangeWire;
 
 export type ProviderMethod = 'openai-compatible' | 'openai' | 'anthropic' | 'opencode-go' | 'codex';
 
+export interface ProviderModelMetadata {
+	contextWindow?: number;
+}
+
 export interface ProviderConfig {
 	id: string;
 	name: string;
@@ -32,6 +36,13 @@ export interface ProviderConfig {
 	selectedModel: string;
 	models: string[];
 	enabledModels: string[];
+	modelMetadata?: Record<string, ProviderModelMetadata>;
+	defaultContextWindow?: number;
+}
+
+export interface FetchProviderModelsResult {
+	models: string[];
+	modelMetadata?: Record<string, ProviderModelMetadata>;
 }
 
 export interface HeroComposerAppearance {
@@ -108,6 +119,8 @@ export type ChatItem =
 			text: string;
 			pending?: boolean;
 			pendingStartedAt?: number;
+			activityPhase?: string;
+			activityMessage?: string;
 			reasoning?: {
 				segments?: Array<{ text: string; pending?: boolean }>;
 				/** @deprecated Legacy flat reasoning; normalized to segments by helpers. */

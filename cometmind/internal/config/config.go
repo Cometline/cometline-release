@@ -20,13 +20,19 @@ const (
 )
 
 // ProviderEntry is one configured LLM provider managed by Cometline.
+type ModelMetadata struct {
+	ContextWindow int `json:"context_window" mapstructure:"context_window"`
+}
+
 type ProviderEntry struct {
-	ID      string `mapstructure:"id"`
-	Name    string `mapstructure:"name"`
-	Method  string `mapstructure:"method"`
-	BaseURL string `mapstructure:"base_url"`
-	APIKey  string `mapstructure:"api_key"`
-	Model   string `mapstructure:"model"`
+	ID                   string                    `mapstructure:"id"`
+	Name                 string                    `mapstructure:"name"`
+	Method               string                    `mapstructure:"method"`
+	BaseURL              string                    `mapstructure:"base_url"`
+	APIKey               string                    `mapstructure:"api_key"`
+	Model                string                    `mapstructure:"model"`
+	ModelMetadata        map[string]ModelMetadata  `json:"model_metadata" mapstructure:"model_metadata"`
+	DefaultContextWindow int                       `json:"default_context_window" mapstructure:"default_context_window"`
 }
 
 // ACPConfig controls external coding agent delegation.

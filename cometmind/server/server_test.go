@@ -499,6 +499,56 @@ func TestDeleteSessionRemovesSession(t *testing.T) {
 	}
 }
 
+func TestClearSessionResetsTranscript(t *testing.T) {
+	t.Parallel()
+
+	engine, svc, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
+		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
+			ch <- event.Done()
+			return nil
+		}), nil
+	})
+	defer cleanup()
+
+	ctx := context.Background()
+	ws, err := svc.EnsureWorkspace(ctx, t.TempDir())
+	if err != nil {
+		t.Fatalf("EnsureWorkspace() error = %v", err)
+	}
+	sess, err := svc.NewSession(ctx, ws.ID, "test-model", "test-provider")
+	if err != nil {
+		t.Fatalf("NewSession() error = %v", err)
+	}
+	if _, err := svc.AppendUserMessage(ctx, sess.ID, "hello"); err != nil {
+		t.Fatalf("AppendUserMessage() error = %v", err)
+	}
+	if err := svc.UpdateContextSummary(ctx, sess.ID, "old summary", "ignored"); err != nil {
+		t.Fatalf("UpdateContextSummary() error = %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/clear", nil)
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("clear status = %d, want %d body=%s", rec.Code, http.StatusNoContent, rec.Body.String())
+	}
+
+	msgs, err := svc.ListMessageRows(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("ListMessageRows() error = %v", err)
+	}
+	if len(msgs) != 0 {
+		t.Fatalf("messages after clear = %d, want 0", len(msgs))
+	}
+	got, err := svc.GetSession(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if got.ContextSummary != "" || got.CompactedUntilMessageID != "" || got.Title != "" {
+		t.Fatalf("session state after clear = %+v", got)
+	}
+}
+
 func TestPatchSessionUpdatesModel(t *testing.T) {
 	t.Parallel()
 

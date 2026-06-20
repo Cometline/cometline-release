@@ -381,6 +381,30 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/sessions/{id}/clear:
+    post:
+      tags: [Sessions]
+      summary: Clear session transcript
+      description: |
+        Deletes all messages and tool calls for the session, resets compaction summary
+        state, token usage, and title, while preserving the session id and workspace.
+      operationId: clearSession
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '204':
+          description: Transcript cleared
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Session is running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/sessions/{id}/workspace:
     patch:
       tags: [Sessions]
@@ -1763,6 +1787,26 @@ components:
           type: string
           const: done
 
+    TurnStatusEvent:
+      type: object
+      additionalProperties: false
+      required: [type, phase]
+      properties:
+        type:
+          type: string
+          const: turn_status
+        phase:
+          type: string
+          enum:
+            - retrieving_memories
+            - compacting_context
+            - contacting_model
+            - composing_response
+            - running_tools
+            - continuing
+        message:
+          type: string
+
     StreamEvent:
       oneOf:
         - $ref: '#/components/schemas/TextDeltaEvent'
@@ -1776,6 +1820,7 @@ components:
         - $ref: '#/components/schemas/SubagentFinishedEvent'
         - $ref: '#/components/schemas/MemoryInjectedEvent'
         - $ref: '#/components/schemas/MemoryUpdatedEvent'
+        - $ref: '#/components/schemas/TurnStatusEvent'
         - $ref: '#/components/schemas/ErrorEvent'
         - $ref: '#/components/schemas/DoneEvent'
       discriminator:
@@ -1792,6 +1837,7 @@ components:
           subagent_finished: '#/components/schemas/SubagentFinishedEvent'
           memory_injected: '#/components/schemas/MemoryInjectedEvent'
           memory_updated: '#/components/schemas/MemoryUpdatedEvent'
+          turn_status: '#/components/schemas/TurnStatusEvent'
           error: '#/components/schemas/ErrorEvent'
           done: '#/components/schemas/DoneEvent'
 

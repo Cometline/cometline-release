@@ -175,6 +175,7 @@ func (r *Runtime) RunnerFor(sess session.Session, workspacePath string) (*agent.
 		SystemPrompt: r.SystemPrompt,
 		SkillIndex:   skillRegistry.PromptIndex(),
 		MemorySem:    r.memorySem,
+		Compactor:    &agent.ContextCompactor{Sessions: r.Sessions, Config: r.Config},
 	}, nil
 }
 

@@ -1,4 +1,5 @@
 import type { ChatItem, StreamEvent, SubagentProgressEntry } from '$lib/types';
+import { turnStatusLabel } from '../conversation/turn-status';
 import {
 	cloneReasoning as cloneReasoningSegments,
 	getReasoningSegments,
@@ -272,9 +273,27 @@ function applyEvent(
 		return publishAssistant(syncActiveReasoningSegment(host, reasoning.current));
 	}
 
+	function clearAssistantActivity(host: AssistantItem): AssistantItem {
+		if (!host.activityPhase && !host.activityMessage) return host;
+		const { activityPhase: _phase, activityMessage: _message, ...rest } = host;
+		return rest;
+	}
+
+	if (event.type === 'turn_status') {
+		const host = ensureAssistantForText();
+		const label = turnStatusLabel(event.phase, event.message);
+		publishAssistant({
+			...host,
+			activityPhase: event.phase,
+			activityMessage: label
+		});
+		return;
+	}
+
 	if (event.type === 'reasoning_start') {
 		reasoning.current = { text: '', pending: true };
 		let host = ensureReasoningHost();
+		host = clearAssistantActivity(host);
 		const segments = ensureReasoningSegments(host);
 		const last = segments[segments.length - 1];
 		if (!(last?.pending && !last.text)) {
@@ -297,7 +316,7 @@ function applyEvent(
 		reasoning.current = null;
 		const withReasoning = host.reasoning ? finalizeAllReasoningSegments(host) : host;
 		publishAssistant({
-			...withReasoning,
+			...clearAssistantActivity(withReasoning),
 			text: host.text + event.delta,
 			pending: false
 		});
@@ -310,6 +329,9 @@ function applyEvent(
 		// instead of creating a fresh assistant row (which would lose its avatar).
 		settleTurn();
 		reasoning.current = null;
+		if (assistant.current) {
+			assistant.current = clearAssistantActivity(assistant.current);
+		}
 		const afterSegment = assistant.current ? currentAfterSegment(assistant.current) : 0;
 		const id = localID('tool', draft.nextId++).id;
 		items.push({

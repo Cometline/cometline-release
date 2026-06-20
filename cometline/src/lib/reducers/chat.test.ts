@@ -94,6 +94,19 @@ describe('reduceChatState', () => {
 		expect(updated.durationMs).toBeTypeOf('number');
 	});
 
+	it('updates assistant activity on turn_status', () => {
+		let state = initChatState();
+		state = reduceChatState(state, {
+			type: 'turn_status',
+			phase: 'compacting_context'
+		});
+		const assistant = state.items[0];
+		expect(assistant.type).toBe('assistant');
+		if (assistant.type !== 'assistant') return;
+		expect(assistant.activityPhase).toBe('compacting_context');
+		expect(assistant.activityMessage).toContain('Summarizing');
+	});
+
 	it('settles reasoning on step_finish', () => {
 		let state = initChatState();
 		state = reduceChatState(state, { type: 'reasoning_delta', text: 'done' });

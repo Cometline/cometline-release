@@ -199,3 +199,38 @@ func TestAdaptCometlineSettingsMatchesRuntimeSlice(t *testing.T) {
 		t.Fatalf("Storage.MaxSessionsPerWorkspace = %d, want 0", cfg.Storage.MaxSessionsPerWorkspace)
 	}
 }
+
+func TestAdaptCometlineSettingsMapsModelContextMetadata(t *testing.T) {
+	cfg, err := adaptCometlineSettings(cometlineSettingsJSON{
+		Providers: []cometlineProviderJSON{{
+			ID:            "anthropic",
+			Name:          "Anthropic",
+			Method:        ProviderAnthropic,
+			Enabled:       true,
+			BaseURL:       "https://api.anthropic.com",
+			EnabledModels: []string{"claude-sonnet-4-20250514"},
+			ModelMetadata: map[string]cometlineModelMetadataJSON{
+				"claude-sonnet-4-20250514": {ContextWindow: 200000},
+			},
+			DefaultContextWindow: 200000,
+		}},
+		ActiveProviderID: "anthropic",
+	})
+	if err != nil {
+		t.Fatalf("adaptCometlineSettings() error = %v", err)
+	}
+	entry := cfg.FindProvider("anthropic")
+	if entry == nil {
+		t.Fatal("expected anthropic provider")
+	}
+	if entry.DefaultContextWindow != 200000 {
+		t.Fatalf("DefaultContextWindow = %d, want 200000", entry.DefaultContextWindow)
+	}
+	meta, ok := entry.ModelMetadata["claude-sonnet-4-20250514"]
+	if !ok {
+		t.Fatal("expected model metadata for claude-sonnet-4-20250514")
+	}
+	if meta.ContextWindow != 200000 {
+		t.Fatalf("ContextWindow = %d, want 200000", meta.ContextWindow)
+	}
+}

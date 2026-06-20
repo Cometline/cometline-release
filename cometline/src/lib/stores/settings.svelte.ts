@@ -2,6 +2,7 @@ import {
 	cloneCometMindSettings,
 	cloneProvider,
 	defaultSettings,
+	mergeFetchedModelMetadata,
 	migrateSingleProvider,
 	newProvider,
 	normalizeCometMindSettings,
@@ -15,7 +16,7 @@ import {
 	type RuntimeSettingsSlice
 } from '$lib/settings/schema';
 import type { MemorySettings } from '$lib/client/cometmind';
-import type { ProviderConfig, ProviderSettings } from '$lib/types';
+import type { FetchProviderModelsResult, ProviderConfig, ProviderSettings } from '$lib/types';
 import { defaultKeyboardShortcuts } from '$lib/keyboard-shortcuts';
 import { modelStore } from './model.svelte';
 import { persistSettings } from '$lib/settings/persist';
@@ -69,13 +70,18 @@ function createSettingsStore() {
 		isFetchingModels = true;
 		error = '';
 		try {
-			const models =
-				(await window.electronAPI?.fetchProviderModels?.(cloneProvider(provider))) ?? [];
+			const result =
+				(await window.electronAPI?.fetchProviderModels?.(cloneProvider(provider))) ??
+				({ models: [] } satisfies FetchProviderModelsResult);
+			const models = Array.isArray(result) ? result : result.models;
+			const modelMetadata = Array.isArray(result)
+				? provider.modelMetadata
+				: mergeFetchedModelMetadata(provider.modelMetadata, result.modelMetadata);
 			const enabledModels = provider.enabledModels.filter((model) => models.includes(model));
 			const selectedModel =
 				enabledModels[0] ??
 				(models.includes(provider.selectedModel) ? provider.selectedModel : '');
-			return { ...provider, models, enabledModels, selectedModel };
+			return { ...provider, models, modelMetadata, enabledModels, selectedModel };
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to fetch models';
 			throw err;

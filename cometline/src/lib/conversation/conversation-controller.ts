@@ -59,6 +59,7 @@ export interface ConversationController {
 	}): void;
 	enqueue(text: string, images?: ImageAttachment[], filePaths?: string[]): Promise<boolean>;
 	removeQueued(id: string): boolean;
+	clearQueue(): void;
 	cancel(): void;
 }
 
@@ -187,6 +188,10 @@ export function createConversationController(
 
 		removeQueued(id: string) {
 			return ensureQueue().remove(id);
+		},
+
+		clearQueue() {
+			ensureQueue().clear();
 		},
 
 		cancel() {

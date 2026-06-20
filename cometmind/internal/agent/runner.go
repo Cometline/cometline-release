@@ -59,6 +59,9 @@ type Runner struct {
 	// before starting and releases it on completion. A nil value means
 	// unlimited (the previous behaviour).
 	MemorySem chan struct{}
+
+	// Compactor performs rolling context compaction on long sessions. Nil disables it.
+	Compactor *ContextCompactor
 }
 
 // Run streams CometMind-native events on ch until the turn completes or ctx is cancelled.
@@ -96,7 +99,36 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 	// are captured when retrieved (step 0) and attached to the first
 	// AppendAssistantStep call so they persist and rebuild on reload.
 	var pendingMemories []session.InjectedMemory
+	var sess session.Session
+	if svc, ok := r.Sessions.(*session.Service); ok {
+		if loaded, err := svc.GetSession(ctx, turn.ID); err == nil {
+			sess = loaded
+		}
+	}
+	emitStatus := func(phase event.TurnPhase) {
+		ch <- event.TurnStatus(phase, "")
+	}
 	for steps < r.MaxSteps {
+		if steps > 0 {
+			emitStatus(event.PhaseContinuing)
+		}
+
+		baseSystem := r.systemPrompt()
+		if steps == 0 && r.Compactor != nil && sess.ID != "" {
+			updated, err := r.Compactor.MaybeCompact(
+				ctx,
+				sess,
+				baseSystem,
+				r.Registry.CometSDK(),
+				r.Provider,
+				r.MaxTokens,
+				func(ev event.Event) { ch <- ev },
+			)
+			if err == nil {
+				sess = updated
+			}
+		}
+
 		msgs, err := r.Sessions.BuildSDKMessages(ctx, turn.ID)
 		if err != nil {
 			ch <- event.Errorf(err.Error(), "history")
@@ -104,13 +136,14 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 		}
 		logging.L().Info("agent.step.start", "session", turn.ID, "step", steps+1, "model", turn.ModelID, "messages", len(msgs), "max_tokens", r.MaxTokens)
 
-		system := r.systemPrompt()
+		system := r.systemPromptWithSummary(sess.ContextSummary)
 		if r.Memory != nil && r.Memory.Enabled() && steps == 0 {
 			decision := memory.DecideRetrieval(msgs)
 			logging.L().Info("memory.retrieve.policy", "session", turn.ID, "retrieve", decision.Retrieve, "reason", decision.Reason, "score", decision.Score, "text_bytes", decision.TextBytes)
 			if !decision.Retrieve {
 				logging.L().Info("memory.retrieve.skipped", "session", turn.ID, "reason", decision.Reason, "score", decision.Score, "text_bytes", decision.TextBytes)
 			} else {
+				emitStatus(event.PhaseRetrievingMemories)
 				prefs, prefErr := r.Memory.BaselinePreferences(ctx, 3)
 				if prefErr != nil {
 					logging.L().Error("memory.preferences.failed", "session", turn.ID, "error", prefErr)
@@ -160,11 +193,13 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 			}
 		}
 
+		emitStatus(event.PhaseContactingModel)
 		req := BuildRequest(turn.ModelID, system, msgs, r.Registry.CometSDK(), r.MaxTokens)
 		streamStarted := time.Now()
 		logging.L().Info("llm.stream.start", "session", turn.ID, "step", steps+1, "model", turn.ModelID, "messages", len(req.Messages), "tools", len(req.Tools), "system_bytes", len(req.System), "max_tokens", req.MaxTokens)
 		stream := llm.StreamMessage(ctx, r.Provider, req)
 		logging.L().Info("llm.stream.opened", "session", turn.ID, "step", steps+1, "duration_ms", time.Since(streamStarted).Milliseconds())
+		emitStatus(event.PhaseComposingResponse)
 
 		firstEventLogged := false
 		firstOutputLogged := false
@@ -233,6 +268,7 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 			return completeTurn()
 		}
 
+		emitStatus(event.PhaseRunningTools)
 		for _, tc := range result.ToolCalls {
 			persistedID := persistedToolIDs[tc.ID]
 			if persistedID == "" {
@@ -320,6 +356,14 @@ func (r *Runner) systemPrompt() string {
 		return base
 	}
 	return base + r.SkillIndex
+}
+
+func (r *Runner) systemPromptWithSummary(contextSummary string) string {
+	base := r.systemPrompt()
+	if block := FormatSummaryPromptBlock(contextSummary); block != "" {
+		return base + "\n\n" + block
+	}
+	return base
 }
 
 func int64PtrFromIntPtr(v *int) *int64 {

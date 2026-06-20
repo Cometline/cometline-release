@@ -9,6 +9,10 @@ export const BUILTIN_SLASH_COMMANDS: BuiltinSlashCommand[] = [
 		description: 'Fork this session into another workspace directory'
 	},
 	{
+		name: 'clear',
+		description: 'Clear transcript history and start fresh in this session'
+	},
+	{
 		name: 'create-skill',
 		description: 'Build a new Agent Skill in ~/.cometmind/skills'
 	},
@@ -48,6 +52,9 @@ export function expandBuiltinSlashCommand(text: string): string | null {
 	if (name === 'change') {
 		return null;
 	}
+	if (name === 'clear') {
+		return null;
+	}
 	if (name === 'model') {
 		return null;
 	}
@@ -58,6 +65,14 @@ export function parseChangeCommand(text: string): { query: string } | null {
 	const match = /^\s*\/change(?:\s+(.*))?$/i.exec(text);
 	if (!match) return null;
 	return { query: (match[1] ?? '').trim() };
+}
+
+export function parseClearCommand(text: string): boolean {
+	return /^\s*\/clear\s*$/i.test(text);
+}
+
+export function isClearCommand(text: string): boolean {
+	return parseClearCommand(text);
 }
 
 export function parseModelCommand(text: string): { query: string } | null {

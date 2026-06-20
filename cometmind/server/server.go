@@ -115,6 +115,7 @@ func New(deps Deps) (*gin.Engine, error) {
 	api.PATCH("/sessions/:id", app.handlePatchSession)
 	api.PATCH("/sessions/:id/workspace", app.handleChangeSessionWorkspace)
 	api.POST("/sessions/:id/fork", app.handleForkSession)
+	api.POST("/sessions/:id/clear", app.handleClearSession)
 	api.DELETE("/sessions/:id", app.handleDeleteSession)
 	api.GET("/sessions/:id/messages", app.handleGetMessages)
 	api.GET("/sessions/:id/children", app.handleListChildSessions)
@@ -865,6 +866,22 @@ func (a *App) handleDeleteSession(c *gin.Context) {
 		return
 	}
 
+	c.Status(http.StatusNoContent)
+}
+
+func (a *App) handleClearSession(c *gin.Context) {
+	sessID := c.Param("id")
+	if _, _, ok := a.loadSessionWithWorkspace(c, sessID); !ok {
+		return
+	}
+	if a.runs.Running(sessID) {
+		writeError(c, http.StatusConflict, "session_running", "session is running")
+		return
+	}
+	if err := a.sessions.ClearSessionTranscript(c.Request.Context(), sessID); err != nil {
+		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
 	c.Status(http.StatusNoContent)
 }
 

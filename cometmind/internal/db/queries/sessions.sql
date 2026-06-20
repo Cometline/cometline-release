@@ -149,3 +149,23 @@ WHERE id = ?;
 UPDATE sessions
 SET updated_at = unixepoch ('now', 'subsec') * 1000
 WHERE id = ?;
+
+-- name: UpdateSessionContextSummary :exec
+UPDATE sessions
+SET
+    context_summary = ?,
+    compacted_until_message_id = ?,
+    context_summary_updated_at = ?,
+    updated_at = unixepoch ('now', 'subsec') * 1000
+WHERE id = ?;
+
+-- name: ResetSessionTranscriptState :exec
+UPDATE sessions
+SET
+    title = ?,
+    token_usage = ?,
+    context_summary = '',
+    compacted_until_message_id = NULL,
+    context_summary_updated_at = NULL,
+    updated_at = unixepoch ('now', 'subsec') * 1000
+WHERE id = ?;

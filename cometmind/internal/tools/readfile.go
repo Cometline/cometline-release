@@ -9,6 +9,8 @@ import (
 // ReadFile reads UTF-8 text within the workspace.
 type ReadFile struct{ Workspace Workspace }
 
+const readFileMaxOutputChars = 50000
+
 func (ReadFile) Spec() ToolSpec {
 	return ToolSpec{
 		Name:        "read_file",
@@ -36,5 +38,13 @@ func (r ReadFile) Execute(ctx context.Context, input json.RawMessage) (Result, e
 	if err != nil {
 		return Result{OK: false, Output: err.Error()}, nil
 	}
-	return Result{OK: true, Output: string(b)}, nil
+	out := string(b)
+	truncated := false
+	if len([]rune(out)) > readFileMaxOutputChars {
+		out, truncated = truncateOutput(out, readFileMaxOutputChars)
+	}
+	if truncated {
+		out += "\n\n(file truncated for tool output limit)"
+	}
+	return Result{OK: true, Output: out}, nil
 }

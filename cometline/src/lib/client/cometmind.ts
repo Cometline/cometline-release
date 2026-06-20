@@ -2,6 +2,7 @@ import {
 	abortSession as abortSessionApi,
 	compactMemory as compactMemoryApi,
 	compactMemoryPreview as compactMemoryPreviewApi,
+	clearSession as clearSessionApi,
 	changeSessionWorkspace as changeSessionWorkspaceApi,
 	createMemory as createMemoryApi,
 	createSession as createSessionApi,
@@ -231,6 +232,13 @@ export function forkSession(sessionId: string, workspacePath: string): Promise<S
 		body: { workspace_path: workspacePath },
 		throwOnError: true
 	}).then(({ data }) => data);
+}
+
+export async function clearSession(sessionId: string): Promise<void> {
+	await clearSessionApi({
+		path: { id: sessionId },
+		throwOnError: true
+	});
 }
 
 export function listSkills(workspacePath = ''): Promise<ListSkillsResponse> {

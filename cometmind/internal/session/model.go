@@ -12,22 +12,25 @@ type Workspace struct {
 
 // Session is the session-store view of a persisted chat session.
 type Session struct {
-	ID               string
-	WorkspaceID      string
-	Title            string
-	ModelID          string
-	ProviderID       string
-	Status           string
-	TokenUsage       string
-	ParentSessionID  string
-	Purpose          string
-	DelegationStatus string
-	OutputSummary    string
-	ACPSessionID     string
-	PendingQuestion  string
-	Pinned           bool
-	CreatedAt        int64
-	UpdatedAt        int64
+	ID                      string
+	WorkspaceID             string
+	Title                   string
+	ModelID                 string
+	ProviderID              string
+	Status                  string
+	TokenUsage              string
+	ParentSessionID         string
+	Purpose                 string
+	DelegationStatus        string
+	OutputSummary           string
+	ACPSessionID            string
+	PendingQuestion         string
+	Pinned                  bool
+	ContextSummary          string
+	CompactedUntilMessageID string
+	ContextSummaryUpdatedAt string
+	CreatedAt               int64
+	UpdatedAt               int64
 }
 
 // Message is the session-store view of one persisted transcript row.
@@ -55,23 +58,34 @@ func sessionFromDB(s db.Session) Session {
 	if s.ParentSessionID.Valid {
 		parent = s.ParentSessionID.String
 	}
+	compactedUntil := ""
+	if s.CompactedUntilMessageID.Valid {
+		compactedUntil = s.CompactedUntilMessageID.String
+	}
+	summaryUpdatedAt := ""
+	if s.ContextSummaryUpdatedAt.Valid {
+		summaryUpdatedAt = s.ContextSummaryUpdatedAt.String
+	}
 	return Session{
-		ID:               s.ID,
-		WorkspaceID:      s.WorkspaceID,
-		Title:            s.Title,
-		ModelID:          s.ModelID,
-		ProviderID:       s.ProviderID,
-		Status:           s.Status,
-		TokenUsage:       s.TokenUsage,
-		ParentSessionID:  parent,
-		Purpose:          s.Purpose,
-		DelegationStatus: s.DelegationStatus,
-		OutputSummary:    s.OutputSummary,
-		ACPSessionID:     s.AcpSessionID,
-		PendingQuestion:  s.PendingQuestion,
-		Pinned:           s.Pinned != 0,
-		CreatedAt:        s.CreatedAt,
-		UpdatedAt:        s.UpdatedAt,
+		ID:                      s.ID,
+		WorkspaceID:             s.WorkspaceID,
+		Title:                   s.Title,
+		ModelID:                 s.ModelID,
+		ProviderID:              s.ProviderID,
+		Status:                  s.Status,
+		TokenUsage:              s.TokenUsage,
+		ParentSessionID:         parent,
+		Purpose:                 s.Purpose,
+		DelegationStatus:        s.DelegationStatus,
+		OutputSummary:           s.OutputSummary,
+		ACPSessionID:            s.AcpSessionID,
+		PendingQuestion:         s.PendingQuestion,
+		Pinned:                  s.Pinned != 0,
+		ContextSummary:          s.ContextSummary,
+		CompactedUntilMessageID: compactedUntil,
+		ContextSummaryUpdatedAt: summaryUpdatedAt,
+		CreatedAt:               s.CreatedAt,
+		UpdatedAt:               s.UpdatedAt,
 	}
 }
 

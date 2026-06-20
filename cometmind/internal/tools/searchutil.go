@@ -14,7 +14,7 @@ import (
 
 const (
 	globMaxFiles        = 100
-	grepMaxOutputChars  = 30000
+	grepMaxOutputChars  = 12000
 	grepTimeout         = 60 * time.Second
 )
 

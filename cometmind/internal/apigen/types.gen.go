@@ -154,6 +154,36 @@ func (e TranscriptItemType) Valid() bool {
 	}
 }
 
+// Defines values for TurnStatusEventPhase.
+const (
+	CompactingContext  TurnStatusEventPhase = "compacting_context"
+	ComposingResponse  TurnStatusEventPhase = "composing_response"
+	ContactingModel    TurnStatusEventPhase = "contacting_model"
+	Continuing         TurnStatusEventPhase = "continuing"
+	RetrievingMemories TurnStatusEventPhase = "retrieving_memories"
+	RunningTools       TurnStatusEventPhase = "running_tools"
+)
+
+// Valid indicates whether the value is a known member of the TurnStatusEventPhase enum.
+func (e TurnStatusEventPhase) Valid() bool {
+	switch e {
+	case CompactingContext:
+		return true
+	case ComposingResponse:
+		return true
+	case ContactingModel:
+		return true
+	case Continuing:
+		return true
+	case RetrievingMemories:
+		return true
+	case RunningTools:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceFileImageContentKind.
 const (
 	Image WorkspaceFileImageContentKind = "image"
@@ -638,6 +668,16 @@ type TranscriptResponse struct {
 	Items     []TranscriptItem `json:"items"`
 	SessionId string           `json:"session_id"`
 }
+
+// TurnStatusEvent defines model for TurnStatusEvent.
+type TurnStatusEvent struct {
+	Message *string              `json:"message,omitempty"`
+	Phase   TurnStatusEventPhase `json:"phase"`
+	Type    string               `json:"type"`
+}
+
+// TurnStatusEventPhase defines model for TurnStatusEvent.Phase.
+type TurnStatusEventPhase string
 
 // UpdateMemoryRequest defines model for UpdateMemoryRequest.
 type UpdateMemoryRequest struct {
@@ -1140,6 +1180,34 @@ func (t *StreamEvent) MergeMemoryUpdatedEvent(v MemoryUpdatedEvent) error {
 	return err
 }
 
+// AsTurnStatusEvent returns the union data inside the StreamEvent as a TurnStatusEvent
+func (t StreamEvent) AsTurnStatusEvent() (TurnStatusEvent, error) {
+	var body TurnStatusEvent
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTurnStatusEvent overwrites any union data inside the StreamEvent as the provided TurnStatusEvent
+func (t *StreamEvent) FromTurnStatusEvent(v TurnStatusEvent) error {
+	v.Type = "turn_status"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTurnStatusEvent performs a merge with any union data inside the StreamEvent, using the provided TurnStatusEvent
+func (t *StreamEvent) MergeTurnStatusEvent(v TurnStatusEvent) error {
+	v.Type = "turn_status"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
 // AsErrorEvent returns the union data inside the StreamEvent as a ErrorEvent
 func (t StreamEvent) AsErrorEvent() (ErrorEvent, error) {
 	var body ErrorEvent
@@ -1236,6 +1304,8 @@ func (t StreamEvent) ValueByDiscriminator() (interface{}, error) {
 		return t.AsToolCallEvent()
 	case "tool_result":
 		return t.AsToolResultEvent()
+	case "turn_status":
+		return t.AsTurnStatusEvent()
 	default:
 		return nil, errors.New("unknown discriminator value: " + discriminator)
 	}

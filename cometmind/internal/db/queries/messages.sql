@@ -14,3 +14,7 @@ SELECT *
 FROM messages
 WHERE id = ?
 LIMIT 1;
+
+-- name: DeleteMessagesBySession :exec
+DELETE FROM messages
+WHERE session_id = ?;

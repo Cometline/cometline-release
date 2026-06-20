@@ -1512,12 +1512,9 @@ async function fetchOpenAIModels(baseURL, apiKey) {
 		: Array.isArray(payload)
 			? payload
 			: [];
-	const models = rawModels
-		.map((item) => (typeof item === 'string' ? item : item?.id))
-		.filter((id) => typeof id === 'string' && id.trim())
-		.map((id) => id.trim());
-	if (models.length === 0) throw new Error('No models returned by provider');
-	return Array.from(new Set(models)).sort();
+	const result = normalizeModelFetchResult(rawModels);
+	if (result.models.length === 0) throw new Error('No models returned by provider');
+	return result;
 }
 
 async function fetchAnthropicModels(baseURL, apiKey) {
@@ -1533,12 +1530,9 @@ async function fetchAnthropicModels(baseURL, apiKey) {
 	}
 	const payload = await res.json();
 	const rawModels = Array.isArray(payload?.data) ? payload.data : [];
-	const models = rawModels
-		.map((item) => (typeof item === 'string' ? item : item?.id))
-		.filter((id) => typeof id === 'string' && id.trim())
-		.map((id) => id.trim());
-	if (models.length === 0) throw new Error('No models returned by Anthropic');
-	return Array.from(new Set(models)).sort();
+	const result = normalizeModelFetchResult(rawModels);
+	if (result.models.length === 0) throw new Error('No models returned by Anthropic');
+	return result;
 }
 
 function codexAuthPath() {
@@ -1992,6 +1986,48 @@ async function startMcpOAuth({ serverId, oauth }) {
 	}
 }
 
+function extractContextWindow(item) {
+	if (!item || typeof item !== 'object') return undefined;
+	const candidates = [
+		item.context_window,
+		item.contextWindow,
+		item.max_context_length,
+		item.max_context_tokens,
+		item.max_tokens
+	];
+	for (const candidate of candidates) {
+		const n = Number(candidate);
+		if (Number.isFinite(n) && n > 0) return Math.floor(n);
+	}
+	return undefined;
+}
+
+function normalizeModelFetchResult(rawModels, pickModel = (item) => item?.id) {
+	const modelMetadata = {};
+	const models = [];
+	for (const item of rawModels) {
+		if (typeof item === 'string') {
+			const id = item.trim();
+			if (id) models.push(id);
+			continue;
+		}
+		if (!item || typeof item !== 'object') continue;
+		const id = String(pickModel(item) || '').trim();
+		if (!id) continue;
+		models.push(id);
+		const contextWindow = extractContextWindow(item);
+		if (contextWindow) {
+			modelMetadata[id] = { contextWindow };
+		}
+	}
+	const uniqueModels = Array.from(new Set(models)).sort();
+	const metadataKeys = Object.keys(modelMetadata);
+	return {
+		models: uniqueModels,
+		...(metadataKeys.length > 0 ? { modelMetadata } : {})
+	};
+}
+
 function normalizeCodexModelsURL(rawBaseURL) {
 	const base = String(rawBaseURL || CODEX_BASE_URL).replace(/\/+$/, '');
 	return `${base}/models?client_version=${encodeURIComponent(CODEX_CLIENT_VERSION)}`;
@@ -2015,17 +2051,14 @@ async function fetchCodexModels(baseURL) {
 		: Array.isArray(payload?.data)
 			? payload.data
 			: [];
-	const models = rawModels
-		.filter((item) => {
-			if (typeof item === 'string') return true;
-			if (!item || typeof item !== 'object') return false;
-			return item.supported_in_api !== false && item.visibility !== 'hidden';
-		})
-		.map((item) => (typeof item === 'string' ? item : item.slug || item.id))
-		.filter((id) => typeof id === 'string' && id.trim())
-		.map((id) => id.trim());
-	if (models.length === 0) throw new Error('No models returned by Codex');
-	return Array.from(new Set(models)).sort();
+	const filtered = rawModels.filter((item) => {
+		if (typeof item === 'string') return true;
+		if (!item || typeof item !== 'object') return false;
+		return item.supported_in_api !== false && item.visibility !== 'hidden';
+	});
+	const result = normalizeModelFetchResult(filtered, (item) => item.slug || item.id);
+	if (result.models.length === 0) throw new Error('No models returned by Codex');
+	return result;
 }
 
 async function fetchOpenCodeGoModels(baseURL) {
@@ -2043,12 +2076,9 @@ async function fetchOpenCodeGoModels(baseURL) {
 		: Array.isArray(payload)
 			? payload
 			: [];
-	const models = rawModels
-		.map((item) => (typeof item === 'string' ? item : item?.id))
-		.filter((id) => typeof id === 'string' && id.trim())
-		.map((id) => id.trim());
-	if (models.length === 0) throw new Error('No models returned by OpenCode Go');
-	return Array.from(new Set(models)).sort();
+	const result = normalizeModelFetchResult(rawModels);
+	if (result.models.length === 0) throw new Error('No models returned by OpenCode Go');
+	return result;
 }
 
 async function fetchProviderModels(config) {

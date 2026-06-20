@@ -23,6 +23,7 @@
 		type InjectedMemory,
 		type TimelineEntry
 	} from '$lib/conversation/thinking-attribution';
+	import { turnStatusLabel } from '$lib/conversation/turn-status';
 	import {
 		anyReasoningPending,
 		hasReasoning,
@@ -351,6 +352,8 @@
 	}
 
 	function assistantActivityMessage(item: Extract<ChatItem, { type: 'assistant' }> | undefined) {
+		const status = turnStatusLabel(item?.activityPhase, item?.activityMessage);
+		if (status) return status;
 		const seconds = item ? assistantWaitSeconds(item) : 0;
 		if (seconds >= 90) {
 			return `Still waiting for the provider after ${seconds}s. This request may time out soon.`;

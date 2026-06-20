@@ -272,6 +272,10 @@
 				onRemoveQueued={removeQueuedMessage}
 				{onModelChange}
 				onWorkspaceChanged={() => chatStore.loadTranscript(sessionId)}
+				onTranscriptCleared={() => {
+					conversation.clearQueue();
+					syncQueueState();
+				}}
 				{sessionId}
 				disabled={connectionState.status !== 'ready'}
 				streaming={chatStore.isStreamingFor(sessionId)}

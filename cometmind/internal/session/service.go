@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	cometsdk "github.com/cometline/comet-sdk"
 	"github.com/cometline/cometmind/internal/db"
@@ -374,6 +375,37 @@ func (s *Service) DeleteSession(ctx context.Context, sessionID string) error {
 	return s.q.DeleteSession(ctx, sessionID)
 }
 
+// ClearSessionTranscript deletes all transcript rows for a session and resets
+// compaction, token usage, and title while preserving the session identity.
+func (s *Service) ClearSessionTranscript(ctx context.Context, sessionID string) error {
+	if _, err := s.GetSession(ctx, sessionID); err != nil {
+		return err
+	}
+	if err := s.q.DeleteMessagesBySession(ctx, sessionID); err != nil {
+		return err
+	}
+	return s.q.ResetSessionTranscriptState(ctx, db.ResetSessionTranscriptStateParams{
+		Title:      "",
+		TokenUsage: "{}",
+		ID:         sessionID,
+	})
+}
+
+// UpdateContextSummary persists rolling compaction state for a session.
+func (s *Service) UpdateContextSummary(ctx context.Context, sessionID, summary, untilMessageID string) error {
+	var until sql.NullString
+	if strings.TrimSpace(untilMessageID) != "" {
+		until = sql.NullString{String: untilMessageID, Valid: true}
+	}
+	updatedAt := time.Now().UTC().Format(time.RFC3339)
+	return s.q.UpdateSessionContextSummary(ctx, db.UpdateSessionContextSummaryParams{
+		ContextSummary:          summary,
+		CompactedUntilMessageID: until,
+		ContextSummaryUpdatedAt: sql.NullString{String: updatedAt, Valid: true},
+		ID:                      sessionID,
+	})
+}
+
 // WorkspacePath resolves the filesystem root for a workspace id.
 func (s *Service) WorkspacePath(ctx context.Context, workspaceID string) (string, error) {
 	w, err := s.q.GetWorkspace(ctx, workspaceID)
@@ -729,10 +761,47 @@ func (s *Service) SaveTokenUsage(ctx context.Context, sessionID string, u comets
 
 // BuildSDKMessages reconstructs provider-neutral messages from SQLite for the next LLM request.
 func (s *Service) BuildSDKMessages(ctx context.Context, sessionID string) ([]cometsdk.Message, error) {
+	sess, err := s.GetSession(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := s.q.ListMessagesBySession(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}
+	rows = FilterMessagesAfterCompacted(rows, sess.CompactedUntilMessageID)
+	return s.buildSDKMessagesFromRows(ctx, sessionID, rows)
+}
+
+// ListMessageRows returns raw persisted transcript rows in chronological order.
+func (s *Service) ListMessageRows(ctx context.Context, sessionID string) ([]db.Message, error) {
+	return s.q.ListMessagesBySession(ctx, sessionID)
+}
+
+// BuildSDKMessagesAll rebuilds the full transcript without compaction filtering.
+func (s *Service) BuildSDKMessagesAll(ctx context.Context, sessionID string) ([]cometsdk.Message, error) {
+	rows, err := s.q.ListMessagesBySession(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	return s.buildSDKMessagesFromRows(ctx, sessionID, rows)
+}
+
+// ListToolCallsForSession returns all tool calls for a session in chronological order.
+func (s *Service) ListToolCallsForSession(ctx context.Context, sessionID string) ([]db.ToolCall, error) {
+	return s.q.ListToolCallsBySession(ctx, sessionID)
+}
+
+// GroupToolCallsByMessage indexes tool calls by assistant message id.
+func GroupToolCallsByMessage(calls []db.ToolCall) map[string][]db.ToolCall {
+	out := make(map[string][]db.ToolCall, len(calls))
+	for _, tc := range calls {
+		out[tc.MessageID] = append(out[tc.MessageID], tc)
+	}
+	return out
+}
+
+func (s *Service) buildSDKMessagesFromRows(ctx context.Context, sessionID string, rows []db.Message) ([]cometsdk.Message, error) {
 	// One query for all tool calls instead of one per assistant message.
 	allCalls, err := s.q.ListToolCallsBySession(ctx, sessionID)
 	if err != nil {
@@ -775,7 +844,7 @@ func (s *Service) BuildSDKMessages(ctx context.Context, sessionID string) ([]com
 				Content: []cometsdk.Block{
 					cometsdk.ToolResultBlock{
 						ToolCallID: p.ToolCallID,
-						Content:    p.Content,
+						Content:    TruncateToolResultForPrompt(p.Content, MaxToolResultPromptRunes),
 						IsError:    p.IsError,
 					},
 				},

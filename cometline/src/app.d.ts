@@ -1,6 +1,10 @@
 declare global {
 	type ProviderMethod = 'openai-compatible' | 'openai' | 'anthropic' | 'opencode-go' | 'codex';
 
+	interface ProviderModelMetadata {
+		contextWindow?: number;
+	}
+
 	interface ProviderConfig {
 		id: string;
 		name: string;
@@ -11,6 +15,13 @@ declare global {
 		selectedModel: string;
 		models: string[];
 		enabledModels: string[];
+		modelMetadata?: Record<string, ProviderModelMetadata>;
+		defaultContextWindow?: number;
+	}
+
+	interface FetchProviderModelsResult {
+		models: string[];
+		modelMetadata?: Record<string, ProviderModelMetadata>;
 	}
 
 	interface HeroComposerAppearance {
@@ -226,7 +237,7 @@ declare global {
 			) => Promise<{ running: boolean; enabled: boolean }>;
 			getOpenAtLogin?: () => Promise<OpenAtLoginState>;
 			setOpenAtLogin?: (enabled: boolean) => Promise<OpenAtLoginState>;
-			fetchProviderModels?: (config: ProviderConfig) => Promise<string[]>;
+			fetchProviderModels?: (config: ProviderConfig) => Promise<FetchProviderModelsResult | string[]>;
 			saveProviderSettings?: (
 				settings: ProviderSettings,
 				options?: { restartCometMind?: boolean }

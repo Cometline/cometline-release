@@ -6,11 +6,13 @@ import {
 import { defaultKeyboardShortcuts, normalizeKeyboardShortcuts } from '../keyboard-shortcuts';
 import type {
 	AppSettings,
+	FetchProviderModelsResult,
 	IconVariant,
 	AppearanceSettings,
 	CaretTrailSettings,
 	ProviderConfig,
 	ProviderMethod,
+	ProviderModelMetadata,
 	ProviderSettings
 } from '../types';
 
@@ -568,11 +570,53 @@ function normalizeIconVariant(value: unknown): IconVariant {
 	return value === 'man' ? 'man' : 'default';
 }
 
+function normalizeOptionalPositiveInt(value: unknown): number | undefined {
+	const n = Number(value);
+	if (!Number.isFinite(n) || n <= 0) return undefined;
+	return Math.floor(n);
+}
+
+function normalizeModelMetadata(
+	input: Record<string, ProviderModelMetadata> | undefined,
+	fallback?: Record<string, ProviderModelMetadata>
+): Record<string, ProviderModelMetadata> | undefined {
+	const merged: Record<string, ProviderModelMetadata> = {};
+	for (const source of [fallback, input]) {
+		if (!source) continue;
+		for (const [modelId, meta] of Object.entries(source)) {
+			const id = String(modelId || '').trim();
+			if (!id) continue;
+			const contextWindow = normalizeOptionalPositiveInt(meta?.contextWindow);
+			if (contextWindow) {
+				merged[id] = { contextWindow };
+			}
+		}
+	}
+	return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+export function mergeFetchedModelMetadata(
+	existing: Record<string, ProviderModelMetadata> | undefined,
+	fetched: Record<string, ProviderModelMetadata> | undefined
+): Record<string, ProviderModelMetadata> | undefined {
+	if (!fetched) return normalizeModelMetadata(existing);
+	const merged = { ...(existing ?? {}) };
+	for (const [modelId, meta] of Object.entries(fetched)) {
+		const id = String(modelId || '').trim();
+		const contextWindow = normalizeOptionalPositiveInt(meta?.contextWindow);
+		if (id && contextWindow) {
+			merged[id] = { contextWindow };
+		}
+	}
+	return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
 export function cloneProvider(provider: ProviderConfig): ProviderConfig {
 	return {
 		...provider,
 		models: [...provider.models],
-		enabledModels: [...provider.enabledModels]
+		enabledModels: [...provider.enabledModels],
+		modelMetadata: provider.modelMetadata ? { ...provider.modelMetadata } : undefined
 	};
 }
 
@@ -610,7 +654,14 @@ export function normalizeProvider(
 		apiKey: method === 'codex' ? '' : String(provider.apiKey ?? fallback?.apiKey ?? '').trim(),
 		selectedModel: enabledModels[0] || '',
 		models: [...modelList],
-		enabledModels
+		enabledModels,
+		modelMetadata: normalizeModelMetadata(
+			provider.modelMetadata as Record<string, ProviderModelMetadata> | undefined,
+			fallback?.modelMetadata
+		),
+		defaultContextWindow:
+			normalizeOptionalPositiveInt(provider.defaultContextWindow) ??
+			normalizeOptionalPositiveInt(fallback?.defaultContextWindow)
 	};
 }
 
@@ -795,7 +846,11 @@ const providerConfigSchema = z.object({
 	apiKey: z.string(),
 	selectedModel: z.string(),
 	models: z.array(z.string()),
-	enabledModels: z.array(z.string())
+	enabledModels: z.array(z.string()),
+	modelMetadata: z
+		.record(z.string(), z.object({ contextWindow: z.number().int().positive().optional() }))
+		.optional(),
+	defaultContextWindow: z.number().int().positive().optional()
 });
 
 const providerSettingsSchema = z.object({

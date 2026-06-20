@@ -28,6 +28,7 @@ __export(schema_exports, {
   defaultCometMindSettings: () => defaultCometMindSettings,
   defaultCometMindStorageSettings: () => defaultCometMindStorageSettings,
   defaultSettings: () => defaultSettings,
+  mergeFetchedModelMetadata: () => mergeFetchedModelMetadata,
   migrateSingleProvider: () => migrateSingleProvider,
   newProvider: () => newProvider,
   normalizeCometMindSettings: () => normalizeCometMindSettings,
@@ -4653,11 +4654,44 @@ function defaultAppSettings() {
 function normalizeIconVariant(value) {
   return value === "man" ? "man" : "default";
 }
+function normalizeOptionalPositiveInt(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return void 0;
+  return Math.floor(n);
+}
+function normalizeModelMetadata(input, fallback) {
+  const merged = {};
+  for (const source of [fallback, input]) {
+    if (!source) continue;
+    for (const [modelId, meta] of Object.entries(source)) {
+      const id = String(modelId || "").trim();
+      if (!id) continue;
+      const contextWindow = normalizeOptionalPositiveInt(meta?.contextWindow);
+      if (contextWindow) {
+        merged[id] = { contextWindow };
+      }
+    }
+  }
+  return Object.keys(merged).length > 0 ? merged : void 0;
+}
+function mergeFetchedModelMetadata(existing, fetched) {
+  if (!fetched) return normalizeModelMetadata(existing);
+  const merged = { ...existing ?? {} };
+  for (const [modelId, meta] of Object.entries(fetched)) {
+    const id = String(modelId || "").trim();
+    const contextWindow = normalizeOptionalPositiveInt(meta?.contextWindow);
+    if (id && contextWindow) {
+      merged[id] = { contextWindow };
+    }
+  }
+  return Object.keys(merged).length > 0 ? merged : void 0;
+}
 function cloneProvider(provider) {
   return {
     ...provider,
     models: [...provider.models],
-    enabledModels: [...provider.enabledModels]
+    enabledModels: [...provider.enabledModels],
+    modelMetadata: provider.modelMetadata ? { ...provider.modelMetadata } : void 0
   };
 }
 function normalizeProvider(provider, fallback) {
@@ -4679,7 +4713,12 @@ function normalizeProvider(provider, fallback) {
     apiKey: method === "codex" ? "" : String(provider.apiKey ?? fallback?.apiKey ?? "").trim(),
     selectedModel: enabledModels[0] || "",
     models: [...modelList],
-    enabledModels
+    enabledModels,
+    modelMetadata: normalizeModelMetadata(
+      provider.modelMetadata,
+      fallback?.modelMetadata
+    ),
+    defaultContextWindow: normalizeOptionalPositiveInt(provider.defaultContextWindow) ?? normalizeOptionalPositiveInt(fallback?.defaultContextWindow)
   };
 }
 function resolveActiveProviderId(providers, preferredId) {
@@ -4821,7 +4860,9 @@ var providerConfigSchema = external_exports.object({
   apiKey: external_exports.string(),
   selectedModel: external_exports.string(),
   models: external_exports.array(external_exports.string()),
-  enabledModels: external_exports.array(external_exports.string())
+  enabledModels: external_exports.array(external_exports.string()),
+  modelMetadata: external_exports.record(external_exports.string(), external_exports.object({ contextWindow: external_exports.number().int().positive().optional() })).optional(),
+  defaultContextWindow: external_exports.number().int().positive().optional()
 });
 var providerSettingsSchema = external_exports.object({
   providers: external_exports.array(providerConfigSchema).min(1),
@@ -4951,6 +4992,7 @@ function parseAndNormalizeSettings(raw, options = {}) {
   defaultCometMindSettings,
   defaultCometMindStorageSettings,
   defaultSettings,
+  mergeFetchedModelMetadata,
   migrateSingleProvider,
   newProvider,
   normalizeCometMindSettings,

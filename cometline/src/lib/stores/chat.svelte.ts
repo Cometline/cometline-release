@@ -335,6 +335,18 @@ function createChatStore() {
 		loadPromiseSession = null;
 	}
 
+	function resetTranscript(targetSessionID: string) {
+		loadRun += 1;
+		loadPromise = null;
+		loadPromiseSession = null;
+		sessionErrors.delete(targetSessionID);
+		writeSessionItems(targetSessionID, []);
+		if (sessionID === targetSessionID) {
+			error = '';
+			isLoading = false;
+		}
+	}
+
 	function detachActiveSession() {
 		if (sessionID) {
 			const handle = streamHandles.get(sessionID);
@@ -771,6 +783,7 @@ function createChatStore() {
 		isAwaitingFirstAssistant,
 		getCachedItemCount,
 		clear,
+		resetTranscript,
 		detachActiveSession,
 		bindSession,
 		loadTranscript,

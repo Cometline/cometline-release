@@ -8,12 +8,13 @@
 	import { settingsStore } from '$lib/stores/settings.svelte';
 	import { shellStore } from '$lib/stores/shell.svelte';
 	import { matchesShortcut } from '$lib/keyboard-shortcuts';
+	import ContextWindowRing from '$lib/components/composer/ContextWindowRing.svelte';
 	import RichComposerInput from '$lib/components/RichComposerInput.svelte';
 	import ImageAttachments from '$lib/components/composer/ImageAttachments.svelte';
 	import MessageQueuePanel from '$lib/components/composer/MessageQueuePanel.svelte';
 	import ModelPicker from '$lib/components/composer/ModelPicker.svelte';
 	import SlashCommandMenu from '$lib/components/composer/SlashCommandMenu.svelte';
-	import { listSkills, listWorkspaces, forkSession } from '$lib/client/cometmind';
+	import { listSkills, listWorkspaces, forkSession, clearSession } from '$lib/client/cometmind';
 	import {
 		filterFileIndex,
 		getFileIndex,
@@ -23,6 +24,7 @@
 		searchWorkspaceFiles
 	} from '$lib/workspace/file-index';
 	import { sessionStore } from '$lib/stores/session.svelte';
+	import { chatStore } from '$lib/stores/chat.svelte';
 	import {
 		BUILTIN_SLASH_COMMANDS,
 		expandBuiltinSlashCommand,
@@ -30,11 +32,17 @@
 		filterWorkspaceOptions,
 		isChangeWorkspaceCommand,
 		parseChangeCommand,
+		parseClearCommand,
 		parseModelCommand,
 		type SlashMenuOption,
 		type WorkspaceMenuOption
 	} from '$lib/skills/slash-commands';
 	import { formatDroppedFiles, readDroppedTextFiles } from '$lib/files/dropped-files';
+	import {
+		estimateChatContextTokens,
+		estimateTokensFromText,
+		resolveContextWindow
+	} from '$lib/context-window';
 	import { workspaceLabel } from '$lib/sessions/group-by-workspace';
 	import { isSupportedImageFile, readImageAttachments } from '$lib/files/images';
 	import type { ImageAttachment, SkillResource } from '$lib/types';
@@ -45,6 +53,7 @@
 		onRemoveQueued,
 		onModelChange,
 		onWorkspaceChanged,
+		onTranscriptCleared,
 		sessionId = '',
 		disabled = false,
 		streaming = false,
@@ -59,6 +68,7 @@
 		onRemoveQueued?: (id: string) => void;
 		onModelChange?: (option: ModelOption) => void | Promise<void>;
 		onWorkspaceChanged?: () => void | Promise<void>;
+		onTranscriptCleared?: () => void;
 		sessionId?: string;
 		disabled?: boolean;
 		streaming?: boolean;
@@ -102,6 +112,17 @@
 	let dropMessageTimer: ReturnType<typeof setTimeout> | null = null;
 	let dragActive = $derived(dragDepth > 0 || dropProcessing);
 	let canSubmit = $derived(Boolean(value.trim() || images.length > 0));
+	let contextWindowUsage = $derived.by(() => {
+		const selected = modelStore.selected;
+		if (!selected) return null;
+		const provider = settingsStore.settings.providers.find((p) => p.id === selected.providerId);
+		const limit = resolveContextWindow(provider, selected.modelId);
+		const items =
+			sessionId && chatStore.sessionID === sessionId ? chatStore.items : [];
+		const draftTokens = value.trim() ? estimateTokensFromText(value) : 0;
+		const used = estimateChatContextTokens(items) + draftTokens;
+		return { used, limit };
+	});
 	let skillCommandMatch = $derived(/^\s*\/([\w-]*)$/.exec(value));
 	let skillCommandQuery = $derived(skillCommandMatch?.[1]?.toLowerCase() ?? '');
 	let skillMenuOpen = $derived(
@@ -287,6 +308,10 @@
 		const trimmed = value.trim();
 		if (isChangeWorkspaceCommand(trimmed)) {
 			void handleChangeWorkspaceSubmit(trimmed);
+			return;
+		}
+		if (parseClearCommand(trimmed)) {
+			void handleClearSubmit();
 			return;
 		}
 		if (modelCommand) {
@@ -488,6 +513,27 @@
 		}
 		if (parsed.query) {
 			await applyWorkspaceChange(parsed.query);
+		}
+	}
+
+	async function handleClearSubmit() {
+		if (!sessionId || streaming) return;
+		try {
+			await clearSession(sessionId);
+			chatStore.resetTranscript(sessionId);
+			shellStore.centerComposer();
+			onTranscriptCleared?.();
+			const current = sessionStore.current;
+			if (current?.id === sessionId) {
+				sessionStore.updateSession({ ...current, title: '' });
+			}
+			input?.clear();
+			value = '';
+			images = [];
+			setDropMessage('Cleared conversation history');
+			void focusInput();
+		} catch (err) {
+			setDropMessage(err instanceof Error ? err.message : 'Failed to clear session');
 		}
 	}
 
@@ -1084,6 +1130,12 @@
 		</div>
 
 		<div class="composer-actions">
+			{#if contextWindowUsage}
+				<ContextWindowRing
+					usedTokens={contextWindowUsage.used}
+					limitTokens={contextWindowUsage.limit}
+				/>
+			{/if}
 			{#if streaming}
 				<button class="stop-button" onclick={() => onStop?.()} aria-label="Stop response">
 					<Square size={14} fill="currentColor" stroke-width={0} />
@@ -1214,19 +1266,62 @@
 		display: grid;
 		place-items: center;
 		padding: 6px;
-		color: var(--accent) !important;
+		border-radius: 999px;
+		color: color-mix(
+			in srgb,
+			var(--hero-composer-glow-color, #72c0ff) 58%,
+			var(--accent, #0066cc)
+		) !important;
+		transition:
+			color 160ms ease,
+			background 160ms ease,
+			box-shadow 160ms ease;
+	}
+
+	.send-button:hover:not(:disabled) {
+		color: var(--hero-composer-glow-color, #72c0ff) !important;
+		background: var(--hero-composer-glow-soft, rgba(114, 192, 255, 0.24)) !important;
+		box-shadow: 0 0 14px var(--hero-composer-glow-ring, rgba(114, 192, 255, 0.14));
+	}
+
+	.send-button:active:not(:disabled) {
+		background: color-mix(
+			in srgb,
+			var(--hero-composer-glow-color, #72c0ff) 22%,
+			transparent
+		) !important;
+		box-shadow: 0 0 8px var(--hero-composer-glow-ring, rgba(114, 192, 255, 0.14));
 	}
 
 	.stop-button {
 		display: grid;
 		place-items: center;
 		padding: 6px;
-		color: var(--text-muted) !important;
+		border-radius: 999px;
+		color: color-mix(
+			in srgb,
+			var(--hero-composer-glow-color, #72c0ff) 58%,
+			var(--accent, #0066cc)
+		) !important;
+		transition:
+			color 160ms ease,
+			background 160ms ease,
+			box-shadow 160ms ease;
 	}
 
 	.stop-button:hover:not(:disabled) {
-		color: #b42318 !important;
-		background: rgba(180, 35, 24, 0.08);
+		color: var(--hero-composer-glow-color, #72c0ff) !important;
+		background: var(--hero-composer-glow-soft, rgba(114, 192, 255, 0.24)) !important;
+		box-shadow: 0 0 14px var(--hero-composer-glow-ring, rgba(114, 192, 255, 0.14));
+	}
+
+	.stop-button:active:not(:disabled) {
+		background: color-mix(
+			in srgb,
+			var(--hero-composer-glow-color, #72c0ff) 22%,
+			transparent
+		) !important;
+		box-shadow: 0 0 8px var(--hero-composer-glow-ring, rgba(114, 192, 255, 0.14));
 	}
 
 	.workspace-indicator {
