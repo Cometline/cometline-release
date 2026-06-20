@@ -20,6 +20,7 @@
 	import PinnedGroup from '$lib/components/sidebar/PinnedGroup.svelte';
 	import WorkspaceGroup from '$lib/components/sidebar/WorkspaceGroup.svelte';
 	import DeleteConfirmDialog from '$lib/components/sidebar/DeleteConfirmDialog.svelte';
+	import RenameSessionDialog from '$lib/components/sidebar/RenameSessionDialog.svelte';
 	import SessionContextMenu from '$lib/components/sidebar/SessionContextMenu.svelte';
 
 	const WORKSPACE_GROUP_FLIP = { duration: 240 };
@@ -31,8 +32,10 @@
 	);
 	let deletingID = $state<string | null>(null);
 	let pinningID = $state<string | null>(null);
+	let renamingID = $state<string | null>(null);
 	let contextMenu = $state<{ session: Session; x: number; y: number } | null>(null);
 	let pendingDelete = $state<Session | null>(null);
+	let pendingRename = $state<Session | null>(null);
 	let skipDeleteConfirm = $state(false);
 	let rememberDeleteChoice = $state(false);
 	let searchQuery = $state('');
@@ -115,6 +118,26 @@
 
 	function closeSessionContextMenu() {
 		contextMenu = null;
+	}
+
+	function startRenameSession(session: Session) {
+		pendingRename = session;
+	}
+
+	function cancelRename() {
+		pendingRename = null;
+	}
+
+	async function confirmRename(title: string) {
+		if (!pendingRename) return;
+		renamingID = pendingRename.id;
+		try {
+			const updated = await updateSession(pendingRename.id, { title });
+			sessionStore.updateSession(updated);
+			pendingRename = null;
+		} finally {
+			renamingID = null;
+		}
 	}
 
 	let currentSessionId = $derived(page.params.id ?? null);
@@ -218,6 +241,15 @@
 		/>
 	{/if}
 
+	{#if pendingRename}
+		<RenameSessionDialog
+			session={pendingRename}
+			renaming={renamingID === pendingRename.id}
+			onCancel={cancelRename}
+			onConfirm={confirmRename}
+		/>
+	{/if}
+
 	{#if contextMenu}
 		{@const menu = contextMenu}
 		<SessionContextMenu
@@ -225,6 +257,7 @@
 			x={menu.x}
 			y={menu.y}
 			onPin={() => togglePinSession(menu.session)}
+			onRename={() => startRenameSession(menu.session)}
 			onClose={closeSessionContextMenu}
 		/>
 	{/if}

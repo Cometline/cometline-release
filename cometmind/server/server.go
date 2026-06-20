@@ -187,9 +187,10 @@ type createSessionRequest struct {
 }
 
 type patchSessionRequest struct {
-	ModelID    string `json:"model_id"`
-	ProviderID string `json:"provider_id"`
-	Pinned     *bool  `json:"pinned"`
+	ModelID    string  `json:"model_id"`
+	ProviderID string  `json:"provider_id"`
+	Pinned     *bool   `json:"pinned"`
+	Title      *string `json:"title"`
 }
 
 type changeSessionWorkspaceRequest struct {
@@ -686,8 +687,9 @@ func (a *App) handlePatchSession(c *gin.Context) {
 
 	hasModel := strings.TrimSpace(req.ModelID) != "" || strings.TrimSpace(req.ProviderID) != ""
 	hasPinned := req.Pinned != nil
-	if !hasModel && !hasPinned {
-		writeError(c, http.StatusBadRequest, "bad_request", "at least one of model_id/provider_id or pinned is required")
+	hasTitle := req.Title != nil
+	if !hasModel && !hasPinned && !hasTitle {
+		writeError(c, http.StatusBadRequest, "bad_request", "at least one of model_id/provider_id, pinned, or title is required")
 		return
 	}
 	if hasModel && (strings.TrimSpace(req.ModelID) == "" || strings.TrimSpace(req.ProviderID) == "") {
@@ -718,6 +720,18 @@ func (a *App) handlePatchSession(c *gin.Context) {
 
 	if hasPinned {
 		sess, err = a.sessions.UpdateSessionPinned(c.Request.Context(), sessID, *req.Pinned)
+		if errors.Is(err, session.ErrSessionNotFound) {
+			writeError(c, http.StatusNotFound, "session_not_found", "session was not found")
+			return
+		}
+		if err != nil {
+			writeError(c, http.StatusBadRequest, "bad_request", err.Error())
+			return
+		}
+	}
+
+	if hasTitle {
+		sess, err = a.sessions.UpdateSessionTitle(c.Request.Context(), sessID, *req.Title)
 		if errors.Is(err, session.ErrSessionNotFound) {
 			writeError(c, http.StatusNotFound, "session_not_found", "session was not found")
 			return

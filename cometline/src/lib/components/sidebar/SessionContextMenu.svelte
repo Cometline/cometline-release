@@ -7,12 +7,14 @@
 		x,
 		y,
 		onPin,
+		onRename,
 		onClose
 	}: {
 		session: Session;
 		x: number;
 		y: number;
 		onPin: () => void;
+		onRename: () => void;
 		onClose: () => void;
 	} = $props();
 
@@ -20,6 +22,11 @@
 
 	function handlePin() {
 		onPin();
+		onClose();
+	}
+
+	function handleRename() {
+		onRename();
 		onClose();
 	}
 
@@ -53,6 +60,7 @@
 	style:top="{y}px"
 	role="menu"
 >
+	<button class="menu-item" role="menuitem" onclick={handleRename}>Rename</button>
 	<button class="menu-item" role="menuitem" onclick={handlePin}>
 		{session.pinned ? 'Unpin session' : 'Pin session'}
 	</button>

@@ -583,6 +583,9 @@ type UpdateSessionRequest struct {
 	// Pinned Pin the session to the top of its workspace group in the sidebar.
 	Pinned     *bool   `json:"pinned,omitempty"`
 	ProviderId *string `json:"provider_id,omitempty"`
+
+	// Title Display name shown in the sidebar session list.
+	Title *string `json:"title,omitempty"`
 }
 
 // Workspace defines model for Workspace.

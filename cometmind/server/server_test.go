@@ -636,6 +636,46 @@ func TestPatchSessionUpdatesPinned(t *testing.T) {
 	}
 }
 
+func TestPatchSessionUpdatesTitle(t *testing.T) {
+	t.Parallel()
+
+	engine, svc, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
+		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
+			ch <- event.Done()
+			return nil
+		}), nil
+	})
+	defer cleanup()
+
+	ctx := context.Background()
+	ws, err := svc.EnsureWorkspace(ctx, t.TempDir())
+	if err != nil {
+		t.Fatalf("EnsureWorkspace() error = %v", err)
+	}
+	sess, err := svc.NewSession(ctx, ws.ID, "model-a", "provider-a")
+	if err != nil {
+		t.Fatalf("NewSession() error = %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/sessions/"+sess.ID,
+		bytes.NewBufferString(`{"title":"Renamed chat"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch title status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var renamed sessionResource
+	decodeJSON(t, rec.Body.Bytes(), &renamed)
+	if renamed.Title != "Renamed chat" {
+		t.Fatalf("patched session title = %q, want %q", renamed.Title, "Renamed chat")
+	}
+}
+
 func TestGetMessagesReturnsTranscriptItems(t *testing.T) {
 	t.Parallel()
 

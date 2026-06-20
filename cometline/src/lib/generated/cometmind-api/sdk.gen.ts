@@ -172,8 +172,10 @@ export const getSession = <ThrowOnError extends boolean = false>(options: Option
 };
 
 /**
- * Update session model
- * Persists a new model/provider pair for an existing session. Later message turns use the updated model.
+ * Update session fields
+ * Partial update for an existing session. Send any combination of
+ * `model_id`/`provider_id` (both required together), `pinned`, or `title`.
+ *
  */
 export const patchSession = <ThrowOnError extends boolean = false>(options: Options<PatchSessionData, ThrowOnError>) => {
     return (options.client ?? _heyApiClient).patch<PatchSessionResponse, PatchSessionError, ThrowOnError>({

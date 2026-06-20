@@ -441,6 +441,20 @@ func (s *Service) UpdateSessionPinned(ctx context.Context, sessionID string, pin
 	return s.GetSession(ctx, sessionID)
 }
 
+// UpdateSessionTitle persists a new display title for an existing session.
+func (s *Service) UpdateSessionTitle(ctx context.Context, sessionID, title string) (Session, error) {
+	if _, err := s.GetSession(ctx, sessionID); err != nil {
+		return Session{}, err
+	}
+	if err := s.q.UpdateSessionTitle(ctx, db.UpdateSessionTitleParams{
+		ID:    sessionID,
+		Title: strings.TrimSpace(title),
+	}); err != nil {
+		return Session{}, err
+	}
+	return s.GetSession(ctx, sessionID)
+}
+
 // AppendUserMessage persists a user turn.
 func (s *Service) AppendUserMessage(ctx context.Context, sessionID, text string) (Message, error) {
 	return s.AppendUserMessageContent(ctx, sessionID, []ContentBlock{{Type: "text", Text: text}})

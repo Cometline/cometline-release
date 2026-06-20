@@ -33,6 +33,10 @@ export type UpdateSessionRequest = {
      * Pin the session to the top of its workspace group in the sidebar.
      */
     pinned?: boolean;
+    /**
+     * Display name shown in the sidebar session list.
+     */
+    title?: string;
 };
 
 export type ChangeSessionWorkspaceRequest = {

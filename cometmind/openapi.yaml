@@ -338,8 +338,10 @@ paths:
 
     patch:
       tags: [Sessions]
-      summary: Update session model
-      description: Persists a new model/provider pair for an existing session. Later message turns use the updated model.
+      summary: Update session fields
+      description: |
+        Partial update for an existing session. Send any combination of
+        `model_id`/`provider_id` (both required together), `pinned`, or `title`.
       operationId: patchSession
       parameters:
         - $ref: '#/components/parameters/SessionId'
@@ -1026,6 +1028,9 @@ components:
         pinned:
           type: boolean
           description: Pin the session to the top of its workspace group in the sidebar.
+        title:
+          type: string
+          description: Display name shown in the sidebar session list.
 
     ChangeSessionWorkspaceRequest:
       type: object
