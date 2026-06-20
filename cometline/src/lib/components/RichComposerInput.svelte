@@ -4,6 +4,7 @@
 	import { faviconUrl, domainFromUrl, isHttpUrl } from '$lib/markdown/embed';
 	import { openLink } from '$lib/open-link';
 	import { openWorkspaceFilePreview } from '$lib/workspace/open-file-preview';
+	import { viewportDeltaToLocal } from '$lib/dom/caret-geometry';
 
 	let {
 		value = $bindable(''),
@@ -197,7 +198,6 @@
 		}
 		range.collapse(true);
 
-		const wrapRect = wrap.getBoundingClientRect();
 		const lineHeight = Number.parseFloat(getComputedStyle(editor).lineHeight) || 22.5;
 
 		let rect: DOMRect | undefined = range.getClientRects()[0];
@@ -234,11 +234,7 @@
 			measuring = false;
 		}
 		if (!rect) return null;
-		return {
-			x: rect.left - wrapRect.left,
-			y: rect.top - wrapRect.top,
-			h: rect.height || lineHeight
-		};
+		return viewportDeltaToLocal(wrap, rect, lineHeight);
 	}
 
 	function measureCaret() {
