@@ -110,6 +110,21 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 	emitStatus := func(phase event.TurnPhase) {
 		ch <- event.TurnStatus(phase, "")
 	}
+
+	// Resolve the target provider family once so session history (which may
+	// have been produced by a different provider) can be normalized before
+	// replay. Switching, say, an Anthropic session to Codex must not feed raw
+	// chain-of-thought the Codex adapter would otherwise drop.
+	providerFamily := ""
+	if r.Config != nil {
+		providerID := turn.ProviderID
+		if providerID == "" {
+			providerID = r.Config.Provider
+		}
+		providerFamily = provider.SDKFamily(r.Config, providerID)
+	}
+	degradationsReported := false
+
 	for steps < r.MaxSteps {
 		if steps > 0 {
 			emitStatus(event.PhaseContinuing)
@@ -136,6 +151,20 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 			ch <- event.Errorf(err.Error(), "history")
 			return err
 		}
+
+		// Adapt cross-provider history (e.g. reasoning that the target provider
+		// cannot replay) and report any lossy degradations once per turn.
+		if providerFamily != "" {
+			normalized, degradations := NormalizeHistoryForProvider(providerFamily, msgs)
+			msgs = normalized
+			if !degradationsReported {
+				for _, d := range degradations {
+					logging.L().Info("history.normalized", "session", turn.ID, "provider", providerFamily, "kind", d.Kind, "count", d.Count)
+				}
+				degradationsReported = true
+			}
+		}
+
 		logging.L().Info("agent.step.start", "session", turn.ID, "step", steps+1, "model", turn.ModelID, "messages", len(msgs), "max_tokens", r.MaxTokens)
 
 		system := r.buildSystemPrompt(sess.ContextSummary, truncationContinue)
