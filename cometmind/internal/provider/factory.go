@@ -49,6 +49,16 @@ func sdkProviderID(method string) string {
 	}
 }
 
+// SDKFamily resolves a Cometline provider id (or legacy method name) to the
+// comet-sdk provider family it maps to: one of config.ProviderAnthropic,
+// config.ProviderOpenAI, or config.ProviderCodex. It mirrors the resolution
+// New/NewFor perform so callers can reason about provider capabilities (e.g.
+// reasoning replay support) without constructing a provider.
+func SDKFamily(cfg *config.Config, id string) string {
+	_, method, _ := providerConfigFor(cfg, id)
+	return sdkProviderID(method)
+}
+
 // New returns a concrete SDK provider based on [config.Config.Provider].
 func New(cfg *config.Config) (cometsdk.Provider, error) {
 	return NewFor(cfg, cfg.Provider)
