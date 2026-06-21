@@ -214,8 +214,12 @@ function itemsFromTranscript(transcriptItems: TranscriptItem[]): ChatItem[] {
 	let currentAssistant: Extract<ChatItem, { type: 'assistant' }> | null = null;
 
 	function pushAssistant(index: number, text = '') {
+		// Use a distinct prefix so an auto-created assistant placeholder never
+		// collides with the `history-${index}` id of the row that triggered its
+		// creation (e.g. a memory/tool row at the same loop index). Sharing an id
+		// produces Svelte `each_key_duplicate` errors in the keyed transcript.
 		const assistant: Extract<ChatItem, { type: 'assistant' }> = {
-			id: `history-${index}`,
+			id: `history-assistant-${index}`,
 			type: 'assistant',
 			text
 		};
@@ -258,17 +262,26 @@ function itemsFromTranscript(transcriptItems: TranscriptItem[]): ChatItem[] {
 			continue;
 		}
 		if (item.type === 'tool') {
+			// The assistant step that owns this tool must precede it in the
+			// array so the thinking-attribution scan (which walks forward and
+			// attaches tools to the current assistant) groups it. Reasoning-less
+			// turns persist their tools/memory before the assistant text row, so
+			// without this the tools would render as loose, ungrouped pills after
+			// a session reload.
+			const host = ensureAssistant(i);
 			const toolItem = itemFromTranscript(item, i);
 			if (toolItem.type === 'tool') {
-				const host = out.findLast(
-					(row): row is Extract<ChatItem, { type: 'assistant' }> =>
-						row.type === 'assistant'
-				);
-				toolItem.afterSegment = host
-					? Math.max(0, getReasoningSegments(host.reasoning).length - 1)
-					: 0;
+				toolItem.afterSegment = Math.max(0, getReasoningSegments(host.reasoning).length - 1);
 			}
 			out.push(toolItem);
+			continue;
+		}
+		if (item.type === 'memory') {
+			// Same rationale as tools: ensure the owning assistant exists first so
+			// the memory card is grouped into the activity timeline rather than
+			// floating as a standalone card on reload.
+			ensureAssistant(i);
+			out.push(itemFromTranscript(item, i));
 			continue;
 		}
 		out.push(itemFromTranscript(item, i));

@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StreamEvent } from '$lib/types';
 import { getReasoningSegments } from '$lib/conversation/reasoning';
+import {
+	buildAssistantTimeline,
+	buildThinkingAttribution,
+	shouldGroupAssistantTimeline
+} from '$lib/conversation/thinking-attribution';
 
 const { goto } = vi.hoisted(() => ({ goto: vi.fn() }));
 
@@ -462,6 +467,72 @@ describe('chatStore session switching', () => {
 			output: 'package main',
 			afterSegment: 0
 		});
+	});
+
+	it('groups reasoning-less memory and tools under the assistant on reload', async () => {
+		// Reasoning-less turns persist as: memory, tool(s), then assistant text.
+		// The assistant placeholder must be emitted before its memory/tool rows so
+		// the attribution scan groups them instead of leaving loose pills.
+		vi.mocked(getSessionMessages).mockResolvedValue({
+			session_id: 'sess-a',
+			items: [
+				{ type: 'user', text: 'run ls and pwd for me' },
+				{
+					type: 'memory',
+					memories: [
+						{
+							id: 'm1',
+							content: 'prefers zsh',
+							kind: 'semantic',
+							similarity: 0.9,
+							effective_weight: 1
+						}
+					]
+				},
+				{
+					type: 'tool',
+					tool_name: 'list_dir',
+					tool_input: { path: '.' },
+					tool_output: 'a\nb'
+				},
+				{
+					type: 'tool',
+					tool_name: 'run_command',
+					tool_input: { command: 'pwd' },
+					tool_output: '/tmp'
+				},
+				{ type: 'assistant', text: 'Here are the results.' }
+			]
+		});
+
+		chatStore.bindSession('sess-a');
+		await chatStore.loadTranscript('sess-a');
+
+		const assistant = chatStore.items.find((item) => item.type === 'assistant');
+		expect(assistant).toBeTruthy();
+		const assistantIndex = chatStore.items.findIndex((item) => item === assistant);
+		const memoryIndex = chatStore.items.findIndex((item) => item.type === 'memory');
+		const firstToolIndex = chatStore.items.findIndex((item) => item.type === 'tool');
+
+		// Assistant must precede its memory/tool rows so they get grouped.
+		expect(assistantIndex).toBeGreaterThanOrEqual(0);
+		expect(memoryIndex).toBeGreaterThan(assistantIndex);
+		expect(firstToolIndex).toBeGreaterThan(assistantIndex);
+
+		const attribution = buildThinkingAttribution(chatStore.items);
+		const timeline = buildAssistantTimeline(assistant!.id, chatStore.items, attribution);
+		// memory + 2 tools, all grouped.
+		expect(timeline.map((entry) => entry.kind)).toEqual(['memory', 'tool', 'tool']);
+		expect(shouldGroupAssistantTimeline(assistant as never, timeline)).toBe(true);
+		// No loose pills: every tool/memory is attributed to the assistant.
+		expect(attribution.toolIdsInBuffer.size).toBe(2);
+		expect(attribution.memoryIdsInBuffer.size).toBe(1);
+
+		// The auto-created assistant placeholder must not collide with the id of
+		// the row that triggered it, or the keyed transcript throws
+		// `each_key_duplicate`.
+		const ids = chatStore.items.map((item) => item.id);
+		expect(new Set(ids).size).toBe(ids.length);
 	});
 });
 

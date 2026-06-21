@@ -133,25 +133,11 @@
 </div>
 
 <style>
+	/* Base .fold-panel / .fold-toggle / .fold-body styles live in
+	   src/lib/styles/fold-panel.css. Only component-specific overrides here. */
 	.fold-panel {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
 		width: 100%;
 		min-width: 0;
-	}
-
-	.fold-panel.nested {
-		gap: 4px;
-	}
-
-	.fold-panel.nested .fold-toggle {
-		font-size: 11px;
-		padding: 4px 9px;
-	}
-
-	.fold-panel.content-only {
-		gap: 0;
 	}
 
 	.content-only-header {
@@ -170,21 +156,6 @@
 		min-width: 0;
 	}
 
-	.fold-toggle {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		align-self: flex-start;
-		border: 1px solid var(--border-soft);
-		background: rgba(255, 255, 255, 0.72);
-		color: var(--text-muted);
-		border-radius: 999px;
-		padding: 5px 10px;
-		font-size: 12px;
-		font-weight: 600;
-		cursor: pointer;
-	}
-
 	.subagent-toggle {
 		min-width: 0;
 		flex: 1;
@@ -195,15 +166,6 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-	}
-
-	.fold-toggle:hover {
-		background: rgba(255, 255, 255, 0.92);
-		color: var(--text-main);
-	}
-
-	.fold-toggle :global(svg.expanded) {
-		transform: rotate(180deg);
 	}
 
 	.subagent-cancel {
@@ -221,15 +183,6 @@
 	.subagent-cancel:hover {
 		border-color: color-mix(in srgb, var(--accent) 28%, var(--border-soft));
 		color: var(--text-main);
-	}
-
-	.fold-body {
-		border: 1px solid var(--border-soft);
-		background: rgba(255, 255, 255, 0.68);
-		border-radius: 12px;
-		padding: 10px 12px;
-		color: var(--text-muted);
-		box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
 	}
 
 	.subagent-body {

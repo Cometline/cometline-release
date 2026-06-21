@@ -76,20 +76,13 @@
 </div>
 
 <style>
-	.fold-panel {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
+	/* Base .fold-panel / .fold-toggle / .fold-body styles live in
+	   src/lib/styles/fold-panel.css. Only component-specific overrides here. */
 	.fold-panel.nested {
 		align-self: stretch;
-		gap: 4px;
 	}
 
 	.fold-panel.nested .fold-toggle {
-		font-size: 11px;
-		padding: 4px 9px;
 		align-self: stretch;
 	}
 
@@ -108,30 +101,6 @@
 		color: var(--text-muted);
 		white-space: pre-wrap;
 		word-break: break-word;
-	}
-
-	.fold-toggle {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		align-self: flex-start;
-		border: 1px solid var(--border-soft);
-		background: rgba(255, 255, 255, 0.72);
-		color: var(--text-muted);
-		border-radius: 999px;
-		padding: 5px 10px;
-		font-size: 12px;
-		font-weight: 600;
-		cursor: pointer;
-	}
-
-	.fold-toggle:hover {
-		background: rgba(255, 255, 255, 0.92);
-		color: var(--text-main);
-	}
-
-	.fold-toggle :global(svg.expanded) {
-		transform: rotate(180deg);
 	}
 
 	.tool-output-body {

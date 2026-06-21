@@ -19,8 +19,8 @@ export type TimelineEntry =
 			segmentIndex: number;
 			text: string;
 			pending?: boolean;
-			memories?: InjectedMemory[];
 	  }
+	| { kind: 'memory'; memories: InjectedMemory[] }
 	| { kind: 'tool'; tool: ToolChatItem }
 	| { kind: 'subagent'; subagent: SubagentChatItem };
 
@@ -39,24 +39,31 @@ export function buildThinkingAttribution(items: readonly ChatItem[]): ThinkingAt
 	const memoryIdsInBuffer = new Set<string>();
 	let currentAssistantId: string | null = null;
 	let pendingMemories: InjectedMemory[] = [];
+	let pendingMemoryId: string | null = null;
 
 	for (let index = 0; index < items.length; index++) {
 		const item = items[index];
 		if (item.type === 'user' || item.type === 'status' || item.type === 'error') {
 			currentAssistantId = null;
 			pendingMemories = [];
+			pendingMemoryId = null;
 			continue;
 		}
 		if (item.type === 'memory') {
-			memoryIdsInBuffer.add(item.id);
+			// Attribute the memory to its assistant turn so it renders inside the
+			// activity group/timeline. Only mark it buffered once it is actually
+			// attached; an orphan memory (no assistant in the turn) falls back to
+			// the standalone card.
 			if (currentAssistantId) {
 				const block = map.get(currentAssistantId);
 				if (block) {
 					block.memories = item.memories;
+					memoryIdsInBuffer.add(item.id);
 					continue;
 				}
 			}
 			pendingMemories = item.memories;
+			pendingMemoryId = item.id;
 			continue;
 		}
 		if (item.type === 'assistant') {
@@ -84,7 +91,11 @@ export function buildThinkingAttribution(items: readonly ChatItem[]): ThinkingAt
 					existing.memories = pendingMemories;
 				}
 			}
+			if (pendingMemoryId && pendingMemories.length > 0) {
+				memoryIdsInBuffer.add(pendingMemoryId);
+			}
 			pendingMemories = [];
+			pendingMemoryId = null;
 		} else if (item.type === 'tool' && currentAssistantId) {
 			const block = map.get(currentAssistantId);
 			if (block) {
@@ -122,6 +133,13 @@ export function buildAssistantTimeline(
 	const segments = getReasoningSegments(assistant.reasoning);
 	const timeline: TimelineEntry[] = [];
 
+	// Memory is injected before any reasoning/tool activity, so it leads the timeline
+	// as a first-class entry. This keeps the memory card visible (and wrapped by the
+	// activity group) regardless of whether the model produced reasoning.
+	if (memories.length > 0) {
+		timeline.push({ kind: 'memory', memories });
+	}
+
 	if (segments.length === 0) {
 		for (const tool of tools) {
 			timeline.push({ kind: 'tool', tool });
@@ -138,8 +156,7 @@ export function buildAssistantTimeline(
 			kind: 'reasoning',
 			segmentIndex: i,
 			text: segment.text,
-			pending: segment.pending,
-			memories: i === 0 && memories.length > 0 ? memories : undefined
+			pending: segment.pending
 		});
 		for (const tool of tools) {
 			const placement = tool.afterSegment ?? segments.length - 1;

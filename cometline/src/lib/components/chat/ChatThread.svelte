@@ -9,6 +9,7 @@
 	import { assistantThinkingWaitStatus } from '$lib/conversation/assistant-wait-status';
 	import AssistantThinkingWait from '$lib/components/chat/AssistantThinkingWait.svelte';
 	import ThinkingBlock from '$lib/components/chat/ThinkingBlock.svelte';
+	import MemoryCard from '$lib/components/chat/MemoryCard.svelte';
 	import ToolFoldPanel from '$lib/components/chat/ToolFoldPanel.svelte';
 	import SubagentPanel from '$lib/components/chat/SubagentPanel.svelte';
 	import AssistantActivityGroup from '$lib/components/chat/AssistantActivityGroup.svelte';
@@ -439,6 +440,7 @@
 
 	function timelineEntryKey(entry: TimelineEntry) {
 		if (entry.kind === 'reasoning') return `${entry.kind}-${entry.segmentIndex}`;
+		if (entry.kind === 'memory') return entry.kind;
 		if (entry.kind === 'tool') return `${entry.kind}-${entry.tool.id}`;
 		return `${entry.kind}-${entry.subagent.id}`;
 	}
@@ -648,15 +650,19 @@
 					<ThinkingBlock
 						text={entry.text}
 						pending={entry.pending}
-						memories={entry.memories}
 						expanded={thinkingExpanded(item, segmentKey, entry.segmentIndex, entry.pending)}
-						memoryExpanded={memoryInThinkingExpanded(segmentKey)}
 						showSpinner={thinkingActive(entry.pending) &&
 							!item.text.trim() &&
 							!(item.id === streamingAssistantId && sessionStreaming)}
 						onToggle={() =>
 							toggleThinking(item, segmentKey, entry.segmentIndex, entry.pending)}
-						onToggleMemory={() => toggleMemoryInThinking(segmentKey)}
+					/>
+				{:else if entry.kind === 'memory'}
+					{@const memoryKey = `${item.id}-memory`}
+					<MemoryCard
+						memories={entry.memories}
+						expanded={memoryInThinkingExpanded(memoryKey)}
+						onToggle={() => toggleMemoryInThinking(memoryKey)}
 					/>
 				{:else if entry.kind === 'tool'}
 					<ToolFoldPanel

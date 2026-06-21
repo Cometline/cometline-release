@@ -1,0 +1,76 @@
+/*
+ * Shared fold-panel / pill-toggle styles.
+ * Used by the chat activity components: ThinkingBlock, MemoryCard,
+ * ToolFoldPanel, SubagentPanel, and AssistantActivityGroup.
+ *
+ * Component-specific styling (body backgrounds, error states, label
+ * ellipsis, etc.) stays in each component's scoped <style> block.
+ */
+
+.fold-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.fold-panel.nested {
+	gap: 4px;
+}
+
+.fold-panel.content-only {
+	gap: 0;
+}
+
+/* The rounded "pill" toggle button. */
+.fold-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	align-self: flex-start;
+	max-width: 100%;
+	white-space: nowrap;
+	border: 1px solid var(--border-soft);
+	background: rgba(255, 255, 255, 0.72);
+	color: var(--text-muted);
+	border-radius: 999px;
+	padding: 5px 10px;
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.fold-panel.nested .fold-toggle {
+	font-size: 11px;
+	padding: 4px 9px;
+}
+
+.fold-toggle:hover {
+	background: rgba(255, 255, 255, 0.92);
+	color: var(--text-main);
+}
+
+/* Keep the label on one row; truncate with an ellipsis when it cannot fit. */
+.fold-toggle > span {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* Icons never shrink, so they stay crisp regardless of available width. */
+.fold-toggle svg {
+	flex-shrink: 0;
+}
+
+.fold-toggle svg.expanded {
+	transform: rotate(180deg);
+}
+
+/* Default expandable body. Components may override background/padding. */
+.fold-body {
+	border: 1px solid var(--border-soft);
+	background: rgba(255, 255, 255, 0.68);
+	border-radius: 12px;
+	padding: 10px 12px;
+	color: var(--text-muted);
+	box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
+}

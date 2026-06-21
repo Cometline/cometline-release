@@ -82,6 +82,92 @@ describe('buildThinkingAttribution', () => {
 		]);
 	});
 
+	it('emits a memory timeline entry even when the assistant has no reasoning', () => {
+		const items: ChatItem[] = [
+			{ id: 'u1', type: 'user', text: 'remember this' },
+			{
+				id: 'm1',
+				type: 'memory',
+				memories: [
+					{
+						id: 'mem-1',
+						kind: 'fact',
+						content: 'alpha',
+						similarity: 1,
+						effective_weight: 1
+					}
+				]
+			},
+			{ id: 'a1', type: 'assistant', text: 'reply without reasoning' }
+		];
+
+		const attribution = buildThinkingAttribution(items);
+		const timeline = buildAssistantTimeline('a1', items, attribution);
+
+		expect(timeline.map((entry) => entry.kind)).toEqual(['memory']);
+		if (timeline[0].kind === 'memory') {
+			expect(timeline[0].memories).toEqual([
+				{ id: 'mem-1', kind: 'fact', content: 'alpha', similarity: 1, effective_weight: 1 }
+			]);
+		}
+	});
+
+	it('leads the timeline with memory before reasoning when both exist', () => {
+		const items: ChatItem[] = [
+			{ id: 'u1', type: 'user', text: 'remember and think' },
+			{
+				id: 'm1',
+				type: 'memory',
+				memories: [
+					{
+						id: 'mem-1',
+						kind: 'fact',
+						content: 'alpha',
+						similarity: 1,
+						effective_weight: 1
+					}
+				]
+			},
+			{
+				id: 'a1',
+				type: 'assistant',
+				text: 'done',
+				reasoning: { segments: [{ text: 'thinking', pending: false }] }
+			}
+		];
+
+		const attribution = buildThinkingAttribution(items);
+		const timeline = buildAssistantTimeline('a1', items, attribution);
+
+		expect(timeline.map((entry) => entry.kind)).toEqual(['memory', 'reasoning']);
+	});
+
+	it('does not buffer an orphan memory with no assistant in the turn', () => {
+		const items: ChatItem[] = [
+			{ id: 'u1', type: 'user', text: 'first' },
+			{
+				id: 'm1',
+				type: 'memory',
+				memories: [
+					{
+						id: 'mem-1',
+						kind: 'fact',
+						content: 'alpha',
+						similarity: 1,
+						effective_weight: 1
+					}
+				]
+			},
+			{ id: 'u2', type: 'user', text: 'second (no assistant followed m1)' },
+			{ id: 'a1', type: 'assistant', text: 'reply two' }
+		];
+
+		const { memoryIdsInBuffer, map } = buildThinkingAttribution(items);
+
+		expect(memoryIdsInBuffer.has('m1')).toBe(false);
+		expect(map.get('a1')?.memories ?? []).toEqual([]);
+	});
+
 	it('buffers tools under the assistant in the same turn', () => {
 		const items: ChatItem[] = [
 			{ id: 'u1', type: 'user', text: 'run tool' },

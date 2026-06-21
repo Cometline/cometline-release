@@ -11,6 +11,7 @@
 	} from '@lucide/svelte';
 	import ThinkingSpinner from '$lib/components/ThinkingSpinner.svelte';
 	import ThinkingBlock from '$lib/components/chat/ThinkingBlock.svelte';
+	import MemoryCard from '$lib/components/chat/MemoryCard.svelte';
 	import ToolFoldPanel from '$lib/components/chat/ToolFoldPanel.svelte';
 	import SubagentPanel from '$lib/components/chat/SubagentPanel.svelte';
 	import type { ChatItem } from '$lib/stores/chat.svelte';
@@ -70,13 +71,13 @@
 	let firstEntry = $derived(timeline[0]);
 	let childEntries = $derived(timeline.slice(1));
 
-	function thinkingLabel(memories?: InjectedMemory[]) {
-		if (!memories?.length) return 'Thinking';
-		return `Thinking · ${memories.length} memor${memories.length === 1 ? 'y' : 'ies'}`;
+	function memoryLabel(memories: InjectedMemory[]) {
+		return `Memories used · ${memories.length}`;
 	}
 
 	function parentLabel(entry: TimelineEntry) {
-		if (entry.kind === 'reasoning') return thinkingLabel(entry.memories);
+		if (entry.kind === 'reasoning') return 'Thinking';
+		if (entry.kind === 'memory') return memoryLabel(entry.memories);
 		if (entry.kind === 'tool') return toolFoldLabel(entry.tool);
 		return subagentProgressLabel(entry.subagent);
 	}
@@ -94,7 +95,7 @@
 			aria-expanded={parentExpanded}
 			onclick={onToggleParent}
 		>
-			{#if firstEntry.kind === 'reasoning'}
+			{#if firstEntry.kind === 'reasoning' || firstEntry.kind === 'memory'}
 				<Brain size={13} />
 			{:else}
 				<Terminal size={13} />
@@ -130,9 +131,7 @@
 					<ThinkingBlock
 						text={firstEntry.text}
 						pending={firstEntry.pending}
-						memories={firstEntry.memories}
 						expanded={true}
-						memoryExpanded={memoryInThinkingExpanded(key)}
 						showSpinner={thinkingActive(firstEntry.pending) && showThinkingSpinner}
 						contentOnly={true}
 						onToggle={() =>
@@ -142,7 +141,14 @@
 								firstEntry.segmentIndex,
 								firstEntry.pending
 							)}
-						onToggleMemory={() => toggleMemoryInThinking(key)}
+					/>
+				{:else if firstEntry.kind === 'memory'}
+					<MemoryCard
+						memories={firstEntry.memories}
+						expanded={true}
+						contentOnly={true}
+						nested={true}
+						onToggle={() => {}}
 					/>
 				{:else if firstEntry.kind === 'tool'}
 					<ToolFoldPanel
@@ -166,19 +172,24 @@
 						<ThinkingBlock
 							text={entry.text}
 							pending={entry.pending}
-							memories={entry.memories}
 							expanded={thinkingExpanded(
 								assistant,
 								key,
 								entry.segmentIndex,
 								entry.pending
 							)}
-							memoryExpanded={memoryInThinkingExpanded(key)}
 							showSpinner={thinkingActive(entry.pending) && showThinkingSpinner}
 							nested={true}
 							onToggle={() =>
 								toggleThinking(assistant, key, entry.segmentIndex, entry.pending)}
-							onToggleMemory={() => toggleMemoryInThinking(key)}
+						/>
+					{:else if entry.kind === 'memory'}
+						{@const memoryKey = `${assistantId}-memory`}
+						<MemoryCard
+							memories={entry.memories}
+							expanded={memoryInThinkingExpanded(memoryKey)}
+							nested={true}
+							onToggle={() => toggleMemoryInThinking(memoryKey)}
 						/>
 					{:else if entry.kind === 'tool'}
 						<ToolFoldPanel
@@ -203,45 +214,8 @@
 {/if}
 
 <style>
-	.fold-panel {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
-	.fold-toggle {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		align-self: flex-start;
-		border: 1px solid var(--border-soft);
-		background: rgba(255, 255, 255, 0.72);
-		color: var(--text-muted);
-		border-radius: 999px;
-		padding: 5px 10px;
-		font-size: 12px;
-		font-weight: 600;
-		cursor: pointer;
-	}
-
-	.fold-toggle:hover {
-		background: rgba(255, 255, 255, 0.92);
-		color: var(--text-main);
-	}
-
-	.fold-toggle :global(svg.expanded) {
-		transform: rotate(180deg);
-	}
-
-	.fold-body {
-		border: 1px solid var(--border-soft);
-		background: rgba(255, 255, 255, 0.68);
-		border-radius: 12px;
-		padding: 10px 12px;
-		color: var(--text-muted);
-		box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
-	}
-
+	/* Base .fold-panel / .fold-toggle / .fold-body styles live in
+	   src/lib/styles/fold-panel.css. Only component-specific overrides here. */
 	.activity-group-body {
 		display: flex;
 		flex-direction: column;
