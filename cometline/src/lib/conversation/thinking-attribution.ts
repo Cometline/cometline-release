@@ -165,12 +165,14 @@ export function buildAssistantTimeline(
 	return timeline;
 }
 
-/** Collapse pre-response timeline into one parent block once assistant text exists. */
+/** Collapse pre-response timeline into one parent block once activity grows or final text exists. */
 export function shouldGroupAssistantTimeline(
 	assistant: AssistantItem,
 	timeline: TimelineEntry[]
 ): boolean {
-	return assistant.text.trim().length > 0 && timeline.length >= 1;
+	if (timeline.length === 0) return false;
+	if (timeline.length >= 2) return true;
+	return assistant.text.trim().length > 0;
 }
 
 /** Default parent activity group fold: collapsed after response, open while streaming. */
@@ -182,5 +184,32 @@ export function defaultActivityGroupExpanded(
 	if (assistant.text.trim() && !(assistant.id === streamingAssistantId && sessionStreaming)) {
 		return false;
 	}
+	return true;
+}
+
+/** Whether an assistant turn is still in the pre-final / streaming response phase. */
+export function isAssistantResponseActive(
+	assistant: AssistantItem,
+	streamingAssistantId: string | null,
+	sessionStreaming: boolean
+): boolean {
+	return (
+		!assistant.text.trim() ||
+		(assistant.id === streamingAssistantId && sessionStreaming)
+	);
+}
+
+/** Default thinking fold: segment 0 stays open while the response is active; later segments stay folded. */
+export function defaultThinkingExpanded(
+	segmentIndex: number,
+	_pending: boolean | undefined,
+	assistant: AssistantItem,
+	streamingAssistantId: string | null,
+	sessionStreaming: boolean
+): boolean {
+	if (!isAssistantResponseActive(assistant, streamingAssistantId, sessionStreaming)) {
+		return false;
+	}
+	if (segmentIndex !== 0) return false;
 	return true;
 }

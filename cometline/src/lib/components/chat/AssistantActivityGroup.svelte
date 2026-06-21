@@ -20,6 +20,7 @@
 	const FOLD_IN = { duration: 180 };
 
 	let {
+		assistant,
 		assistantId,
 		timeline,
 		parentExpanded,
@@ -37,14 +38,25 @@
 		subagentExpanded,
 		toggleSubagent
 	}: {
+		assistant: Extract<ChatItem, { type: 'assistant' }>;
 		assistantId: string;
 		timeline: TimelineEntry[];
 		parentExpanded: boolean;
 		onToggleParent: () => void;
 		timelineEntryKey: (entry: TimelineEntry) => string;
 		toolFoldLabel: (item: Extract<ChatItem, { type: 'tool' }>) => string;
-		thinkingExpanded: (segmentKey: string, pending?: boolean) => boolean;
-		toggleThinking: (segmentKey: string, pending?: boolean) => void;
+		thinkingExpanded: (
+			assistant: Extract<ChatItem, { type: 'assistant' }>,
+			segmentKey: string,
+			segmentIndex: number,
+			pending?: boolean
+		) => boolean;
+		toggleThinking: (
+			assistant: Extract<ChatItem, { type: 'assistant' }>,
+			segmentKey: string,
+			segmentIndex: number,
+			pending?: boolean
+		) => void;
 		memoryInThinkingExpanded: (segmentKey: string) => boolean;
 		toggleMemoryInThinking: (segmentKey: string) => void;
 		thinkingActive: (pending?: boolean) => boolean;
@@ -121,9 +133,15 @@
 						memories={firstEntry.memories}
 						expanded={true}
 						memoryExpanded={memoryInThinkingExpanded(key)}
-						showSpinner={false}
+						showSpinner={thinkingActive(firstEntry.pending) && showThinkingSpinner}
 						contentOnly={true}
-						onToggle={() => toggleThinking(key, firstEntry.pending)}
+						onToggle={() =>
+							toggleThinking(
+								assistant,
+								key,
+								firstEntry.segmentIndex,
+								firstEntry.pending
+							)}
 						onToggleMemory={() => toggleMemoryInThinking(key)}
 					/>
 				{:else if firstEntry.kind === 'tool'}
@@ -131,14 +149,14 @@
 						item={firstEntry.tool}
 						label={toolFoldLabel(firstEntry.tool)}
 						expanded={toolOutputExpanded(firstEntry.tool)}
-						contentOnly={true}
+						nested={true}
 						onToggle={() => toggleToolOutput(firstEntry.tool.id)}
 					/>
 				{:else}
 					<SubagentPanel
 						item={firstEntry.subagent}
 						expanded={subagentExpanded(firstEntry.subagent.id)}
-						contentOnly={true}
+						nested={true}
 						onToggle={() => toggleSubagent(firstEntry.subagent.id)}
 					/>
 				{/if}
@@ -149,11 +167,17 @@
 							text={entry.text}
 							pending={entry.pending}
 							memories={entry.memories}
-							expanded={thinkingExpanded(key, entry.pending)}
+							expanded={thinkingExpanded(
+								assistant,
+								key,
+								entry.segmentIndex,
+								entry.pending
+							)}
 							memoryExpanded={memoryInThinkingExpanded(key)}
 							showSpinner={thinkingActive(entry.pending) && showThinkingSpinner}
 							nested={true}
-							onToggle={() => toggleThinking(key, entry.pending)}
+							onToggle={() =>
+								toggleThinking(assistant, key, entry.segmentIndex, entry.pending)}
 							onToggleMemory={() => toggleMemoryInThinking(key)}
 						/>
 					{:else if entry.kind === 'tool'}
@@ -223,5 +247,12 @@
 		flex-direction: column;
 		gap: 8px;
 		align-self: stretch;
+	}
+
+	.activity-group-body :global(.thinking-panel.content-only .fold-body) {
+		border: none;
+		background: transparent;
+		box-shadow: none;
+		padding: 0;
 	}
 </style>

@@ -83,7 +83,7 @@
 			</button>
 		</div>
 	{/if}
-	{#if contentOnly || expanded}
+	{#if expanded}
 		{@const visibleProgress = subagentVisibleProgress(item)}
 		<div class="fold-body subagent-body" transition:slide={FOLD_IN}>
 			<p class="subagent-purpose">{item.purpose}</p>

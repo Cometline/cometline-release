@@ -20,6 +20,7 @@
 		buildAssistantTimeline,
 		buildThinkingAttribution,
 		defaultActivityGroupExpanded,
+		defaultThinkingExpanded,
 		shouldGroupAssistantTimeline,
 		type InjectedMemory,
 		type TimelineEntry
@@ -148,18 +149,36 @@
 		return thinkingForAssistant.memoryIdsInBuffer.has(item.id);
 	}
 
-	// A thinking block auto-expands while reasoning is actively streaming and
-	// folds when it is done. Tool execution does NOT expand the block. The user
-	// can override the default by toggling; the override is keyed per segment.
-	function thinkingExpanded(segmentKey: string, pending?: boolean) {
+	// Only the first thinking segment auto-expands while the response is active.
+	// The user can override per segment via thinkingOverrides.
+	function thinkingExpanded(
+		assistant: Extract<ChatItem, { type: 'assistant' }>,
+		segmentKey: string,
+		segmentIndex: number,
+		pending?: boolean
+	) {
 		const override = thinkingOverrides.get(segmentKey);
 		if (override !== undefined) return override;
-		return pending === true;
+		return defaultThinkingExpanded(
+			segmentIndex,
+			pending,
+			assistant,
+			streamingAssistantId,
+			sessionStreaming
+		);
 	}
 
-	function toggleThinking(segmentKey: string, pending?: boolean) {
+	function toggleThinking(
+		assistant: Extract<ChatItem, { type: 'assistant' }>,
+		segmentKey: string,
+		segmentIndex: number,
+		pending?: boolean
+	) {
 		const next = new Map(thinkingOverrides);
-		next.set(segmentKey, !thinkingExpanded(segmentKey, pending));
+		next.set(
+			segmentKey,
+			!thinkingExpanded(assistant, segmentKey, segmentIndex, pending)
+		);
 		thinkingOverrides = next;
 	}
 
@@ -354,7 +373,9 @@
 	let heroGlowColor = $derived(settingsStore.settings.appearance.heroComposer.glowColor);
 
 	function showAssistantActivitySpinner(item: Extract<ChatItem, { type: 'assistant' }>) {
-		return sessionStreaming && item.id === streamingAssistantId;
+		if (!sessionStreaming || item.id !== streamingAssistantId) return false;
+		if (!item.text?.trim() && hasVisibleThinkingBlock(item.id)) return false;
+		return true;
 	}
 
 	function assistantWaitSeconds(item: Extract<ChatItem, { type: 'assistant' }> | undefined) {
@@ -601,6 +622,7 @@
 	<div class="assistant-stack">
 		{#if grouped}
 			<AssistantActivityGroup
+				assistant={item}
 				assistantId={item.id}
 				{timeline}
 				parentExpanded={activityGroupExpanded(item.id, item)}
@@ -627,12 +649,13 @@
 						text={entry.text}
 						pending={entry.pending}
 						memories={entry.memories}
-						expanded={thinkingExpanded(segmentKey, entry.pending)}
+						expanded={thinkingExpanded(item, segmentKey, entry.segmentIndex, entry.pending)}
 						memoryExpanded={memoryInThinkingExpanded(segmentKey)}
 						showSpinner={thinkingActive(entry.pending) &&
 							!item.text.trim() &&
 							!(item.id === streamingAssistantId && sessionStreaming)}
-						onToggle={() => toggleThinking(segmentKey, entry.pending)}
+						onToggle={() =>
+							toggleThinking(item, segmentKey, entry.segmentIndex, entry.pending)}
 						onToggleMemory={() => toggleMemoryInThinking(segmentKey)}
 					/>
 				{:else if entry.kind === 'tool'}

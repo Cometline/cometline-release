@@ -41,8 +41,9 @@
 </script>
 
 <div
-	class="session-row-wrap"
+	class="session-row-wrap group relative flex items-stretch"
 	class:selected
+	class:streaming={streaming && !selected}
 	role="group"
 	oncontextmenu={handleContextMenu}
 >
@@ -66,19 +67,19 @@
 	<div class="session-actions">
 		{#if showPin}
 			<button
-			class="pin-session"
-			class:active={session.pinned}
-			disabled={pinning}
-			onclick={onPin}
-			aria-label={session.pinned ? `Unpin ${session.title || 'Untitled'}` : `Pin ${session.title || 'Untitled'}`}
-			title={session.pinned ? 'Unpin session' : 'Pin session'}
-		>
-			{#if session.pinned}
-				<Pin size={13} stroke-width={2} />
-			{:else}
-				<PinOff size={13} stroke-width={1.9} />
-			{/if}
-		</button>
+				class="pin-session"
+				class:active={session.pinned}
+				disabled={pinning}
+				onclick={onPin}
+				aria-label={session.pinned ? `Unpin ${session.title || 'Untitled'}` : `Pin ${session.title || 'Untitled'}`}
+				title={session.pinned ? 'Unpin session' : 'Pin session'}
+			>
+				{#if session.pinned}
+					<Pin size={13} stroke-width={2} />
+				{:else}
+					<PinOff size={13} stroke-width={1.9} />
+				{/if}
+			</button>
 		{/if}
 		<button
 			class="delete-session"
@@ -94,26 +95,42 @@
 
 <style>
 	.session-row-wrap {
-		position: relative;
-		display: flex;
-		align-items: stretch;
-		border-radius: 8px;
+		border-left: 2px solid var(--session-row-rail);
+		padding-left: 8px;
+		transition:
+			background-color var(--duration-fast) var(--ease-smooth),
+			border-color var(--duration-fast) var(--ease-smooth);
 	}
 
 	.session-row-wrap:hover {
-		background: rgba(0, 0, 0, 0.08);
+		border-left-color: var(--session-row-rail-hover);
+		background: var(--session-row-bg-hover);
+	}
+
+	.session-row-wrap.streaming:not(.selected) {
+		border-left-color: var(--session-row-rail-streaming);
+		background: var(--session-row-bg-streaming);
+	}
+
+	.session-row-wrap.streaming:not(.selected):hover {
+		border-left-color: var(--session-row-rail-hover);
+		background: var(--session-row-bg-hover);
 	}
 
 	.session-row-wrap.selected {
-		background: rgba(0, 0, 0, 0.06);
+		border-left-color: var(--session-row-rail-active);
+		background: var(--session-row-bg-active);
+	}
+
+	.session-row-wrap.selected:hover {
+		background: var(--session-row-bg-active-hover);
 	}
 
 	.session-row {
 		width: 100%;
 		text-align: left;
-		padding: 7px 10px;
+		padding: 6px 8px;
 		padding-right: 58px;
-		border-radius: 8px;
 		border: none;
 		background: transparent;
 		color: var(--text-main);
@@ -121,6 +138,10 @@
 		line-height: 1.35;
 		font-weight: 450;
 		cursor: pointer;
+	}
+
+	.session-row-wrap.selected .session-title {
+		font-weight: 500;
 	}
 
 	.session-title-row {
@@ -149,7 +170,7 @@
 	}
 
 	.session-streaming.active {
-		background: var(--accent, #2563eb);
+		background: var(--session-group-color, var(--accent));
 		opacity: 1;
 		animation: session-streaming-pulse 1.2s ease-in-out infinite;
 	}
@@ -175,12 +196,12 @@
 		font-size: 10px;
 		font-weight: 500;
 		line-height: 1.3;
-		color: var(--text-soft);
+		color: var(--text-muted);
 	}
 
 	.session-actions {
 		position: absolute;
-		right: 5px;
+		right: 4px;
 		top: 50%;
 		transform: translateY(-50%);
 		display: flex;

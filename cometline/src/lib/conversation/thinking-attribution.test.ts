@@ -3,6 +3,7 @@ import {
 	buildAssistantTimeline,
 	buildThinkingAttribution,
 	defaultActivityGroupExpanded,
+	defaultThinkingExpanded,
 	shouldGroupAssistantTimeline
 } from './thinking-attribution';
 import type { ChatItem } from '$lib/types';
@@ -257,10 +258,13 @@ describe('shouldGroupAssistantTimeline', () => {
 		}
 	};
 
-	it('does not group when assistant text is empty', () => {
+	it('does not group a single timeline entry before final text', () => {
 		expect(shouldGroupAssistantTimeline(assistantNoText, [reasoningEntry])).toBe(false);
+	});
+
+	it('groups once the timeline has multiple entries, even without final text', () => {
 		expect(shouldGroupAssistantTimeline(assistantNoText, [reasoningEntry, toolEntry])).toBe(
-			false
+			true
 		);
 	});
 
@@ -330,5 +334,33 @@ describe('defaultActivityGroupExpanded', () => {
 			reasoning: { segments: [{ text: 'thought', pending: false }] }
 		};
 		expect(defaultActivityGroupExpanded(refreshedAssistant, null, false)).toBe(false);
+	});
+});
+
+describe('defaultThinkingExpanded', () => {
+	const assistant: Extract<ChatItem, { type: 'assistant' }> = {
+		id: 'a1',
+		type: 'assistant',
+		text: ''
+	};
+
+	it('auto-expands the first segment while the response is active', () => {
+		expect(defaultThinkingExpanded(0, true, assistant, 'a1', true)).toBe(true);
+		expect(defaultThinkingExpanded(0, false, assistant, 'a1', true)).toBe(true);
+		expect(defaultThinkingExpanded(1, true, assistant, 'a1', true)).toBe(false);
+	});
+
+	it('keeps the first segment open while the same turn is still active', () => {
+		expect(defaultThinkingExpanded(0, false, assistant, 'a1', true)).toBe(true);
+	});
+
+	it('folds all segments once the final response is idle', () => {
+		const done: Extract<ChatItem, { type: 'assistant' }> = {
+			id: 'a1',
+			type: 'assistant',
+			text: 'Final answer.'
+		};
+		expect(defaultThinkingExpanded(0, false, done, null, false)).toBe(false);
+		expect(defaultThinkingExpanded(0, true, done, null, false)).toBe(false);
 	});
 });

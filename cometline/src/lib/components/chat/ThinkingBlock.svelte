@@ -65,7 +65,7 @@
 			<ChevronDown size={13} class={expanded ? 'expanded' : ''} />
 		</button>
 	{/if}
-	{#if contentOnly || expanded}
+	{#if expanded}
 		<div class="fold-body thinking-body" transition:slide={FOLD_IN}>
 			{#if memories?.length}
 				<div class="thinking-memories">

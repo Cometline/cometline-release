@@ -149,5 +149,6 @@
 		flex-direction: column;
 		gap: 2px;
 		padding-left: 6px;
+		--session-group-color: var(--pinned-group-color);
 	}
 </style>

@@ -58,7 +58,7 @@
 			<ChevronDown size={13} class={expanded ? 'expanded' : ''} />
 		</button>
 	{/if}
-	{#if contentOnly || expanded}
+	{#if expanded}
 		<div class="fold-body tool-output-body" transition:slide={FOLD_IN}>
 			{#if formatToolInput(item.input)}
 				<pre class="tool-input-text">{formatToolInput(item.input)}</pre>

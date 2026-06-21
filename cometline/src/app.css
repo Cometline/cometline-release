@@ -101,6 +101,18 @@
 	--discord-group-color: #5865f2;
 	--discord-group-bg: color-mix(in srgb, var(--discord-group-color) 10%, transparent);
 	--discord-group-bg-hover: color-mix(in srgb, var(--discord-group-color) 16%, transparent);
+	--workspace-group-color: #9a9a9f;
+
+	/* Sidebar session rows — tints derive from --session-group-color (set by parent group) */
+	--session-group-color: var(--workspace-group-color);
+	--session-row-rail: color-mix(in srgb, var(--session-group-color) 32%, var(--border-soft));
+	--session-row-rail-hover: color-mix(in srgb, var(--session-group-color) 58%, var(--border-soft));
+	--session-row-rail-active: var(--session-group-color);
+	--session-row-rail-streaming: color-mix(in srgb, var(--session-group-color) 72%, var(--border-soft));
+	--session-row-bg-hover: color-mix(in srgb, var(--session-group-color) 11%, transparent);
+	--session-row-bg-streaming: color-mix(in srgb, var(--session-group-color) 9%, transparent);
+	--session-row-bg-active: color-mix(in srgb, var(--session-group-color) 26%, transparent);
+	--session-row-bg-active-hover: color-mix(in srgb, var(--session-group-color) 34%, transparent);
 }
 
 @theme inline {
