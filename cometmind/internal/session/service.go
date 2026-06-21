@@ -344,11 +344,16 @@ func (s *Service) NewSession(ctx context.Context, workspaceID string, modelID, p
 
 // GetSession loads a session by id.
 func (s *Service) GetSession(ctx context.Context, sessionID string) (Session, error) {
-	sess, err := s.q.GetSession(ctx, sessionID)
+	row, err := s.q.GetSession(ctx, sessionID)
 	if err != nil {
 		return Session{}, mapNotFound(err, ErrSessionNotFound)
 	}
-	return sessionFromDB(sess), nil
+	return attachGatewayMetadata(
+		sessionFromDB(row.Session),
+		row.GatewayPlatform,
+		row.GatewayChannelID,
+		row.GatewayThreadID,
+	), nil
 }
 
 // ListSessions lists sessions for a workspace ordered by recent activity.
@@ -369,15 +374,12 @@ func (s *Service) ListAllSessions(ctx context.Context) ([]Session, error) {
 	}
 	out := make([]Session, len(rows))
 	for i, row := range rows {
-		sess := sessionFromDB(row.Session)
-		if row.GatewayPlatform != "" {
-			sess.Gateway = &SessionGateway{
-				Platform:  row.GatewayPlatform,
-				ChannelID: row.GatewayChannelID,
-				ThreadID:  row.GatewayThreadID,
-			}
-		}
-		out[i] = sess
+		out[i] = attachGatewayMetadata(
+			sessionFromDB(row.Session),
+			row.GatewayPlatform,
+			row.GatewayChannelID,
+			row.GatewayThreadID,
+		)
 	}
 	return out, nil
 }

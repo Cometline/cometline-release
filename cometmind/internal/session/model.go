@@ -99,6 +99,17 @@ func sessionFromDB(s db.Session) Session {
 	}
 }
 
+func attachGatewayMetadata(sess Session, platform, channelID, threadID string) Session {
+	if platform != "" {
+		sess.Gateway = &SessionGateway{
+			Platform:  platform,
+			ChannelID: channelID,
+			ThreadID:  threadID,
+		}
+	}
+	return sess
+}
+
 func messageFromDB(m db.Message) Message {
 	return Message{
 		ID:               m.ID,

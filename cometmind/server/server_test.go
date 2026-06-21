@@ -1627,6 +1627,53 @@ func TestListAllSessionsIncludesGatewayMetadata(t *testing.T) {
 	}
 }
 
+func TestGetSessionIncludesGatewayMetadata(t *testing.T) {
+	t.Parallel()
+
+	engine, svc, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
+		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
+			ch <- event.Done()
+			return nil
+		}), nil
+	})
+	defer cleanup()
+
+	ctx := context.Background()
+	ws, err := svc.EnsureWorkspace(ctx, t.TempDir())
+	if err != nil {
+		t.Fatalf("EnsureWorkspace() error = %v", err)
+	}
+	sess, err := svc.NewSession(ctx, ws.ID, "m", "p")
+	if err != nil {
+		t.Fatalf("NewSession() error = %v", err)
+	}
+	if _, err := svc.UpsertGatewaySession(ctx, "discord", "user-1", "channel-9", "thread-3", sess.ID, ws.ID); err != nil {
+		t.Fatalf("UpsertGatewaySession() error = %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+sess.ID, nil)
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var got sessionResource
+	decodeJSON(t, rec.Body.Bytes(), &got)
+	if got.Gateway == nil {
+		t.Fatal("expected gateway metadata")
+	}
+	if got.Gateway.Platform != "discord" {
+		t.Fatalf("gateway.platform = %q want discord", got.Gateway.Platform)
+	}
+	if got.Gateway.ChannelID != "channel-9" {
+		t.Fatalf("gateway.channel_id = %q want channel-9", got.Gateway.ChannelID)
+	}
+	if got.Gateway.ThreadID != "thread-3" {
+		t.Fatalf("gateway.thread_id = %q want thread-3", got.Gateway.ThreadID)
+	}
+}
+
 func newTestEngine(t *testing.T, newRunner RunnerFactory) (*gin.Engine, *session.Service, func()) {
 	t.Helper()
 

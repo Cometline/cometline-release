@@ -60,9 +60,15 @@ ORDER BY updated_at DESC
 LIMIT 1;
 
 -- name: GetSession :one
-SELECT *
-FROM sessions
-WHERE id = ?
+SELECT
+    sqlc.embed(s),
+    COALESCE(g.platform, '') AS gateway_platform,
+    COALESCE(g.platform_channel_id, '') AS gateway_channel_id,
+    COALESCE(g.thread_id, '') AS gateway_thread_id
+FROM
+    sessions s
+    LEFT JOIN gateway_sessions g ON g.cometmind_session_id = s.id
+WHERE s.id = ?
 LIMIT 1;
 
 -- name: DeleteSession :exec

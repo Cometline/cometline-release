@@ -95,6 +95,8 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 	}
 
 	steps := 0
+	outputTruncationContinuations := 0
+	truncationContinue := false
 	// Injected memories belong to the first assistant message of the turn. They
 	// are captured when retrieved (step 0) and attached to the first
 	// AppendAssistantStep call so they persist and rebuild on reload.
@@ -136,7 +138,8 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 		}
 		logging.L().Info("agent.step.start", "session", turn.ID, "step", steps+1, "model", turn.ModelID, "messages", len(msgs), "max_tokens", r.MaxTokens)
 
-		system := r.systemPromptWithSummary(sess.ContextSummary)
+		system := r.buildSystemPrompt(sess.ContextSummary, truncationContinue)
+		truncationContinue = false
 		if r.Memory != nil && r.Memory.Enabled() && steps == 0 {
 			decision := memory.DecideRetrieval(msgs)
 			logging.L().Info("memory.retrieve.policy", "session", turn.ID, "retrieve", decision.Retrieve, "reason", decision.Reason, "score", decision.Score, "text_bytes", decision.TextBytes)
@@ -260,11 +263,24 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 		// Memories are attached to the first persisted assistant message only.
 		pendingMemories = nil
 
-		switch result.FinishReason {
-		case cometsdk.FinishStop, cometsdk.FinishMaxTokens:
+		if result.FinishReason == cometsdk.FinishStop {
 			return completeTurn()
 		}
 		if len(result.ToolCalls) == 0 {
+			if result.FinishReason == cometsdk.FinishMaxTokens &&
+				outputTruncationContinuations < maxOutputTruncationContinuations {
+				outputTruncationContinuations++
+				truncationContinue = true
+				logging.L().Info(
+					"agent.output_truncated.continue",
+					"session", turn.ID,
+					"step", steps+1,
+					"continuation", outputTruncationContinuations,
+					"max_tokens", r.MaxTokens,
+				)
+				steps++
+				continue
+			}
 			return completeTurn()
 		}
 
@@ -358,12 +374,22 @@ func (r *Runner) systemPrompt() string {
 	return base + r.SkillIndex
 }
 
-func (r *Runner) systemPromptWithSummary(contextSummary string) string {
+func (r *Runner) buildSystemPrompt(contextSummary string, truncationContinue bool) string {
 	base := r.systemPrompt()
+	var parts []string
 	if block := FormatSummaryPromptBlock(contextSummary); block != "" {
-		return base + "\n\n" + block
+		parts = append(parts, block)
 	}
-	return base
+	if block := FormatOutputBudgetPromptBlock(r.MaxTokens); block != "" {
+		parts = append(parts, block)
+	}
+	if truncationContinue {
+		parts = append(parts, FormatOutputTruncationContinueBlock())
+	}
+	if len(parts) == 0 {
+		return base
+	}
+	return base + "\n\n" + strings.Join(parts, "\n\n")
 }
 
 func int64PtrFromIntPtr(v *int) *int64 {

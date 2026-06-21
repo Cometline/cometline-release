@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -60,6 +61,29 @@ func (p *fakeProvider) ID() string { return "fake" }
 func (p *fakeProvider) Stream(ctx context.Context, req *cometsdk.Request) (<-chan cometsdk.Event, error) {
 	ch := make(chan cometsdk.Event, len(p.events))
 	for _, ev := range p.events {
+		ch <- ev
+	}
+	close(ch)
+	return ch, nil
+}
+
+// sequentialFakeProvider returns a different event sequence on each Stream call.
+type sequentialFakeProvider struct {
+	sequences [][]cometsdk.Event
+	calls     int
+}
+
+func (p *sequentialFakeProvider) ID() string { return "fake-seq" }
+
+func (p *sequentialFakeProvider) Stream(ctx context.Context, req *cometsdk.Request) (<-chan cometsdk.Event, error) {
+	idx := p.calls
+	p.calls++
+	if idx >= len(p.sequences) {
+		idx = len(p.sequences) - 1
+	}
+	events := p.sequences[idx]
+	ch := make(chan cometsdk.Event, len(events))
+	for _, ev := range events {
 		ch <- ev
 	}
 	close(ch)
@@ -155,6 +179,101 @@ func TestRunner_TextOnlyTurnPersistsAndStops(t *testing.T) {
 	}
 	if !sawText {
 		t.Errorf("expected a text_delta 'hello' event, got %+v", events)
+	}
+}
+
+func TestRunner_MaxTokensWithoutToolsContinuesThenStops(t *testing.T) {
+	store := &fakeStore{}
+	provider := &sequentialFakeProvider{sequences: [][]cometsdk.Event{
+		{
+			cometsdk.TextDeltaEvent{Text: "part one "},
+			cometsdk.StepFinishEvent{FinishReason: cometsdk.FinishMaxTokens, Usage: cometsdk.TokenUsage{InputTokens: 3, OutputTokens: 4096}},
+			cometsdk.DoneEvent{},
+		},
+		{
+			cometsdk.TextDeltaEvent{Text: "part two"},
+			cometsdk.StepFinishEvent{FinishReason: cometsdk.FinishStop, Usage: cometsdk.TokenUsage{InputTokens: 4, OutputTokens: 2}},
+			cometsdk.DoneEvent{},
+		},
+	}}
+
+	r := &Runner{
+		Provider:  provider,
+		Sessions:  store,
+		Registry:  tools.NewRegistry(t.TempDir()),
+		MaxTokens: 4096,
+	}
+
+	ch := make(chan event.Event, 32)
+	var runErr error
+	go func() {
+		runErr = r.Run(context.Background(), session.AgentTurn{ID: "s1", ModelID: "m"}, ch)
+	}()
+	events := drain(ch)
+
+	if runErr != nil {
+		t.Fatalf("Run returned error: %v", runErr)
+	}
+	if provider.calls != 2 {
+		t.Fatalf("Stream called %d times, want 2", provider.calls)
+	}
+	if store.appendCalls != 2 {
+		t.Fatalf("AppendAssistantStep called %d times, want 2", store.appendCalls)
+	}
+
+	var text strings.Builder
+	for _, ev := range events {
+		if ev.Kind == event.KindTextDelta {
+			text.WriteString(ev.Delta)
+		}
+	}
+	if got := text.String(); got != "part one part two" {
+		t.Fatalf("text deltas = %q, want %q", got, "part one part two")
+	}
+}
+
+func TestRunner_MaxTokensWithoutToolsStopsAfterContinuationCap(t *testing.T) {
+	store := &fakeStore{}
+	provider := &sequentialFakeProvider{sequences: [][]cometsdk.Event{
+		{
+			cometsdk.TextDeltaEvent{Text: "a"},
+			cometsdk.StepFinishEvent{FinishReason: cometsdk.FinishMaxTokens},
+			cometsdk.DoneEvent{},
+		},
+		{
+			cometsdk.TextDeltaEvent{Text: "b"},
+			cometsdk.StepFinishEvent{FinishReason: cometsdk.FinishMaxTokens},
+			cometsdk.DoneEvent{},
+		},
+		{
+			cometsdk.TextDeltaEvent{Text: "c"},
+			cometsdk.StepFinishEvent{FinishReason: cometsdk.FinishMaxTokens},
+			cometsdk.DoneEvent{},
+		},
+	}}
+
+	r := &Runner{
+		Provider: provider,
+		Sessions: store,
+		Registry: tools.NewRegistry(t.TempDir()),
+	}
+
+	ch := make(chan event.Event, 32)
+	var runErr error
+	go func() {
+		runErr = r.Run(context.Background(), session.AgentTurn{ID: "s1", ModelID: "m"}, ch)
+	}()
+	_ = drain(ch)
+
+	if runErr != nil {
+		t.Fatalf("Run returned error: %v", runErr)
+	}
+	// Initial truncated step + 2 continuation attempts, then stop.
+	if provider.calls != 3 {
+		t.Fatalf("Stream called %d times, want 3", provider.calls)
+	}
+	if store.appendCalls != 3 {
+		t.Fatalf("AppendAssistantStep called %d times, want 3", store.appendCalls)
 	}
 }
 
