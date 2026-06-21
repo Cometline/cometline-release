@@ -14,7 +14,6 @@
 	import MessageQueuePanel from '$lib/components/composer/MessageQueuePanel.svelte';
 	import ModelPicker from '$lib/components/composer/ModelPicker.svelte';
 	import SlashCommandMenu from '$lib/components/composer/SlashCommandMenu.svelte';
-	import WorkspaceDeleteConfirmDialog from '$lib/components/composer/WorkspaceDeleteConfirmDialog.svelte';
 	import { listSkills, listWorkspaces, forkSession, clearSession, deleteWorkspace } from '$lib/client/cometmind';
 	import {
 		filterFileIndex,
@@ -93,7 +92,6 @@
 	let workspaceSessionCounts = $state<Map<string, number>>(new Map());
 	let workspacePathsLoading = $state(false);
 	let workspacePathsLoaded = $state(false);
-	let pendingWorkspaceDelete = $state<string | null>(null);
 	let workspaceDeleting = $state(false);
 	let dismissedSkillCommand = $state('');
 	let mentionMenu = $state<HTMLDivElement | null>(null);
@@ -409,10 +407,6 @@
 		if (!workspaceMenuOpen) return false;
 		if (e.key === 'Escape') {
 			e.preventDefault();
-			if (pendingWorkspaceDelete) {
-				cancelWorkspaceDelete();
-				return true;
-			}
 			input?.clear();
 			value = '';
 			return true;
@@ -577,26 +571,16 @@
 		}
 	}
 
-	function requestWorkspaceDelete(path: string, event: Event) {
+	async function removeWorkspaceFromList(path: string, event: Event) {
 		event.preventDefault();
 		event.stopPropagation();
-		pendingWorkspaceDelete = path;
-	}
-
-	function cancelWorkspaceDelete() {
-		pendingWorkspaceDelete = null;
-	}
-
-	async function confirmWorkspaceDelete() {
-		const path = pendingWorkspaceDelete;
-		if (!path || workspaceDeleting) return;
+		if (workspaceDeleting) return;
 		workspaceDeleting = true;
 		try {
 			await window.electronAPI?.removeRecentWorkspacePath?.(path);
 			await deleteWorkspace(path);
 			workspacePathsLoaded = false;
 			await ensureWorkspacePathsLoaded();
-			pendingWorkspaceDelete = null;
 			setDropMessage(`Removed ${path} from workspace list`);
 		} catch (err) {
 			setDropMessage(err instanceof Error ? err.message : 'Failed to remove workspace');
@@ -1008,7 +992,10 @@
 									type="button"
 									class="workspace-delete-btn"
 									aria-label={`Remove ${option.label} from workspace list`}
-									onclick={(event) => requestWorkspaceDelete(option.path, event)}
+									disabled={workspaceDeleting}
+									onclick={(event) => {
+										void removeWorkspaceFromList(option.path, event);
+									}}
 								>
 									<Trash2 size={13} stroke-width={2} />
 								</button>
@@ -1226,16 +1213,6 @@
 		</div>
 	</div>
 
-	{#if pendingWorkspaceDelete}
-		<WorkspaceDeleteConfirmDialog
-			path={pendingWorkspaceDelete}
-			deleting={workspaceDeleting}
-			onCancel={cancelWorkspaceDelete}
-			onConfirm={() => {
-				void confirmWorkspaceDelete();
-			}}
-		/>
-	{/if}
 </div>
 
 <style>

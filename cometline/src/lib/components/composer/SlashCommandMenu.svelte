@@ -192,6 +192,11 @@
 		color: #b42318;
 	}
 
+	.skill-command-menu :global(.workspace-delete-btn:disabled) {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
 	.skill-command-menu :global(.skill-command-loading .mention-spinner) {
 		flex-shrink: 0;
 		color: var(--text-soft);
