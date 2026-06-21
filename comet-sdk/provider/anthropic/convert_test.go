@@ -77,6 +77,7 @@ func TestConvertRequest_ToolCall(t *testing.T) {
 	require.Equal(t, "tool_use", block.Type)
 	require.Equal(t, "toolu_01", block.ID)
 	require.Equal(t, "read_file", block.Name)
+	require.JSONEq(t, `{"path":"main.go"}`, string(block.Input))
 }
 
 func TestConvertRequest_EmptyContentFiltered(t *testing.T) {

@@ -26,7 +26,7 @@ type codexInput struct {
 	Content []codexContentPart `json:"content,omitempty"`
 	CallID  string             `json:"call_id,omitempty"`
 	Name    string             `json:"name,omitempty"`
-	Args    json.RawMessage    `json:"arguments,omitempty"`
+	Args    string             `json:"arguments,omitempty"`
 	Output  string             `json:"output,omitempty"`
 }
 
@@ -108,7 +108,7 @@ func convertMessage(m cometsdk.Message) ([]codexInput, error) {
 				if len(strings.TrimSpace(string(args))) == 0 {
 					args = json.RawMessage(`{}`)
 				}
-				out = append(out, codexInput{Type: "function_call", CallID: v.ID, Name: v.Name, Args: args})
+				out = append(out, codexInput{Type: "function_call", CallID: v.ID, Name: v.Name, Args: string(args)})
 			default:
 				return nil, fmt.Errorf("codex: unsupported block type %T in assistant message", b)
 			}

@@ -159,6 +159,11 @@ func TestConvertRequest_AssistantToolCallsOnlyUsesNullContent(t *testing.T) {
 	toolCalls, ok := msg["tool_calls"].([]any)
 	require.True(t, ok)
 	require.Len(t, toolCalls, 1)
+	toolCall, ok := toolCalls[0].(map[string]any)
+	require.True(t, ok)
+	function, ok := toolCall["function"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, `{"path":"."}`, function["arguments"])
 }
 
 func TestConvertRequest_StreamOptionsIncludeUsage(t *testing.T) {

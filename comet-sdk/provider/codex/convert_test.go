@@ -54,6 +54,7 @@ func TestConvertRequest_ResponsesShape(t *testing.T) {
 	require.Equal(t, "user", out.Input[0].Role)
 	require.Equal(t, "input_image", out.Input[0].Content[1].Type)
 	require.Equal(t, "function_call", out.Input[2].Type)
+	require.Equal(t, `{"path":"main.go"}`, out.Input[2].Args)
 	require.Equal(t, "function_call_output", out.Input[3].Type)
 	require.Len(t, out.Tools, 1)
 	require.False(t, out.Tools[0].Strict)
