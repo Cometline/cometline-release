@@ -107,6 +107,7 @@ func New(deps Deps) (*gin.Engine, error) {
 	// Workspaces
 	api.GET("/workspaces", app.handleListWorkspaces)
 	api.POST("/workspaces", app.handleCreateWorkspace)
+	api.DELETE("/workspaces", app.handleDeleteWorkspace)
 	api.POST("/workspaces/prune", app.handlePruneWorkspaces)
 	api.GET("/workspaces/files", app.handleListWorkspaceFiles)
 	api.GET("/workspaces/files/content", app.handleReadWorkspaceFileContent)
@@ -190,8 +191,9 @@ type createWorkspaceRequest struct {
 }
 
 type workspaceResource struct {
-	ID   string `json:"id"`
-	Path string `json:"path"`
+	ID           string `json:"id"`
+	Path         string `json:"path"`
+	SessionCount int64  `json:"session_count"`
 }
 
 type createSessionRequest struct {
@@ -480,7 +482,7 @@ func (a *App) handleCreateWorkspace(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, workspaceResource{ID: ws.ID, Path: ws.Path})
+	c.JSON(http.StatusCreated, workspaceResource{ID: ws.ID, Path: ws.Path, SessionCount: 0})
 }
 
 func (a *App) handleListWorkspaces(c *gin.Context) {
@@ -491,9 +493,34 @@ func (a *App) handleListWorkspaces(c *gin.Context) {
 	}
 	items := make([]workspaceResource, 0, len(list))
 	for _, ws := range list {
-		items = append(items, workspaceResource{ID: ws.ID, Path: ws.Path})
+		count, err := a.sessions.CountSessionsForWorkspace(c.Request.Context(), ws.ID)
+		if err != nil {
+			writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
+			return
+		}
+		items = append(items, workspaceResource{ID: ws.ID, Path: ws.Path, SessionCount: count})
 	}
 	c.JSON(http.StatusOK, listWorkspacesResponse{Workspaces: items})
+}
+
+func (a *App) handleDeleteWorkspace(c *gin.Context) {
+	clean, ok := cleanWorkspacePath(c, c.Query("workspace_path"))
+	if !ok {
+		return
+	}
+	if err := a.sessions.DeleteWorkspaceByPath(c.Request.Context(), clean); err != nil {
+		if errors.Is(err, session.ErrWorkspaceHasSessions) {
+			writeError(c, http.StatusConflict, "workspace_has_sessions", "workspace still has sessions")
+			return
+		}
+		if strings.TrimSpace(err.Error()) == "workspace path is required" {
+			writeError(c, http.StatusBadRequest, "bad_request", err.Error())
+			return
+		}
+		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 func (a *App) handlePruneWorkspaces(c *gin.Context) {

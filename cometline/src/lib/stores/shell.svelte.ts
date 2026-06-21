@@ -20,6 +20,9 @@ function createShellStore() {
 	let settingsOpen = $state(false);
 	let introOpen = $state(false);
 	let composerPhase = $state<'centered' | 'docked'>('centered');
+	/** Persisted default workspace (Settings); survives restarts. */
+	let defaultWorkspacePath = $state('/');
+	/** Active workspace for composer, skills, and @mention context. */
 	let workspacePath = $state('/');
 	/** Sidebar group ordering; updated on explicit commit (click, send, workspace picker). */
 	let sidebarOrderWorkspacePath = $state('/');
@@ -69,6 +72,9 @@ function createShellStore() {
 		get composerPhase() {
 			return composerPhase;
 		},
+		get defaultWorkspacePath() {
+			return defaultWorkspacePath;
+		},
 		get workspacePath() {
 			return workspacePath;
 		},
@@ -113,6 +119,26 @@ function createShellStore() {
 		get addressBarFocusRequestId() {
 			return addressBarFocusRequestId;
 		},
+		/** Update persisted default; sync active when no session is open (home). */
+		setDefaultWorkspacePath(path: string) {
+			defaultWorkspacePath = path;
+			if (!getActiveSessionId()) {
+				workspacePath = path;
+				sidebarOrderWorkspacePath = path;
+				sidebarOrderDiscordActive = false;
+			}
+		},
+		/** Boot: load default from Electron and align active workspace. */
+		initializeDefaultWorkspace(path: string) {
+			defaultWorkspacePath = path;
+			workspacePath = path;
+			sidebarOrderWorkspacePath = path;
+			sidebarOrderDiscordActive = false;
+		},
+		setActiveWorkspacePath(path: string) {
+			workspacePath = path;
+		},
+		/** @deprecated Use setActiveWorkspacePath for active-only updates. */
 		setWorkspacePath(path: string) {
 			workspacePath = path;
 		},
@@ -122,10 +148,15 @@ function createShellStore() {
 		setSidebarOrderDiscordActive(active: boolean) {
 			sidebarOrderDiscordActive = active;
 		},
-		/** Keep composer and sidebar ordering in sync (explicit user commit). */
-		commitWorkspace(path: string) {
+		/** Active workspace + sidebar order; does not touch default or Electron. */
+		commitActiveWorkspace(path: string) {
 			workspacePath = path;
 			sidebarOrderWorkspacePath = path;
+			sidebarOrderDiscordActive = false;
+		},
+		resetActiveToDefault() {
+			workspacePath = defaultWorkspacePath;
+			sidebarOrderWorkspacePath = defaultWorkspacePath;
 			sidebarOrderDiscordActive = false;
 		},
 		setBootMessage(message: string) {

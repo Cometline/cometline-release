@@ -140,6 +140,58 @@
 		color: var(--text-soft);
 	}
 
+	.skill-command-menu :global(.workspace-option-row) {
+		display: flex;
+		align-items: stretch;
+		gap: 4px;
+		border-radius: 10px;
+	}
+
+	.skill-command-menu :global(.workspace-option-row.highlighted),
+	.skill-command-menu :global(.workspace-option-row:hover),
+	.skill-command-menu :global(.workspace-option-row:focus-within) {
+		background: rgba(15, 23, 42, 0.06);
+	}
+
+	.skill-command-menu :global(.workspace-option-row .skill-command-option) {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.skill-command-menu :global(.workspace-option-row .skill-command-option:hover),
+	.skill-command-menu :global(.workspace-option-row .skill-command-option.highlighted) {
+		background: transparent;
+	}
+
+	.skill-command-menu :global(.workspace-delete-btn) {
+		flex: 0 0 auto;
+		align-self: center;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		margin-right: 4px;
+		border: none;
+		border-radius: 8px;
+		background: transparent;
+		color: var(--text-soft);
+		cursor: pointer;
+		opacity: 0;
+		transition: opacity 120ms ease;
+	}
+
+	.skill-command-menu :global(.workspace-option-row:hover .workspace-delete-btn),
+	.skill-command-menu :global(.workspace-option-row:focus-within .workspace-delete-btn),
+	.skill-command-menu :global(.workspace-delete-btn:focus-visible) {
+		opacity: 1;
+	}
+
+	.skill-command-menu :global(.workspace-delete-btn:hover) {
+		background: rgba(180, 35, 24, 0.1);
+		color: #b42318;
+	}
+
 	.skill-command-menu :global(.skill-command-loading .mention-spinner) {
 		flex-shrink: 0;
 		color: var(--text-soft);

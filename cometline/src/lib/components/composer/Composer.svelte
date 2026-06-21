@@ -2,7 +2,7 @@
 	import { onDestroy, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { fade } from 'svelte/transition';
-	import { Check, FileText, Folder, Loader, Search, Send, Square, X } from '@lucide/svelte';
+	import { Check, FileText, Folder, Loader, Search, Send, Square, Trash2, X } from '@lucide/svelte';
 	import type { QueuedMessage } from '$lib/actions/chat-turn-queue';
 	import { modelStore, type ModelOption } from '$lib/stores/model.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
@@ -14,7 +14,8 @@
 	import MessageQueuePanel from '$lib/components/composer/MessageQueuePanel.svelte';
 	import ModelPicker from '$lib/components/composer/ModelPicker.svelte';
 	import SlashCommandMenu from '$lib/components/composer/SlashCommandMenu.svelte';
-	import { listSkills, listWorkspaces, forkSession, clearSession } from '$lib/client/cometmind';
+	import WorkspaceDeleteConfirmDialog from '$lib/components/composer/WorkspaceDeleteConfirmDialog.svelte';
+	import { listSkills, listWorkspaces, forkSession, clearSession, deleteWorkspace } from '$lib/client/cometmind';
 	import {
 		filterFileIndex,
 		getFileIndex,
@@ -89,8 +90,11 @@
 	let skillHighlight = $state(0);
 	let workspaceHighlight = $state(0);
 	let workspacePaths = $state<string[]>([]);
+	let workspaceSessionCounts = $state<Map<string, number>>(new Map());
 	let workspacePathsLoading = $state(false);
 	let workspacePathsLoaded = $state(false);
+	let pendingWorkspaceDelete = $state<string | null>(null);
+	let workspaceDeleting = $state(false);
 	let dismissedSkillCommand = $state('');
 	let mentionMenu = $state<HTMLDivElement | null>(null);
 	let mentionQuery = $state('');
@@ -134,7 +138,7 @@
 	let workspaceSearchQuery = $derived(changeCommand?.query ?? '');
 	let filteredWorkspaceOptions = $derived.by(() => {
 		if (!changeCommand) return [];
-		return filterWorkspaceOptions(workspaceSearchQuery, workspacePaths);
+		return filterWorkspaceOptions(workspaceSearchQuery, workspacePaths, workspaceSessionCounts);
 	});
 	let modelCommand = $derived(parseModelCommand(value));
 	let modelCommandMenuOpen = $derived(Boolean(modelCommand));
@@ -374,6 +378,11 @@
 		try {
 			const recent = (await window.electronAPI?.listRecentWorkspaces?.()) ?? [];
 			const registered = await listWorkspaces().catch(() => []);
+			const counts = new Map<string, number>();
+			for (const ws of registered) {
+				counts.set(ws.path, ws.session_count);
+			}
+			workspaceSessionCounts = counts;
 			const seen = new Set<string>();
 			const merged: string[] = [];
 			const add = (path: string) => {
@@ -400,6 +409,10 @@
 		if (!workspaceMenuOpen) return false;
 		if (e.key === 'Escape') {
 			e.preventDefault();
+			if (pendingWorkspaceDelete) {
+				cancelWorkspaceDelete();
+				return true;
+			}
 			input?.clear();
 			value = '';
 			return true;
@@ -544,8 +557,7 @@
 				sessionStore.appendSession(forked);
 				forkedId = forked.id;
 			}
-			await window.electronAPI?.setWorkspacePath?.(clean);
-			shellStore.commitWorkspace(clean);
+			shellStore.commitActiveWorkspace(clean);
 			skillsLoaded = false;
 			skills = [];
 			workspacePathsLoaded = false;
@@ -562,6 +574,34 @@
 			void focusInput();
 		} catch (err) {
 			setDropMessage(err instanceof Error ? err.message : 'Failed to fork session');
+		}
+	}
+
+	function requestWorkspaceDelete(path: string, event: Event) {
+		event.preventDefault();
+		event.stopPropagation();
+		pendingWorkspaceDelete = path;
+	}
+
+	function cancelWorkspaceDelete() {
+		pendingWorkspaceDelete = null;
+	}
+
+	async function confirmWorkspaceDelete() {
+		const path = pendingWorkspaceDelete;
+		if (!path || workspaceDeleting) return;
+		workspaceDeleting = true;
+		try {
+			await window.electronAPI?.removeRecentWorkspacePath?.(path);
+			await deleteWorkspace(path);
+			workspacePathsLoaded = false;
+			await ensureWorkspacePathsLoaded();
+			pendingWorkspaceDelete = null;
+			setDropMessage(`Removed ${path} from workspace list`);
+		} catch (err) {
+			setDropMessage(err instanceof Error ? err.message : 'Failed to remove workspace');
+		} finally {
+			workspaceDeleting = false;
 		}
 	}
 
@@ -940,23 +980,59 @@
 				<p class="skill-command-empty">No matching workspaces.</p>
 			{:else}
 				{#each filteredWorkspaceOptions as option, index (`${option.kind}:${option.label}:${index}`)}
-					<button
-						type="button"
-						class="skill-command-option"
-						class:highlighted={index === workspaceHighlight}
-						data-workspace-index={index}
-						role="option"
-						aria-selected={index === workspaceHighlight}
-						onpointerenter={() => {
-							workspaceHighlight = index;
-						}}
-						onclick={() => {
-							void selectWorkspaceOption(option);
-						}}
-					>
-						<span class="skill-command-name">{option.label}</span>
-						<span class="skill-command-description">{option.description}</span>
-					</button>
+					{#if option.kind === 'workspace'}
+						<div
+							class="workspace-option-row"
+							class:highlighted={index === workspaceHighlight}
+							data-workspace-index={index}
+							role="presentation"
+							onpointerenter={() => {
+								workspaceHighlight = index;
+							}}
+						>
+							<button
+								type="button"
+								class="skill-command-option"
+								class:highlighted={index === workspaceHighlight}
+								role="option"
+								aria-selected={index === workspaceHighlight}
+								onclick={() => {
+									void selectWorkspaceOption(option);
+								}}
+							>
+								<span class="skill-command-name">{option.label}</span>
+								<span class="skill-command-description">{option.description}</span>
+							</button>
+							{#if option.deletable}
+								<button
+									type="button"
+									class="workspace-delete-btn"
+									aria-label={`Remove ${option.label} from workspace list`}
+									onclick={(event) => requestWorkspaceDelete(option.path, event)}
+								>
+									<Trash2 size={13} stroke-width={2} />
+								</button>
+							{/if}
+						</div>
+					{:else}
+						<button
+							type="button"
+							class="skill-command-option"
+							class:highlighted={index === workspaceHighlight}
+							data-workspace-index={index}
+							role="option"
+							aria-selected={index === workspaceHighlight}
+							onpointerenter={() => {
+								workspaceHighlight = index;
+							}}
+							onclick={() => {
+								void selectWorkspaceOption(option);
+							}}
+						>
+							<span class="skill-command-name">{option.label}</span>
+							<span class="skill-command-description">{option.description}</span>
+						</button>
+					{/if}
 				{/each}
 			{/if}
 		</SlashCommandMenu>
@@ -1149,6 +1225,17 @@
 			{/if}
 		</div>
 	</div>
+
+	{#if pendingWorkspaceDelete}
+		<WorkspaceDeleteConfirmDialog
+			path={pendingWorkspaceDelete}
+			deleting={workspaceDeleting}
+			onCancel={cancelWorkspaceDelete}
+			onConfirm={() => {
+				void confirmWorkspaceDelete();
+			}}
+		/>
+	{/if}
 </div>
 
 <style>

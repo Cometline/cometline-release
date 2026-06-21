@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1255,11 +1256,89 @@ func TestListWorkspaces(t *testing.T) {
 	for _, ws := range got.Workspaces {
 		if ws.Path == filepath.Clean(workspacePath) {
 			found = true
+			if ws.SessionCount != 0 {
+				t.Fatalf("session_count = %d, want 0", ws.SessionCount)
+			}
 			break
 		}
 	}
 	if !found {
 		t.Fatalf("workspaces = %+v, want path %q", got.Workspaces, workspacePath)
+	}
+}
+
+func TestDeleteWorkspace(t *testing.T) {
+	t.Parallel()
+
+	engine, _, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
+		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
+			ch <- event.Done()
+			return nil
+		}), nil
+	})
+	defer cleanup()
+
+	workspacePath := t.TempDir()
+	createRec := httptest.NewRecorder()
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/workspaces", bytes.NewBufferString(`{"workspace_path":`+mustJSON(workspacePath)+`}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("create workspace status = %d, want %d body=%s", createRec.Code, http.StatusCreated, createRec.Body.String())
+	}
+
+	deleteRec := httptest.NewRecorder()
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/workspaces?workspace_path="+url.QueryEscape(workspacePath), nil)
+	engine.ServeHTTP(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusNoContent {
+		t.Fatalf("delete workspace status = %d, want %d body=%s", deleteRec.Code, http.StatusNoContent, deleteRec.Body.String())
+	}
+
+	listRec := httptest.NewRecorder()
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces", nil)
+	engine.ServeHTTP(listRec, listReq)
+	var got listWorkspacesResponse
+	decodeJSON(t, listRec.Body.Bytes(), &got)
+	for _, ws := range got.Workspaces {
+		if ws.Path == filepath.Clean(workspacePath) {
+			t.Fatalf("workspace still listed after delete: %+v", ws)
+		}
+	}
+}
+
+func TestDeleteWorkspaceWithSessions(t *testing.T) {
+	t.Parallel()
+
+	engine, _, cleanup := newTestEngine(t, func(sess session.Session, workspacePath string) (Runner, error) {
+		return fakeRunner(func(ctx context.Context, turn session.AgentTurn, ch chan<- event.Event) error {
+			ch <- event.Done()
+			return nil
+		}), nil
+	})
+	defer cleanup()
+
+	workspacePath := t.TempDir()
+	createRec := httptest.NewRecorder()
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/workspaces", bytes.NewBufferString(`{"workspace_path":`+mustJSON(workspacePath)+`}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("create workspace status = %d, want %d body=%s", createRec.Code, http.StatusCreated, createRec.Body.String())
+	}
+
+	sessionRec := httptest.NewRecorder()
+	sessionReq := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", bytes.NewBufferString(`{"workspace_path":`+mustJSON(workspacePath)+`,"model_id":"m","provider_id":"p"}`))
+	sessionReq.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(sessionRec, sessionReq)
+	if sessionRec.Code != http.StatusCreated {
+		t.Fatalf("create session status = %d, want %d body=%s", sessionRec.Code, http.StatusCreated, sessionRec.Body.String())
+	}
+
+	deleteRec := httptest.NewRecorder()
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/workspaces?workspace_path="+url.QueryEscape(workspacePath), nil)
+	engine.ServeHTTP(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusConflict {
+		t.Fatalf("delete workspace status = %d, want %d body=%s", deleteRec.Code, http.StatusConflict, deleteRec.Body.String())
 	}
 }
 

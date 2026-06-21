@@ -114,6 +114,11 @@ func (s *Service) ListWorkspaces(ctx context.Context) ([]Workspace, error) {
 	return out, nil
 }
 
+// CountSessionsForWorkspace returns how many sessions reference a workspace.
+func (s *Service) CountSessionsForWorkspace(ctx context.Context, workspaceID string) (int64, error) {
+	return s.q.CountSessionsForWorkspace(ctx, workspaceID)
+}
+
 // PruneMissingWorkspaces removes registered workspaces whose directories are
 // gone and that have no sessions. Workspaces with sessions are kept for history.
 func (s *Service) PruneMissingWorkspaces(ctx context.Context) (int, error) {
@@ -139,6 +144,29 @@ func (s *Service) PruneMissingWorkspaces(ctx context.Context) (int, error) {
 		pruned++
 	}
 	return pruned, nil
+}
+
+// DeleteWorkspaceByPath removes a workspace registration when it has no sessions.
+func (s *Service) DeleteWorkspaceByPath(ctx context.Context, absRoot string) error {
+	clean := filepath.Clean(strings.TrimSpace(absRoot))
+	if clean == "" {
+		return fmt.Errorf("workspace path is required")
+	}
+	w, err := s.q.GetWorkspaceByPath(ctx, clean)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	count, err := s.q.CountSessionsForWorkspace(ctx, w.ID)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return ErrWorkspaceHasSessions
+	}
+	return s.q.DeleteWorkspace(ctx, w.ID)
 }
 
 func workspaceRootExists(path string) bool {

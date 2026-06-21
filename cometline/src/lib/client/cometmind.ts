@@ -21,6 +21,7 @@ import {
 	listMcpServers as listMcpServersApi,
 	listMcpTools as listMcpToolsApi,
 	listWorkspaces as listWorkspacesApi,
+	deleteWorkspace as deleteWorkspaceApi,
 	pruneWorkspaces as pruneWorkspacesApi,
 	listWorkspaceFiles as listWorkspaceFilesApi,
 	readWorkspaceFileContent as readWorkspaceFileContentApi,
@@ -175,6 +176,13 @@ export function ensureWorkspace(workspacePath: string): Promise<Workspace> {
 
 export function listWorkspaces(): Promise<Workspace[]> {
 	return listWorkspacesApi({ throwOnError: true }).then(({ data }) => data.workspaces);
+}
+
+export async function deleteWorkspace(workspacePath: string): Promise<void> {
+	await deleteWorkspaceApi({
+		query: { workspace_path: workspacePath },
+		throwOnError: true
+	});
 }
 
 export function pruneWorkspaces(): Promise<{ pruned: number }> {

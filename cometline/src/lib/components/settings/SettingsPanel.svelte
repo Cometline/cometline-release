@@ -272,7 +272,7 @@
 		if (!api?.selectWorkspacePath) return;
 		const selected = await api.selectWorkspacePath();
 		if (!selected) return;
-		shellStore.setWorkspacePath(selected);
+		shellStore.setDefaultWorkspacePath(selected);
 	}
 
 	async function cleanupWorkspaces() {
@@ -1002,9 +1002,9 @@
 										<span class="settings-row-label">Workspace</span>
 										<span
 											class="settings-row-value workspace-path"
-											title={shellStore.workspacePath}
+											title={shellStore.defaultWorkspacePath}
 										>
-											{shellStore.workspacePath}
+											{shellStore.defaultWorkspacePath}
 										</span>
 									</div>
 									<div class="settings-row-actions">

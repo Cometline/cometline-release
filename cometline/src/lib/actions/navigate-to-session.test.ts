@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
 	goto: vi.fn().mockResolvedValue(undefined),
 	selectSession: vi.fn(),
 	selectFromSession: vi.fn(),
-	setWorkspacePath: vi.fn(),
+	setActiveWorkspacePath: vi.fn(),
 	setSidebarOrderWorkspacePath: vi.fn(),
 	setSidebarOrderDiscordActive: vi.fn()
 }));
@@ -20,7 +20,7 @@ vi.mock('$lib/stores/model.svelte', () => ({
 vi.mock('$lib/stores/shell.svelte', () => ({
 	shellStore: {
 		workspacePath: '/ws-a',
-		setWorkspacePath: mocks.setWorkspacePath,
+		setActiveWorkspacePath: mocks.setActiveWorkspacePath,
 		setSidebarOrderWorkspacePath: mocks.setSidebarOrderWorkspacePath,
 		setSidebarOrderDiscordActive: mocks.setSidebarOrderDiscordActive
 	}
@@ -51,9 +51,11 @@ function session(overrides: Partial<Session> = {}): Session {
 }
 
 describe('navigateToSession sidebar order', () => {
+	const electronSetWorkspacePath = vi.fn();
+
 	beforeEach(() => {
 		vi.clearAllMocks();
-		vi.stubGlobal('window', { electronAPI: { setWorkspacePath: vi.fn() } });
+		vi.stubGlobal('window', { electronAPI: { setWorkspacePath: electronSetWorkspacePath } });
 	});
 
 	it('commits sidebar order for unpinned sessions by default', () => {
@@ -77,12 +79,20 @@ describe('navigateToSession sidebar order', () => {
 		expect(mocks.setSidebarOrderDiscordActive).toHaveBeenCalledWith(false);
 	});
 
-	it('still opens the session and updates composer workspace when pinned', () => {
+	it('still opens the session and updates active workspace when pinned', () => {
 		navigateToSession(session({ pinned: true }));
 
 		expect(mocks.selectSession).toHaveBeenCalled();
 		expect(mocks.selectFromSession).toHaveBeenCalled();
-		expect(mocks.setWorkspacePath).toHaveBeenCalledWith('/ws-b');
+		expect(mocks.setActiveWorkspacePath).toHaveBeenCalledWith('/ws-b');
+		expect(electronSetWorkspacePath).not.toHaveBeenCalled();
 		expect(mocks.goto).toHaveBeenCalledWith('/session/sess-1');
+	});
+
+	it('does not persist workspace to Electron when switching sessions', () => {
+		navigateToSession(session());
+
+		expect(mocks.setActiveWorkspacePath).toHaveBeenCalledWith('/ws-b');
+		expect(electronSetWorkspacePath).not.toHaveBeenCalled();
 	});
 });

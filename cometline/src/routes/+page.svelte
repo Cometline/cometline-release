@@ -22,6 +22,7 @@
 		chatStore.detachActiveSession();
 		shellStore.clearDraftPanel();
 		shellStore.centerComposer();
+		shellStore.resetActiveToDefault();
 		modelStore.selectDefault();
 	});
 
@@ -32,11 +33,7 @@
 	async function onSend(text: string, images?: ImageAttachment[], filePaths?: string[]) {
 		const selectedModel = modelStore.selected;
 		if (!selectedModel) return;
-		const workspace = shellStore.sidebarOrderWorkspacePath;
-		if (shellStore.workspacePath !== workspace) {
-			void window.electronAPI?.setWorkspacePath?.(workspace);
-			shellStore.setWorkspacePath(workspace);
-		}
+		const workspace = shellStore.workspacePath;
 		const session = await createSession({
 			workspace_path: workspace,
 			model_id: selectedModel.modelId,

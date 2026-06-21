@@ -756,6 +756,9 @@ type UpdateSessionRequest struct {
 type Workspace struct {
 	Id   string `json:"id"`
 	Path string `json:"path"`
+
+	// SessionCount Number of sessions (including child sessions) tied to this workspace.
+	SessionCount int `json:"session_count"`
 }
 
 // WorkspaceFileContent defines model for WorkspaceFileContent.
@@ -863,6 +866,12 @@ type GetSkillParams struct {
 // ExportSkillParams defines parameters for ExportSkill.
 type ExportSkillParams struct {
 	WorkspacePath *string `form:"workspace_path,omitempty" json:"workspace_path,omitempty"`
+}
+
+// DeleteWorkspaceParams defines parameters for DeleteWorkspace.
+type DeleteWorkspaceParams struct {
+	// WorkspacePath Absolute workspace path to remove from CometMind registrations.
+	WorkspacePath string `form:"workspace_path" json:"workspace_path"`
 }
 
 // ListWorkspaceFilesParams defines parameters for ListWorkspaceFiles.

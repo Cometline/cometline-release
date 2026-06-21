@@ -874,6 +874,20 @@ function listRecentWorkspacePaths() {
 	return out;
 }
 
+function removeRecentWorkspacePath(workspacePath) {
+	const clean = String(workspacePath || '').trim();
+	if (!clean) return { removed: false };
+	const target = path.resolve(clean);
+	const store = readWorkspaceStore();
+	const before = store.recentPaths.length;
+	const recentPaths = store.recentPaths.filter((item) => path.resolve(item) !== target);
+	if (recentPaths.length === before) {
+		return { removed: false };
+	}
+	writeWorkspaceStore({ workspacePath: store.workspacePath, recentPaths });
+	return { removed: true };
+}
+
 function filterExistingWorkspacePaths(paths) {
 	const seen = new Set();
 	const out = [];
@@ -2223,6 +2237,10 @@ ipcMain.handle('cometline:set-workspace-path', (_event, workspacePath) => {
 });
 
 ipcMain.handle('cometline:list-recent-workspaces', () => listRecentWorkspacePaths());
+
+ipcMain.handle('cometline:remove-recent-workspace-path', (_event, workspacePath) =>
+	removeRecentWorkspacePath(workspacePath)
+);
 
 ipcMain.handle('cometline:filter-existing-workspace-paths', (_event, paths) =>
 	filterExistingWorkspacePaths(Array.isArray(paths) ? paths : [])

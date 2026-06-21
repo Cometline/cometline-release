@@ -18,8 +18,7 @@ export function navigateToSession(session: Session, options: NavigateToSessionOp
 	modelStore.selectFromSession(session);
 
 	if (session.workspace_path && session.workspace_path !== shellStore.workspacePath) {
-		void window.electronAPI?.setWorkspacePath?.(session.workspace_path);
-		shellStore.setWorkspacePath(session.workspace_path);
+		shellStore.setActiveWorkspacePath(session.workspace_path);
 	}
 
 	if (commitSidebarOrder) {

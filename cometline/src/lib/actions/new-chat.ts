@@ -18,11 +18,7 @@ export function startNewChat() {
 				.catch(() => {});
 		}
 	}
-	const committedWorkspace = shellStore.sidebarOrderWorkspacePath;
-	if (shellStore.workspacePath !== committedWorkspace) {
-		void window.electronAPI?.setWorkspacePath?.(committedWorkspace);
-		shellStore.setWorkspacePath(committedWorkspace);
-	}
+	shellStore.resetActiveToDefault();
 	sessionStore.selectSession(null);
 	chatStore.detachActiveSession();
 	shellStore.centerComposer();

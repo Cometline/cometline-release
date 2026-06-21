@@ -311,6 +311,10 @@ export type CreateWorkspaceRequest = {
 export type Workspace = {
     id: string;
     path: string;
+    /**
+     * Number of sessions (including child sessions) tied to this workspace.
+     */
+    session_count: number;
 };
 
 export type MemoryWire = {
@@ -567,6 +571,44 @@ export type GetHealthResponses = {
 };
 
 export type GetHealthResponse = GetHealthResponses[keyof GetHealthResponses];
+
+export type DeleteWorkspaceData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Absolute workspace path to remove from CometMind registrations.
+         */
+        workspace_path: string;
+    };
+    url: '/api/v1/workspaces';
+};
+
+export type DeleteWorkspaceErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorResponse;
+    /**
+     * Workspace still has sessions
+     */
+    409: ErrorResponse;
+    /**
+     * Unexpected server error
+     */
+    500: ErrorResponse;
+};
+
+export type DeleteWorkspaceError = DeleteWorkspaceErrors[keyof DeleteWorkspaceErrors];
+
+export type DeleteWorkspaceResponses = {
+    /**
+     * Workspace removed or not registered
+     */
+    204: void;
+};
+
+export type DeleteWorkspaceResponse = DeleteWorkspaceResponses[keyof DeleteWorkspaceResponses];
 
 export type ListWorkspacesData = {
     body?: never;

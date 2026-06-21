@@ -86,7 +86,7 @@ export function isChangeWorkspaceCommand(text: string): boolean {
 }
 
 export type WorkspaceMenuOption =
-	| { kind: 'workspace'; path: string; label: string; description: string }
+	| { kind: 'workspace'; path: string; label: string; description: string; deletable: boolean }
 	| { kind: 'browse'; path: ''; label: string; description: string };
 
 export function workspaceLabel(path: string): string {
@@ -94,7 +94,25 @@ export function workspaceLabel(path: string): string {
 	return parts[parts.length - 1] || path;
 }
 
-export function filterWorkspaceOptions(query: string, paths: string[]): WorkspaceMenuOption[] {
+export function normalizeWorkspacePath(path: string): string {
+	return path.trim().replace(/\\/g, '/').replace(/\/+$/, '') || path.trim();
+}
+
+function sessionCountForPath(path: string, sessionCountByPath: Map<string, number>): number {
+	const normalized = normalizeWorkspacePath(path);
+	const direct = sessionCountByPath.get(path) ?? sessionCountByPath.get(normalized);
+	if (direct !== undefined) return direct;
+	for (const [key, count] of sessionCountByPath) {
+		if (normalizeWorkspacePath(key) === normalized) return count;
+	}
+	return 0;
+}
+
+export function filterWorkspaceOptions(
+	query: string,
+	paths: string[],
+	sessionCountByPath: Map<string, number> = new Map()
+): WorkspaceMenuOption[] {
 	const q = query.toLowerCase();
 	const filtered = paths.filter((path) => {
 		if (!q) return true;
@@ -105,7 +123,8 @@ export function filterWorkspaceOptions(query: string, paths: string[]): Workspac
 		kind: 'workspace',
 		path,
 		label: workspaceLabel(path),
-		description: path
+		description: path,
+		deletable: sessionCountForPath(path, sessionCountByPath) === 0
 	}));
 	options.push({
 		kind: 'browse',

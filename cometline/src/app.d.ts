@@ -249,6 +249,9 @@ declare global {
 			selectWorkspacePath?: () => Promise<string | null>;
 			setWorkspacePath?: (workspacePath: string) => Promise<string>;
 			listRecentWorkspaces?: () => Promise<string[]>;
+			removeRecentWorkspacePath?: (
+				workspacePath: string
+			) => Promise<{ removed: boolean }>;
 			filterExistingWorkspacePaths?: (paths: string[]) => Promise<string[]>;
 			pruneWorkspaceStore?: () => Promise<{ removedRecent: number; clearedCurrent: boolean }>;
 			readWorkspaceFile?: (

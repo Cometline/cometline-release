@@ -7,6 +7,8 @@ var (
 	ErrSessionNotFound = errors.New("session not found")
 	// ErrWorkspaceNotFound is returned when a workspace id or path does not exist.
 	ErrWorkspaceNotFound = errors.New("workspace not found")
+	// ErrWorkspaceHasSessions blocks deleting a workspace that still has sessions.
+	ErrWorkspaceHasSessions = errors.New("workspace has sessions")
 	// ErrActiveDelegation blocks workspace changes while a child delegation is in flight.
 	ErrActiveDelegation = errors.New("cannot change workspace while delegation is active")
 )

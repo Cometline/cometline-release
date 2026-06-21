@@ -73,6 +73,34 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+    delete:
+      tags: [Workspaces]
+      summary: Remove an unused workspace registration
+      description: |
+        Deletes a workspace registration when no sessions reference it.
+        Returns 204 when the path is not registered or was removed successfully.
+      operationId: deleteWorkspace
+      parameters:
+        - name: workspace_path
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Absolute workspace path to remove from CometMind registrations.
+      responses:
+        '204':
+          description: Workspace removed or not registered
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Workspace still has sessions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/workspaces/prune:
     post:
       tags: [Workspaces]
@@ -1598,12 +1626,16 @@ components:
     Workspace:
       type: object
       additionalProperties: false
-      required: [id, path]
+      required: [id, path, session_count]
       properties:
         id:
           type: string
         path:
           type: string
+        session_count:
+          type: integer
+          minimum: 0
+          description: Number of sessions (including child sessions) tied to this workspace.
 
     MemoryWire:
       type: object
