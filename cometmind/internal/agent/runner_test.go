@@ -2,12 +2,16 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	cometsdk "github.com/cometline/comet-sdk"
 	"github.com/cometline/cometmind/internal/event"
+	"github.com/cometline/cometmind/internal/jobs"
 	"github.com/cometline/cometmind/internal/memory"
 	"github.com/cometline/cometmind/internal/session"
 	"github.com/cometline/cometmind/internal/tools"
@@ -409,5 +413,102 @@ func TestRunner_InjectsPreferencesWhenSemanticRetrievalTimesOut(t *testing.T) {
 	}
 	if mem.baselineCalls != 1 || mem.retrieveCalls != 1 {
 		t.Fatalf("baseline=%d retrieve=%d, want 1/1", mem.baselineCalls, mem.retrieveCalls)
+	}
+}
+
+type fakeOngoingJobLookup struct {
+	job jobs.Job
+	ok  bool
+}
+
+func (f *fakeOngoingJobLookup) JobForSession(ctx context.Context, sessionID string) (jobs.Job, bool, error) {
+	return f.job, f.ok, nil
+}
+
+// capturingSequentialFakeProvider records each outbound LLM request.
+type capturingSequentialFakeProvider struct {
+	sequences [][]cometsdk.Event
+	requests  []*cometsdk.Request
+	calls     int
+}
+
+func (p *capturingSequentialFakeProvider) ID() string { return "fake-capture" }
+
+func (p *capturingSequentialFakeProvider) Stream(ctx context.Context, req *cometsdk.Request) (<-chan cometsdk.Event, error) {
+	p.requests = append(p.requests, req)
+	idx := p.calls
+	p.calls++
+	if idx >= len(p.sequences) {
+		idx = len(p.sequences) - 1
+	}
+	events := p.sequences[idx]
+	ch := make(chan cometsdk.Event, len(events))
+	for _, ev := range events {
+		ch <- ev
+	}
+	close(ch)
+	return ch, nil
+}
+
+func toolStep(toolID, name, input string) []cometsdk.Event {
+	return []cometsdk.Event{
+		cometsdk.ToolCallDoneEvent{ID: toolID, Name: name, Input: json.RawMessage(input)},
+		cometsdk.StepFinishEvent{FinishReason: cometsdk.FinishToolUse},
+		cometsdk.DoneEvent{},
+	}
+}
+
+func TestRunner_JobProgressNudgeInjectedAfterTools(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("world"), 0o644); err != nil {
+		t.Fatalf("write hello.txt: %v", err)
+	}
+
+	provider := &capturingSequentialFakeProvider{sequences: [][]cometsdk.Event{
+		toolStep("tc1", "read_file", `{"path":"hello.txt"}`),
+		toolStep("tc2", "read_file", `{"path":"hello.txt"}`),
+		toolStep("tc3", "read_file", `{"path":"hello.txt"}`),
+		{
+			cometsdk.TextDeltaEvent{Text: "done"},
+			cometsdk.StepFinishEvent{FinishReason: cometsdk.FinishStop},
+			cometsdk.DoneEvent{},
+		},
+	}}
+
+	r := &Runner{
+		Provider: provider,
+		Sessions: &fakeStore{},
+		Registry: tools.NewRegistry(dir),
+		Jobs: &fakeOngoingJobLookup{
+			ok:  true,
+			job: jobs.Job{ID: "job-1", Status: jobs.StatusOngoing},
+		},
+	}
+
+	ch := make(chan event.Event, 64)
+	var runErr error
+	go func() {
+		runErr = r.Run(context.Background(), session.AgentTurn{ID: "s1", ModelID: "m"}, ch)
+	}()
+	_ = drain(ch)
+
+	if runErr != nil {
+		t.Fatalf("Run returned error: %v", runErr)
+	}
+	if provider.calls != 4 {
+		t.Fatalf("Stream called %d times, want 4", provider.calls)
+	}
+	if len(provider.requests) < 4 {
+		t.Fatalf("captured %d requests, want 4", len(provider.requests))
+	}
+
+	nudge := FormatJobProgressNudgeBlock("job-1")
+	if !strings.Contains(provider.requests[3].System, nudge) {
+		t.Fatalf("step 4 system missing nudge block:\n%s", provider.requests[3].System)
+	}
+	for i := 0; i < 3; i++ {
+		if strings.Contains(provider.requests[i].System, nudge) {
+			t.Fatalf("step %d system should not include nudge yet", i+1)
+		}
 	}
 }

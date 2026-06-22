@@ -74,6 +74,7 @@ import type {
 } from '$lib/generated/cometmind-api';
 import { client } from '$lib/generated/cometmind-api/client.gen';
 import { createSSEParser } from '$lib/sse/parser';
+import { buildJobExecutionPrompt as buildJobExecutionPromptImpl, type JobExecutionPromptInput } from '$lib/jobs/build-job-execution-prompt';
 
 export type {
 	CompactMemoryPreviewResponse,
@@ -669,7 +670,6 @@ export function putJobSettings(settings: JobSettings): Promise<JobSettings> {
 	return putJobSettingsApi({ body: settings, throwOnError: true }).then(({ data }) => data);
 }
 
-export function buildJobExecutionPrompt(job: JobResource): string {
-	const dod = job.definition_of_done?.trim() || '(none specified)';
-	return `Please work on: ${job.description}\n\nDefinition of done: ${dod}\n\nUpdate progress with update_job as you go. When finished, call complete_job with a final progress summary.\n\n(Use job_id "${job.id}" when calling job tools.)`;
+export function buildJobExecutionPrompt(job: JobExecutionPromptInput): string {
+	return buildJobExecutionPromptImpl(job);
 }

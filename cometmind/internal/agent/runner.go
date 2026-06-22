@@ -46,6 +46,7 @@ type Runner struct {
 	Sessions TurnStore
 	Memory   MemoryStore
 	Registry *tools.Registry
+	Jobs     OngoingJobLookup
 
 	MaxSteps               int
 	MaxTokens              int
@@ -98,6 +99,8 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 	steps := 0
 	outputTruncationContinuations := 0
 	truncationContinue := false
+	jobProgressNudge := false
+	jobTracker := newJobProgressTracker(ctx, r.Jobs, turn.ID)
 	// Injected memories belong to the first assistant message of the turn. They
 	// are captured when retrieved (step 0) and attached to the first
 	// AppendAssistantStep call so they persist and rebuild on reload.
@@ -168,8 +171,9 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 
 		logging.L().Info("agent.step.start", "session", turn.ID, "step", steps+1, "model", turn.ModelID, "messages", len(msgs), "max_tokens", r.MaxTokens)
 
-		system := r.buildSystemPrompt(sess.ContextSummary, truncationContinue)
+		system := r.buildSystemPrompt(sess.ContextSummary, truncationContinue, jobProgressNudge, jobTracker.JobID)
 		truncationContinue = false
+		jobProgressNudge = false
 		if r.Memory != nil && r.Memory.Enabled() && steps == 0 {
 			decision := memory.DecideRetrieval(msgs)
 			logging.L().Info("memory.retrieve.policy", "session", turn.ID, "retrieve", decision.Retrieve, "reason", decision.Reason, "score", decision.Score, "text_bytes", decision.TextBytes)
@@ -353,6 +357,10 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 				toolErr = out
 			}
 			ch <- event.ToolResult(tc.ID, tc.Name, out, toolErr)
+
+			if jobTracker.ObserveTool(tc.Name, tc.Input) {
+				jobProgressNudge = true
+			}
 		}
 
 		steps++
@@ -404,7 +412,7 @@ func (r *Runner) systemPrompt() string {
 	return base + r.SkillIndex + r.JobIndex
 }
 
-func (r *Runner) buildSystemPrompt(contextSummary string, truncationContinue bool) string {
+func (r *Runner) buildSystemPrompt(contextSummary string, truncationContinue, jobProgressNudge bool, jobID string) string {
 	base := r.systemPrompt()
 	var parts []string
 	if block := FormatSummaryPromptBlock(contextSummary); block != "" {
@@ -415,6 +423,11 @@ func (r *Runner) buildSystemPrompt(contextSummary string, truncationContinue boo
 	}
 	if truncationContinue {
 		parts = append(parts, FormatOutputTruncationContinueBlock())
+	}
+	if jobProgressNudge {
+		if block := FormatJobProgressNudgeBlock(jobID); block != "" {
+			parts = append(parts, block)
+		}
 	}
 	if len(parts) == 0 {
 		return base

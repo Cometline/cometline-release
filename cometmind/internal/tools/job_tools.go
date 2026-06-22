@@ -148,7 +148,7 @@ type updateJobTool struct{ deps JobsDeps }
 func (updateJobTool) Spec() ToolSpec {
 	return ToolSpec{
 		Name:        "update_job",
-		Description: "Update a job. Todo jobs: description/DoD/workspace. Ongoing jobs: progress only.",
+		Description: "Update a job. Todo jobs: description/DoD/workspace. Ongoing jobs: progress only. Call with progress after each meaningful milestone while working a claimed job.",
 		Parameters: json.RawMessage(`{
 			"type":"object",
 			"properties":{
@@ -284,7 +284,7 @@ func (t releaseJobTool) Execute(ctx context.Context, input json.RawMessage) (Res
 
 // JobPromptIndex returns system prompt guidance for job tools.
 func JobPromptIndex() string {
-	return "\n\n## Global Jobs\nUse `list_jobs` when the user asks about pending work. Use `create_job` to record follow-up tasks. To execute a job, `claim_job` first, then `complete_job` when done or `release_job` to abandon."
+	return "\n\n## Global Jobs\nUse `list_jobs` when the user asks about pending work. Use `create_job` to record follow-up tasks. To execute a job, `claim_job` first. While working a claimed job, call `update_job` with `progress` after each meaningful milestone so another session can resume. Call `complete_job` when done or `release_job` to abandon."
 }
 
 // RegisterJobTools adds job tools when deps are configured.
