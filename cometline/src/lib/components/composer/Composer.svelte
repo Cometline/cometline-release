@@ -4,6 +4,7 @@
 	import { fade } from 'svelte/transition';
 	import { Check, FileText, Folder, Loader, Search, Send, Square, Trash2, X } from '@lucide/svelte';
 	import type { QueuedMessage } from '$lib/actions/chat-turn-queue';
+	import type { ChatTurnPayload } from '$lib/actions/start-chat';
 	import { modelStore, type ModelOption } from '$lib/stores/model.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
 	import { shellStore } from '$lib/stores/shell.svelte';
@@ -14,7 +15,7 @@
 	import MessageQueuePanel from '$lib/components/composer/MessageQueuePanel.svelte';
 	import ModelPicker from '$lib/components/composer/ModelPicker.svelte';
 	import SlashCommandMenu from '$lib/components/composer/SlashCommandMenu.svelte';
-	import { listSkills, listWorkspaces, forkSession, clearSession, deleteWorkspace } from '$lib/client/cometmind';
+	import { listSkills, listWorkspaces, forkSession, clearSession, deleteWorkspace, listJobs, claimJob, buildJobExecutionPrompt } from '$lib/client/cometmind';
 	import {
 		filterFileIndex,
 		getFileIndex,
@@ -23,6 +24,8 @@
 		refreshFileIndex,
 		searchWorkspaceFiles
 	} from '$lib/workspace/file-index';
+	import { jobMenuSubtitle, jobUserDisplayText } from '$lib/jobs/format-job-label';
+	import { listJobsUserDisplayText } from '$lib/jobs/format-ready-jobs-list';
 	import { sessionStore } from '$lib/stores/session.svelte';
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import {
@@ -34,6 +37,9 @@
 		parseChangeCommand,
 		parseClearCommand,
 		parseModelCommand,
+		parseJobCommand,
+		parseListJobsCommand,
+		filterJobOptions,
 		type SlashMenuOption,
 		type WorkspaceMenuOption
 	} from '$lib/skills/slash-commands';
@@ -46,9 +52,11 @@
 	import { workspaceLabel } from '$lib/sessions/group-by-workspace';
 	import { isSupportedImageFile, readImageAttachments } from '$lib/files/images';
 	import type { ImageAttachment, SkillResource } from '$lib/types';
+	import type { JobResource } from '$lib/generated/cometmind-api';
 
 	let {
 		onSend,
+		onLocalUserMessage,
 		onStop,
 		onRemoveQueued,
 		onModelChange,
@@ -63,7 +71,8 @@
 		variant = 'dock',
 		autofocus = true
 	}: {
-		onSend: (text: string, images?: ImageAttachment[], filePaths?: string[]) => void;
+		onSend: (payload: ChatTurnPayload | string) => void;
+		onLocalUserMessage?: (text: string) => void;
 		onStop?: () => void;
 		onRemoveQueued?: (id: string) => void;
 		onModelChange?: (option: ModelOption) => void | Promise<void>;
@@ -173,6 +182,16 @@
 			group.options.push(option);
 		}
 		return groups;
+	});
+	let readyJobs = $state<JobResource[]>([]);
+	let jobsLoading = $state(false);
+	let jobsLoaded = $state(false);
+	let jobCommand = $derived(parseJobCommand(value));
+	let jobCommandMenuOpen = $derived(Boolean(jobCommand));
+	let jobCommandQuery = $derived(jobCommand?.query ?? '');
+	let jobCommandHighlight = $state(0);
+	let filteredJobOptions = $derived.by(() => {
+		return filterJobOptions(jobCommandQuery, readyJobs);
 	});
 	let skillNames = $derived([
 		...BUILTIN_SLASH_COMMANDS.map((cmd) => cmd.name),
@@ -303,6 +322,14 @@
 		if (dropMessageTimer) clearTimeout(dropMessageTimer);
 	});
 
+	function sendTurn(payload: ChatTurnPayload | string) {
+		if (typeof payload === 'string') {
+			onSend({ text: payload });
+			return;
+		}
+		onSend(payload);
+	}
+
 	function submit() {
 		const trimmed = value.trim();
 		if (isChangeWorkspaceCommand(trimmed)) {
@@ -313,26 +340,47 @@
 			void handleClearSubmit();
 			return;
 		}
+		if (parseListJobsCommand(trimmed)) {
+			void handleListJobsSubmit();
+			return;
+		}
 		if (modelCommand) {
 			void handleModelCommandSubmit();
+			return;
+		}
+		if (jobCommand) {
+			void handleJobCommandSubmit();
 			return;
 		}
 		const expanded = expandBuiltinSlashCommand(trimmed) ?? expandSkillCommand(trimmed);
 		if (!canSubmit || disabled || !modelStore.selected) return;
 		const filePaths = input?.getFilePaths() ?? [];
-		onSend(
-			expanded,
-			images.length > 0 ? images : undefined,
-			filePaths.length > 0 ? filePaths : undefined
-		);
+		sendTurn({
+			text: expanded,
+			images: images.length > 0 ? images : undefined,
+			filePaths: filePaths.length > 0 ? filePaths : undefined
+		});
 		input?.clear();
 		value = '';
 		images = [];
 	}
 
+	async function handleListJobsSubmit() {
+		input?.clear();
+		value = '';
+		try {
+			const res = await listJobs({ ready_only: true });
+			const text = listJobsUserDisplayText(res.jobs ?? []);
+			onLocalUserMessage?.(text);
+		} catch (err) {
+			dropMessage = err instanceof Error ? err.message : 'Failed to list jobs';
+		}
+	}
+
 	function onKeydown(e: KeyboardEvent) {
 		if (handleWorkspaceMenuKeydown(e)) return;
 		if (handleModelCommandMenuKeydown(e)) return;
+		if (handleJobCommandMenuKeydown(e)) return;
 		if (handleSkillMenuKeydown(e)) return;
 		if (handleMentionMenuKeydown(e)) return;
 		if (matchesShortcut(e, settingsStore.settings.shortcuts.stopResponse) && streaming) {
@@ -609,6 +657,88 @@
 		value = '';
 	}
 
+	async function ensureReadyJobsLoaded() {
+		if (jobsLoaded || jobsLoading) return;
+		jobsLoading = true;
+		try {
+			const res = await listJobs({ ready_only: true });
+			readyJobs = res.jobs ?? [];
+			jobsLoaded = true;
+		} catch {
+			readyJobs = [];
+			jobsLoaded = true;
+		} finally {
+			jobsLoading = false;
+		}
+	}
+
+	$effect(() => {
+		if (jobCommandMenuOpen) {
+			void ensureReadyJobsLoaded();
+			jobCommandHighlight = 0;
+		}
+	});
+
+	async function selectJobCommandOption(job: JobResource) {
+		if (!sessionId) return;
+		try {
+			const claimed = await claimJob(job.id, sessionId);
+			let prompt = buildJobExecutionPrompt(claimed);
+			const jobPath = claimed.workspace_path?.trim();
+			const sessionPath = shellStore.workspacePath?.trim();
+			if (jobPath && sessionPath && jobPath !== sessionPath) {
+				prompt +=
+					`\n\nNote: this job targets workspace \`${jobPath}\` but this session uses \`${sessionPath}\`. Consider /change to fork into the correct workspace before editing files.`;
+			}
+			input?.clear();
+			value = '';
+			sendTurn({ text: prompt, displayText: jobUserDisplayText(claimed) });
+		} catch (err) {
+			dropMessage = err instanceof Error ? err.message : 'Failed to claim job';
+		}
+	}
+
+	function handleJobCommandSubmit() {
+		const option = filteredJobOptions[jobCommandHighlight];
+		if (option) {
+			void selectJobCommandOption(option);
+			return;
+		}
+		input?.clear();
+		value = '';
+	}
+
+	function handleJobCommandMenuKeydown(e: KeyboardEvent): boolean {
+		if (!jobCommandMenuOpen) return false;
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			input?.clear();
+			value = '';
+			return true;
+		}
+		if (e.key === 'ArrowDown') {
+			e.preventDefault();
+			if (filteredJobOptions.length > 0) {
+				jobCommandHighlight = (jobCommandHighlight + 1) % filteredJobOptions.length;
+			}
+			return true;
+		}
+		if (e.key === 'ArrowUp') {
+			e.preventDefault();
+			if (filteredJobOptions.length > 0) {
+				jobCommandHighlight =
+					(jobCommandHighlight - 1 + filteredJobOptions.length) % filteredJobOptions.length;
+			}
+			return true;
+		}
+		if (e.key === 'Enter' && !e.shiftKey) {
+			e.preventDefault();
+			void handleJobCommandSubmit();
+			return true;
+		}
+		return false;
+	}
+
 	function handleSkillMenuKeydown(e: KeyboardEvent): boolean {
 		if (!skillMenuOpen) return false;
 		if (e.key === 'Escape') {
@@ -764,6 +894,12 @@
 	function selectSlashOption(option: SlashMenuOption) {
 		if (option.kind === 'builtin' && option.name === 'change') {
 			openChangeWorkspace();
+			return;
+		}
+		if (option.kind === 'builtin' && option.name === 'list-jobs') {
+			input?.clear();
+			value = '';
+			void handleListJobsSubmit();
 			return;
 		}
 		const next = `/${option.name} `;
@@ -1065,6 +1201,43 @@
 							</button>
 						{/each}
 					</div>
+				{/each}
+			{/if}
+		</SlashCommandMenu>
+	{:else if jobCommandMenuOpen}
+		<SlashCommandMenu ariaLabel="Select job" class="job-command-menu">
+			<div class="workspace-search-hint" aria-hidden="true">
+				<Search size={13} stroke-width={2} />
+				{#if jobCommandQuery}
+					<span class="workspace-search-value">{jobCommandQuery}</span>
+				{:else}
+					<span class="workspace-search-placeholder">Type to filter jobs…</span>
+				{/if}
+			</div>
+			{#if jobsLoading && !jobsLoaded}
+				<p class="skill-command-empty">Loading jobs…</p>
+			{:else if filteredJobOptions.length === 0}
+				<p class="skill-command-empty">No ready jobs.</p>
+			{:else}
+				{#each filteredJobOptions as job, index (job.id)}
+					<button
+						type="button"
+						class="skill-command-option"
+						class:highlighted={index === jobCommandHighlight}
+						role="option"
+						aria-selected={index === jobCommandHighlight}
+						onpointerenter={() => {
+							jobCommandHighlight = index;
+						}}
+						onclick={() => {
+							void selectJobCommandOption(job);
+						}}
+					>
+						<span class="skill-command-name">{job.description}</span>
+						{#if jobMenuSubtitle(job)}
+							<span class="skill-command-description">{jobMenuSubtitle(job)}</span>
+						{/if}
+					</button>
 				{/each}
 			{/if}
 		</SlashCommandMenu>

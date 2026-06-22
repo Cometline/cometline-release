@@ -16,6 +16,7 @@ import (
 	"github.com/cometline/cometmind/internal/acp"
 	"github.com/cometline/cometmind/internal/config"
 	"github.com/cometline/cometmind/internal/event"
+	"github.com/cometline/cometmind/internal/jobs"
 	"github.com/cometline/cometmind/internal/logging"
 	"github.com/cometline/cometmind/internal/memory"
 	mcppkg "github.com/cometline/cometmind/internal/mcp"
@@ -48,25 +49,29 @@ type Runner interface {
 type RunnerFactory func(sess session.Session, workspacePath string) (Runner, error)
 
 type Deps struct {
-	Config        *config.Config
-	Sessions      *session.Service
-	Memory        *memory.Service
-	NewRunner     RunnerFactory
-	Runs          *RunManager
-	ACPMgr        *acp.SessionManager
-	MCPMgr        *mcppkg.Manager
-	SubagentOrch  *subagent.Orchestrator
+	Config         *config.Config
+	Sessions       *session.Service
+	Memory         *memory.Service
+	Jobs           *jobs.Service
+	SetJobSettings func(jobs.Settings)
+	NewRunner      RunnerFactory
+	Runs           *RunManager
+	ACPMgr         *acp.SessionManager
+	MCPMgr         *mcppkg.Manager
+	SubagentOrch   *subagent.Orchestrator
 }
 
 type App struct {
-	config       *config.Config
-	sessions     *session.Service
-	memory       *memory.Service
-	newRunner    RunnerFactory
-	runs         *RunManager
-	acpMgr       *acp.SessionManager
-	mcpMgr       *mcppkg.Manager
-	subagentOrch *subagent.Orchestrator
+	config         *config.Config
+	sessions       *session.Service
+	memory         *memory.Service
+	jobs           *jobs.Service
+	setJobSettings func(jobs.Settings)
+	newRunner      RunnerFactory
+	runs           *RunManager
+	acpMgr         *acp.SessionManager
+	mcpMgr         *mcppkg.Manager
+	subagentOrch   *subagent.Orchestrator
 }
 
 func New(deps Deps) (*gin.Engine, error) {
@@ -84,14 +89,16 @@ func New(deps Deps) (*gin.Engine, error) {
 	}
 
 	app := &App{
-		config:       deps.Config,
-		sessions:     deps.Sessions,
-		memory:       deps.Memory,
-		newRunner:    deps.NewRunner,
-		runs:         deps.Runs,
-		acpMgr:       deps.ACPMgr,
-		mcpMgr:       deps.MCPMgr,
-		subagentOrch: deps.SubagentOrch,
+		config:         deps.Config,
+		sessions:       deps.Sessions,
+		memory:         deps.Memory,
+		jobs:           deps.Jobs,
+		setJobSettings: deps.SetJobSettings,
+		newRunner:      deps.NewRunner,
+		runs:           deps.Runs,
+		acpMgr:         deps.ACPMgr,
+		mcpMgr:         deps.MCPMgr,
+		subagentOrch:   deps.SubagentOrch,
 	}
 
 	r := gin.New()
@@ -153,6 +160,20 @@ func New(deps Deps) (*gin.Engine, error) {
 	api.POST("/memory/purge", app.handlePurgeMemory)
 	api.POST("/memory/compact", app.handleCompactMemory)
 	api.GET("/memory/compact/preview", app.handleCompactPreview)
+
+	// Jobs
+	api.GET("/jobs", app.handleListJobs)
+	api.POST("/jobs", app.handleCreateJob)
+	api.GET("/jobs/settings", app.handleGetJobSettings)
+	api.PUT("/jobs/settings", app.handlePutJobSettings)
+	api.GET("/jobs/:id", app.handleGetJob)
+	api.PATCH("/jobs/:id", app.handleUpdateJob)
+	api.DELETE("/jobs/:id", app.handleDeleteJob)
+	api.GET("/jobs/:id/events", app.handleListJobEvents)
+	api.POST("/jobs/:id/claim", app.handleClaimJob)
+	api.POST("/jobs/:id/release", app.handleReleaseJob)
+	api.POST("/jobs/:id/complete", app.handleCompleteJob)
+	api.POST("/jobs/:id/heartbeat", app.handleHeartbeatJob)
 
 	return r, nil
 }
@@ -239,9 +260,10 @@ type workspaceFileListResponse struct {
 }
 
 type postMessageRequest struct {
-	Text      string              `json:"text"`
-	Images    []messageImageInput `json:"images,omitempty"`
-	FilePaths []string            `json:"file_paths,omitempty"`
+	Text        string              `json:"text"`
+	DisplayText string              `json:"display_text,omitempty"`
+	Images      []messageImageInput `json:"images,omitempty"`
+	FilePaths   []string            `json:"file_paths,omitempty"`
 }
 
 type messageImageInput struct {
@@ -992,15 +1014,23 @@ func (a *App) handlePostMessage(c *gin.Context) {
 		writeError(c, http.StatusConflict, "session_running", err.Error())
 		return
 	}
-	defer finish()
+	defer func() {
+		finish()
+	}()
 
-	if _, err := a.sessions.AppendUserMessageContent(c.Request.Context(), sess.ID, blocks); err != nil {
+	if a.jobs != nil {
+		if job, ok, _ := a.jobs.JobForSession(c.Request.Context(), sess.ID); ok {
+			_ = a.jobs.Heartbeat(c.Request.Context(), job.ID, sess.ID)
+		}
+	}
+
+	if _, err := a.sessions.AppendUserMessageContent(c.Request.Context(), sess.ID, blocks, strings.TrimSpace(req.DisplayText)); err != nil {
 		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
 	// Generate the session title from the first user message (no-op after the
 	// first turn). Failures are non-fatal and leave a plain-text fallback.
-	a.maybeGenerateTitle(c.Request.Context(), sess, blocks)
+	a.maybeGenerateTitle(c.Request.Context(), sess, blocks, strings.TrimSpace(req.DisplayText))
 
 	c.Status(http.StatusOK)
 	c.Header("Content-Type", "text/event-stream")
@@ -1028,6 +1058,9 @@ func (a *App) handlePostMessage(c *gin.Context) {
 	}
 
 	if err := <-errCh; err != nil {
+		if a.jobs != nil {
+			_ = a.jobs.ReleaseForSession(c.Request.Context(), sess.ID, err.Error())
+		}
 		logging.L().Error("message.failed", "session", sess.ID, "duration_ms", time.Since(started).Milliseconds(), "error", err)
 		return
 	}

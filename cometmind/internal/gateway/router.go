@@ -12,20 +12,23 @@ import (
 
 	"github.com/cometline/cometmind/internal/config"
 	"github.com/cometline/cometmind/internal/event"
+	"github.com/cometline/cometmind/internal/jobs"
 	"github.com/cometline/cometmind/internal/session"
 )
 
 // Runner executes agent turns for gateway inbound messages.
 type Runner interface {
-	RunTurn(ctx context.Context, sess session.Session, workspacePath, text string, onEvent func(event.Event)) error
+	RunTurn(ctx context.Context, sess session.Session, workspacePath string, msg InboundMessage, onEvent func(event.Event)) error
 }
 
 // Router maps platform identities to CometMind sessions and runs turns.
 type Router struct {
 	Sessions *session.Service
 	Config   *config.Config
+	Jobs     *jobs.Service
 	Runner   Runner
 	Typing   TypingIndicator
+	Turns    *TurnRunTracker
 	onReply  func(context.Context, OutboundMessage) error
 }
 
@@ -70,12 +73,25 @@ func (r *Router) HandleInbound(ctx context.Context, msg InboundMessage) error {
 	}
 
 	blocks := contentBlocksFromInbound(msg)
-	if _, err := r.Sessions.AppendUserMessageContent(ctx, sess.ID, blocks); err != nil {
+	if _, err := r.Sessions.AppendUserMessageContent(ctx, sess.ID, blocks, ""); err != nil {
 		return err
 	}
 	if err := r.Sessions.SetTitleIfEmpty(ctx, sess.ID, titleFromInbound(msg)); err != nil {
 		return err
 	}
+
+	runCtx := ctx
+	var finishTurn func()
+	if r.Turns != nil {
+		var err error
+		runCtx, finishTurn, err = r.Turns.Start(ctx, sess.ID)
+		if err != nil {
+			return err
+		}
+		defer finishTurn()
+	}
+	stopHeartbeat := startJobHeartbeatDuringTurn(runCtx, r.Jobs, sess.ID)
+	defer stopHeartbeat()
 
 	if r.Typing != nil {
 		stopTyping := r.Typing.KeepTyping(ctx, deliveryChannelID(msg))
@@ -84,7 +100,7 @@ func (r *Router) HandleInbound(ctx context.Context, msg InboundMessage) error {
 
 	log.Printf("discord: running agent turn session=%s workspace=%s", sess.ID, runPath)
 	var reply strings.Builder
-	err = r.Runner.RunTurn(ctx, sess, runPath, msg.Text, func(ev event.Event) {
+	err = r.Runner.RunTurn(runCtx, sess, runPath, msg, func(ev event.Event) {
 		switch ev.Kind {
 		case event.KindTextDelta:
 			reply.WriteString(ev.Delta)

@@ -3,7 +3,7 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { flip } from 'svelte/animate';
-	import { Settings } from '@lucide/svelte';
+	import { Settings, Briefcase } from '@lucide/svelte';
 	import type { Session } from '$lib/types';
 	import { sessionStore } from '$lib/stores/session.svelte';
 	import { deleteSession, updateSession } from '$lib/client/cometmind';
@@ -204,7 +204,7 @@
 			<SidebarSearch bind:searchQuery bind:searchInput onNewChat={newChat} />
 		</div>
 
-		<div class="session-list">
+		<div class="session-list scrollbar-none">
 			{#if pinnedSessions.length > 0}
 				<PinnedGroup
 					sessions={pinnedSessions}
@@ -282,6 +282,14 @@
 		<div class="sidebar-footer">
 			<button aria-label="Settings" title="Settings" onclick={shellStore.openSettings}>
 				<Settings size={16} stroke-width={1.8} />
+			</button>
+			<button
+				aria-label="Jobs"
+				title="Jobs"
+				class:active={page.url.pathname === '/jobs'}
+				onclick={() => goto('/jobs')}
+			>
+				<Briefcase size={16} stroke-width={1.8} />
 			</button>
 		</div>
 	</div>
@@ -386,14 +394,17 @@
 		background: rgba(0, 0, 0, 0.07);
 	}
 
+	.sidebar-footer button.active {
+		background: rgba(0, 0, 0, 0.1);
+	}
+
 	.session-list {
 		flex: 1;
 		overflow-y: auto;
-		scrollbar-gutter: stable;
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
-		padding: 0 12px 12px 12px;
+		padding: 0 8px 12px 8px;
 	}
 
 	.session-empty {
@@ -406,7 +417,7 @@
 
 	.sidebar-section-divider {
 		height: 2px;
-		margin: 8px 6px 6px;
+		margin: 8px 0 6px;
 		background: rgba(15, 23, 42, 0.16);
 		border-radius: 1px;
 		flex-shrink: 0;
@@ -418,6 +429,9 @@
 		margin-left: 10px;
 		padding-top: 8px;
 		border-top: 1px solid var(--border-soft);
+		display: flex;
+		flex-direction: row;
+		gap: 4px;
 	}
 
 	@media (max-width: 900px) {

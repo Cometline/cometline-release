@@ -31,7 +31,19 @@ import {
 	reconnectMcpServer as reconnectMcpServerApi,
 	searchMemories as searchMemoriesApi,
 	syncSkills as syncSkillsApi,
-	testMcpServer as testMcpServerApi
+	testMcpServer as testMcpServerApi,
+	listJobs as listJobsApi,
+	createJob as createJobApi,
+	getJob as getJobApi,
+	updateJob as updateJobApi,
+	deleteJob as deleteJobApi,
+	claimJob as claimJobApi,
+	listJobEvents as listJobEventsApi,
+	releaseJob as releaseJobApi,
+	completeJob as completeJobApi,
+	heartbeatJob as heartbeatJobApi,
+	getJobSettings as getJobSettingsApi,
+	putJobSettings as putJobSettingsApi
 } from '$lib/generated/cometmind-api';
 import type {
 	CompactMemoryPreviewResponse,
@@ -52,10 +64,17 @@ import type {
 	TranscriptResponse,
 	UpdateSessionRequest,
 	Workspace,
-	WorkspaceFileContent
+	WorkspaceFileContent,
+	JobResource,
+	ListJobsResponse,
+	JobEventResource,
+	JobSettings,
+	CreateJobRequest,
+	UpdateJobRequest
 } from '$lib/generated/cometmind-api';
 import { client } from '$lib/generated/cometmind-api/client.gen';
 import { createSSEParser } from '$lib/sse/parser';
+import { buildJobExecutionPrompt as buildJobExecutionPromptImpl, type JobExecutionPromptInput } from '$lib/jobs/build-job-execution-prompt';
 
 export type {
 	CompactMemoryPreviewResponse,
@@ -65,6 +84,8 @@ export type {
 	McpToolInfo,
 	MemoryResource
 } from '$lib/generated/cometmind-api';
+
+export type { JobResource, JobEventResource, JobSettings, CreateJobRequest, UpdateJobRequest } from '$lib/generated/cometmind-api';
 
 export type MemoryLifecycleSettings = {
 	decay_half_life_days: number;
@@ -569,4 +590,86 @@ export function compactMemory(): Promise<{ status: string }> {
 
 export function compactMemoryPreview(): Promise<CompactMemoryPreviewResponse> {
 	return compactMemoryPreviewApi({ throwOnError: true }).then(({ data }) => data);
+}
+
+export type JobListQuery = {
+	status?: 'todo' | 'ongoing' | 'done';
+	ready_only?: boolean;
+	include_deleted?: boolean;
+};
+
+export function listJobs(query: JobListQuery = {}): Promise<ListJobsResponse> {
+	return listJobsApi({ query, throwOnError: true }).then(({ data }) => data);
+}
+
+export function createJob(body: CreateJobRequest): Promise<JobResource> {
+	return createJobApi({ body, throwOnError: true }).then(({ data }) => data);
+}
+
+export function getJob(id: string): Promise<JobResource> {
+	return getJobApi({ path: { id }, throwOnError: true }).then(({ data }) => data);
+}
+
+export function updateJob(id: string, body: UpdateJobRequest): Promise<JobResource> {
+	return updateJobApi({ path: { id }, body, throwOnError: true }).then(({ data }) => data);
+}
+
+export function deleteJob(id: string): Promise<void> {
+	return deleteJobApi({ path: { id }, throwOnError: true }).then(() => undefined);
+}
+
+export function claimJob(id: string, sessionId: string): Promise<JobResource> {
+	return claimJobApi({
+		path: { id },
+		body: { session_id: sessionId },
+		throwOnError: true
+	}).then(({ data }) => data);
+}
+
+export function releaseJob(
+	id: string,
+	sessionId: string,
+	reason?: string
+): Promise<JobResource> {
+	return releaseJobApi({
+		path: { id },
+		body: { session_id: sessionId, reason },
+		throwOnError: true
+	}).then(({ data }) => data);
+}
+
+export function completeJob(
+	id: string,
+	sessionId: string,
+	progress?: string
+): Promise<JobResource> {
+	return completeJobApi({
+		path: { id },
+		body: { session_id: sessionId, progress },
+		throwOnError: true
+	}).then(({ data }) => data);
+}
+
+export function heartbeatJob(id: string, sessionId: string): Promise<void> {
+	return heartbeatJobApi({
+		path: { id },
+		body: { session_id: sessionId },
+		throwOnError: true
+	}).then(() => undefined);
+}
+
+export function listJobEvents(id: string): Promise<{ events: JobEventResource[] }> {
+	return listJobEventsApi({ path: { id }, throwOnError: true }).then(({ data }) => data);
+}
+
+export function getJobSettings(): Promise<JobSettings> {
+	return getJobSettingsApi({ throwOnError: true }).then(({ data }) => data);
+}
+
+export function putJobSettings(settings: JobSettings): Promise<JobSettings> {
+	return putJobSettingsApi({ body: settings, throwOnError: true }).then(({ data }) => data);
+}
+
+export function buildJobExecutionPrompt(job: JobExecutionPromptInput): string {
+	return buildJobExecutionPromptImpl(job);
 }
