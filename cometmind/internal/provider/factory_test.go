@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	cometsdk "github.com/cometline/comet-sdk"
@@ -92,6 +93,21 @@ func TestNewForFallsBackToLegacyCodexMethod(t *testing.T) {
 	}
 	if p == nil {
 		t.Fatal("NewFor() returned nil")
+	}
+}
+
+// TestNewForNoProviderConfigured covers a fresh install where the sidecar
+// booted with no enabled providers. A request must surface a clear, actionable
+// error instead of a confusing "unknown provider method" or a network failure.
+func TestNewForNoProviderConfigured(t *testing.T) {
+	cfg := &config.Config{} // no providers, empty active provider
+
+	_, err := NewFor(cfg, "")
+	if err == nil {
+		t.Fatal("NewFor() error = nil, want error for empty provider config")
+	}
+	if !strings.Contains(err.Error(), "no provider configured") {
+		t.Fatalf("NewFor() error = %q, want it to mention 'no provider configured'", err.Error())
 	}
 }
 

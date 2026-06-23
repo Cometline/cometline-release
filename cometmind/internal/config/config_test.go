@@ -223,3 +223,70 @@ func TestAdaptCometlineSettingsContextWindowLimit(t *testing.T) {
 		t.Fatalf("ContextWindowLimit = %d, want 256000", cfg.ContextWindowLimit)
 	}
 }
+
+// TestLoadBootsWithNoEnabledProviders simulates a fresh Electron install:
+// the renderer writes a settings JSON where every provider is disabled with
+// no enabled models. The sidecar must still boot (Load returns no error) with
+// an empty provider configuration so the UI stays usable and can guide the
+// user to Settings. Sending a message surfaces a clear error at request time
+// instead of a TCP connection refused.
+func TestLoadBootsWithNoEnabledProviders(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	configDir := filepath.Join(home, ".cometmind")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	empty := `{"providers":[
+		{"id":"anthropic","name":"Anthropic","method":"anthropic","enabled":false,"baseURL":"https://api.anthropic.com","apiKey":"","selectedModel":"","models":[],"enabledModels":[]},
+		{"id":"openai","name":"OpenAI","method":"openai","enabled":false,"baseURL":"https://api.openai.com/v1","apiKey":"","selectedModel":"","models":[],"enabledModels":[]}
+	],"activeProviderId":"","defaultProviderId":"","defaultModelId":""}`
+	if err := os.WriteFile(filepath.Join(configDir, "cometline-settings.json"), []byte(empty), 0o600); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil (sidecar must boot with no providers)", err)
+	}
+	if len(cfg.Providers) != 0 {
+		t.Fatalf("len(Providers) = %d, want 0", len(cfg.Providers))
+	}
+	if cfg.Provider != "" {
+		t.Fatalf("Provider = %q, want empty (no provider configured)", cfg.Provider)
+	}
+	if cfg.Model != "" {
+		t.Fatalf("Model = %q, want empty (no provider configured)", cfg.Model)
+	}
+	// Non-provider defaults should still be applied so the sidecar is usable.
+	if cfg.MaxTokens != 2048 {
+		t.Fatalf("MaxTokens = %d, want 2048", cfg.MaxTokens)
+	}
+	if cfg.MaxSteps != 50 {
+		t.Fatalf("MaxSteps = %d, want 50", cfg.MaxSteps)
+	}
+}
+
+// TestAdaptCometlineSettingsEmptyProviders verifies the adapter directly:
+// an all-disabled provider list must not error and must yield an empty
+// provider config rather than the legacy hard fail.
+func TestAdaptCometlineSettingsEmptyProviders(t *testing.T) {
+	cfg, err := adaptCometlineSettings(cometlineSettingsJSON{
+		Providers: []cometlineProviderJSON{{
+			ID:      "anthropic",
+			Name:    "Anthropic",
+			Method:  ProviderAnthropic,
+			Enabled: false,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("adaptCometlineSettings() error = %v, want nil", err)
+	}
+	if len(cfg.Providers) != 0 {
+		t.Fatalf("len(Providers) = %d, want 0", len(cfg.Providers))
+	}
+	if cfg.Provider != "" {
+		t.Fatalf("Provider = %q, want empty", cfg.Provider)
+	}
+}

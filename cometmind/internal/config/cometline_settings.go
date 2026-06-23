@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
@@ -160,39 +161,46 @@ func runtimeProvidersFromJSON(providers []cometlineProviderJSON) []cometlineProv
 func adaptCometlineSettings(raw cometlineSettingsJSON) (*Config, error) {
 	def := Defaults()
 	runtimeProviders := runtimeProvidersFromJSON(raw.Providers)
-	if len(runtimeProviders) == 0 {
-		return nil, fmt.Errorf("no enabled providers with models configured")
+
+	// When no provider is enabled with models, boot anyway with an empty
+	// provider configuration. The sidecar stays healthy and the UI remains
+	// usable; sending a message returns a clear "no provider configured"
+	// error from the provider factory instead of a TCP connection refused.
+	noProviders := len(runtimeProviders) == 0
+	if noProviders {
+		log.Printf("cometmind: no enabled providers with models configured — open Settings to add one")
 	}
 
-	activeID := strings.TrimSpace(raw.ActiveProviderID)
-	var active *cometlineProviderJSON
-	for i := range runtimeProviders {
-		if runtimeProviders[i].ID == activeID {
-			active = &runtimeProviders[i]
-			break
+	var active cometlineProviderJSON
+	var providers []ProviderEntry
+	if !noProviders {
+		activeID := strings.TrimSpace(raw.ActiveProviderID)
+		activeIdx := 0
+		for i := range runtimeProviders {
+			if runtimeProviders[i].ID == activeID {
+				activeIdx = i
+				break
+			}
 		}
-	}
-	if active == nil {
-		active = &runtimeProviders[0]
-	}
-
-	providers := make([]ProviderEntry, 0, len(runtimeProviders))
-	for _, provider := range runtimeProviders {
-		providers = append(providers, ProviderEntry{
-			ID:      strings.TrimSpace(provider.ID),
-			Name:    strings.TrimSpace(provider.Name),
-			Method:  strings.TrimSpace(provider.Method),
-			BaseURL: strings.TrimSpace(provider.BaseURL),
-			APIKey:  provider.APIKey,
-			Model:   primaryModel(provider),
-		})
+		active = runtimeProviders[activeIdx]
+		providers = make([]ProviderEntry, 0, len(runtimeProviders))
+		for _, provider := range runtimeProviders {
+			providers = append(providers, ProviderEntry{
+				ID:      strings.TrimSpace(provider.ID),
+				Name:    strings.TrimSpace(provider.Name),
+				Method:  strings.TrimSpace(provider.Method),
+				BaseURL: strings.TrimSpace(provider.BaseURL),
+				APIKey:  provider.APIKey,
+				Model:   primaryModel(provider),
+			})
+		}
 	}
 
 	cm := raw.Cometmind
 	memDef := defaultMemoryConfig()
 	cfg := &Config{
 		Provider:         strings.TrimSpace(active.ID),
-		Model:            primaryModel(*active),
+		Model:            primaryModel(active),
 		BaseURL:          strings.TrimSpace(active.BaseURL),
 		TitleProvider:    strings.TrimSpace(cm.TitleProviderID),
 		TitleModel:       strings.TrimSpace(cm.TitleModelID),
@@ -276,10 +284,10 @@ func adaptCometlineSettings(raw cometlineSettingsJSON) (*Config, error) {
 	if cfg.Gateway.Discord.BotTokenEnv == "" {
 		cfg.Gateway.Discord.BotTokenEnv = "DISCORD_BOT_TOKEN"
 	}
-	if cfg.Provider == "" {
+	if cfg.Provider == "" && !noProviders {
 		cfg.Provider = def.Provider
 	}
-	if cfg.Model == "" {
+	if cfg.Model == "" && !noProviders {
 		cfg.Model = def.Model
 	}
 	if cfg.MaxTokens == 0 {

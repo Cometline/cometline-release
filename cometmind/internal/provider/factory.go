@@ -67,6 +67,12 @@ func New(cfg *config.Config) (cometsdk.Provider, error) {
 // NewFor returns a concrete SDK provider for a specific provider id.
 func NewFor(cfg *config.Config, id string) (cometsdk.Provider, error) {
 	entry, method, baseURL := providerConfigFor(cfg, id)
+	// No provider is configured at all (fresh install / user cleared settings).
+	// Surface a clear, actionable error instead of a confusing "unknown
+	// provider method" or TCP connection failure.
+	if entry == nil && method == "" {
+		return nil, fmt.Errorf("no provider configured — open Settings to add a provider and model")
+	}
 	key, err := config.ProviderAPIKey(cfg, entry, method)
 	if err != nil {
 		return nil, err
