@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { slide } from 'svelte/transition';
+	import { fly, slide } from 'svelte/transition';
+	import { flip } from 'svelte/animate';
 	import {
 		Brain,
 		ChevronDown,
@@ -43,7 +44,8 @@
 		toggleSubagent,
 		sessionId = '',
 		onNotifyAgent,
-		onStartJob
+		onStartJob,
+		maxVisibleReasoning = 0
 	}: {
 		assistant: Extract<ChatItem, { type: 'assistant' }>;
 		assistantId: string;
@@ -75,10 +77,19 @@
 		sessionId?: string;
 		onNotifyAgent?: (payload: ChatTurnPayload) => void | Promise<void>;
 		onStartJob?: (job: JobResource) => void | Promise<void>;
+		maxVisibleReasoning?: number;
 	} = $props();
 
 	let firstEntry = $derived(timeline[0]);
 	let childEntries = $derived(timeline.slice(1));
+
+	let slidingWindow = $derived(maxVisibleReasoning > 0 && parentExpanded);
+	let visibleChildren = $derived(
+		slidingWindow ? childEntries.slice(-maxVisibleReasoning) : childEntries
+	);
+	let hiddenCount = $derived(
+		slidingWindow ? Math.max(0, childEntries.length - maxVisibleReasoning) : 0
+	);
 
 	function memoryLabel(memories: InjectedMemory[]) {
 		return `Memories used · ${memories.length}`;
@@ -178,51 +189,63 @@
 						onToggle={() => toggleSubagent(firstEntry.subagent.id)}
 					/>
 				{/if}
-				{#each childEntries as entry (timelineEntryKey(entry))}
-					{#if entry.kind === 'reasoning'}
-						{@const key = segmentKey(entry)}
-						<ThinkingBlock
-							text={entry.text}
-							pending={entry.pending}
-							expanded={thinkingExpanded(
-								assistant,
-								key,
-								entry.segmentIndex,
-								entry.pending
-							)}
-							showSpinner={thinkingActive(entry.pending) && showThinkingSpinner}
-							nested={true}
-							onToggle={() =>
-								toggleThinking(assistant, key, entry.segmentIndex, entry.pending)}
-						/>
-					{:else if entry.kind === 'memory'}
-						{@const memoryKey = `${assistantId}-memory`}
-						<MemoryCard
-							memories={entry.memories}
-							expanded={memoryInThinkingExpanded(memoryKey)}
-							nested={true}
-							onToggle={() => toggleMemoryInThinking(memoryKey)}
-						/>
-					{:else if entry.kind === 'tool'}
-						<ToolFoldPanel
-							item={entry.tool}
-							label={toolFoldLabel(entry.tool)}
-							expanded={toolOutputExpanded(entry.tool)}
-							nested={true}
-							onToggle={() => toggleToolOutput(entry.tool.id)}
-							{sessionId}
-							{onNotifyAgent}
-							{onStartJob}
-						/>
-					{:else}
-						<SubagentPanel
-							item={entry.subagent}
-							expanded={subagentExpanded(entry.subagent.id)}
-							nested={true}
-							onToggle={() => toggleSubagent(entry.subagent.id)}
-						/>
-					{/if}
+				{#each visibleChildren as entry (timelineEntryKey(entry))}
+					<div
+						class="timeline-child"
+						in:fly={{ y: 12, duration: 220 }}
+						out:fly={{ y: -12, duration: 180 }}
+						animate:flip={{ duration: 200 }}
+					>
+						{#if entry.kind === 'reasoning'}
+							{@const key = segmentKey(entry)}
+							<ThinkingBlock
+								text={entry.text}
+								pending={entry.pending}
+								expanded={thinkingExpanded(
+									assistant,
+									key,
+									entry.segmentIndex,
+									entry.pending
+								)}
+								showSpinner={thinkingActive(entry.pending) && showThinkingSpinner}
+								nested={true}
+								onToggle={() =>
+									toggleThinking(assistant, key, entry.segmentIndex, entry.pending)}
+							/>
+						{:else if entry.kind === 'memory'}
+							{@const memoryKey = `${assistantId}-memory`}
+							<MemoryCard
+								memories={entry.memories}
+								expanded={memoryInThinkingExpanded(memoryKey)}
+								nested={true}
+								onToggle={() => toggleMemoryInThinking(memoryKey)}
+							/>
+						{:else if entry.kind === 'tool'}
+							<ToolFoldPanel
+								item={entry.tool}
+								label={toolFoldLabel(entry.tool)}
+								expanded={toolOutputExpanded(entry.tool)}
+								nested={true}
+								onToggle={() => toggleToolOutput(entry.tool.id)}
+								{sessionId}
+								{onNotifyAgent}
+								{onStartJob}
+							/>
+						{:else}
+							<SubagentPanel
+								item={entry.subagent}
+								expanded={subagentExpanded(entry.subagent.id)}
+								nested={true}
+								onToggle={() => toggleSubagent(entry.subagent.id)}
+							/>
+						{/if}
+					</div>
 				{/each}
+				{#if hiddenCount > 0}
+					<div class="hidden-indicator" transition:fly={{ y: 8, duration: 160 }}>
+						+{hiddenCount} more
+					</div>
+				{/if}
 			</div>
 		{/if}
 	</div>
@@ -243,5 +266,13 @@
 		background: transparent;
 		box-shadow: none;
 		padding: 0;
+	}
+
+	.hidden-indicator {
+		font-size: 11px;
+		color: var(--text-muted);
+		text-align: center;
+		padding: 2px 0;
+		opacity: 0.7;
 	}
 </style>

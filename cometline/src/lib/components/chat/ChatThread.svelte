@@ -667,6 +667,7 @@
 	{@const pinnedJobTools = pinnedJobProposalsForAssistant(item.id, threadItems)}
 	<div class="assistant-stack">
 		{#if grouped}
+			{@const maxVisible = item.id === streamingAssistantId && sessionStreaming ? 3 : 0}
 			<AssistantActivityGroup
 				assistant={item}
 				assistantId={item.id}
@@ -689,6 +690,7 @@
 				{sessionId}
 				{onNotifyAgent}
 				{onStartJob}
+				maxVisibleReasoning={maxVisible}
 			/>
 		{:else}
 			{#each timeline as entry (timelineEntryKey(entry))}
