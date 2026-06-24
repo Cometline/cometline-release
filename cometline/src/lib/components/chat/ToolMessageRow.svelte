@@ -1,0 +1,73 @@
+<script lang="ts">
+	import ToolFoldPanel from '$lib/components/chat/ToolFoldPanel.svelte';
+	import ThreadAvatar from '$lib/components/chat/ThreadAvatar.svelte';
+	import { startsSpeakerRun } from '$lib/conversation/thread-view-helpers';
+	import type { AssistantStackFoldController } from '$lib/conversation/assistant-stack-props';
+	import type { ChatItem } from '$lib/stores/chat.svelte';
+	import type { IconVariant } from '$lib/types';
+	import type { ChatTurnPayload } from '$lib/actions/start-chat';
+	import type { JobResource } from '$lib/client/cometmind';
+
+	let {
+		item,
+		threadItems,
+		index,
+		iconVariant,
+		sessionId,
+		toolFoldLabel,
+		fold,
+		onNotifyAgent,
+		onStartJob
+	}: {
+		item: Extract<ChatItem, { type: 'tool' }>;
+		threadItems: readonly ChatItem[];
+		index: number;
+		iconVariant: IconVariant;
+		sessionId: string;
+		toolFoldLabel: (tool: Extract<ChatItem, { type: 'tool' }>) => string;
+		fold: AssistantStackFoldController;
+		onNotifyAgent?: (payload: ChatTurnPayload) => void | Promise<void>;
+		onStartJob?: (job: JobResource) => void | Promise<void>;
+	} = $props();
+</script>
+
+<div
+	class="row tool-row"
+	class:continuation-row={!startsSpeakerRun(threadItems, index, 'assistant')}
+>
+	<ThreadAvatar variant="gutter" {iconVariant} />
+	<div class="tool-stack">
+		<ToolFoldPanel
+			{item}
+			label={toolFoldLabel(item)}
+			expanded={fold.toolOutputExpanded(item)}
+			onToggle={() => fold.toggleToolOutput(item.id)}
+			{sessionId}
+			{onNotifyAgent}
+			{onStartJob}
+		/>
+	</div>
+</div>
+
+<style>
+	.row {
+		display: flex;
+		width: 100%;
+		gap: var(--chat-row-gap);
+	}
+
+	.continuation-row {
+		margin-top: -16px;
+	}
+
+	.tool-row {
+		justify-content: flex-start;
+		align-items: flex-start;
+	}
+
+	.tool-stack {
+		min-width: 0;
+		flex: 1;
+		max-width: var(--chat-assistant-column);
+	}
+</style>
