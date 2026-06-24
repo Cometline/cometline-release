@@ -12,6 +12,7 @@ servers:
     description: Default local bind address
 tags:
   - name: Health
+  - name: Models
   - name: Workspaces
   - name: Files
   - name: Sessions
@@ -33,6 +34,31 @@ paths:
                 $ref: '#/components/schemas/HealthResponse'
               example:
                 status: ok
+
+  /api/v1/models:
+    get:
+      tags: [Models]
+      summary: List configured models
+      description: |
+        Returns enabled models across all enabled providers from Cometline settings.
+      operationId: listModels
+      responses:
+        '200':
+          description: Configured models
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelListResponse'
+              example:
+                models:
+                  - provider_id: anthropic
+                    model_id: claude-opus-4-5
+                    name: CLAUDE-OPUS-4-5
+                  - provider_id: anthropic
+                    model_id: claude-sonnet-4-5
+                    name: CLAUDE-SONNET-4-5
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /api/v1/workspaces:
     get:
@@ -1750,6 +1776,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Session'
+
+    ModelEntry:
+      type: object
+      additionalProperties: false
+      required: [provider_id, model_id, name]
+      properties:
+        provider_id:
+          type: string
+        model_id:
+          type: string
+        name:
+          type: string
+          description: Human-readable label derived from the model id.
+
+    ModelListResponse:
+      type: object
+      additionalProperties: false
+      required: [models]
+      properties:
+        models:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelEntry'
 
     TranscriptResponse:
       type: object

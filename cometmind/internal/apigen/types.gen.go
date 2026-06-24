@@ -613,6 +613,20 @@ type MemoryWire struct {
 	Similarity      float32 `json:"similarity"`
 }
 
+// ModelEntry defines model for ModelEntry.
+type ModelEntry struct {
+	ModelId string `json:"model_id"`
+
+	// Name Human-readable label derived from the model id.
+	Name       string `json:"name"`
+	ProviderId string `json:"provider_id"`
+}
+
+// ModelListResponse defines model for ModelListResponse.
+type ModelListResponse struct {
+	Models []ModelEntry `json:"models"`
+}
+
 // PostMessageRequest defines model for PostMessageRequest.
 type PostMessageRequest struct {
 	// DisplayText Optional transcript label for the user bubble. When set, the UI shows this instead of text while the agent still receives text.

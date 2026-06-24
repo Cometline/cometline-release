@@ -26,7 +26,7 @@ func runInit(_ *cobra.Command, _ []string) error {
 	}
 	defer rt.Close()
 
-	ws, err := rt.WorkspaceForCommand(ctx, "")
+	ws, err := rt.WorkspaceForCommand(ctx, WorkspaceFlag())
 	if err != nil {
 		return err
 	}

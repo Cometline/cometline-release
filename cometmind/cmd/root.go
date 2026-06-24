@@ -43,3 +43,9 @@ func WorkspaceRoot() (string, error) {
 	explicit, _ := rootCmd.PersistentFlags().GetString("workspace")
 	return paths.ResolveWorkspace(explicit)
 }
+
+// WorkspaceFlag returns the raw --workspace flag value (empty uses cwd).
+func WorkspaceFlag() string {
+	explicit, _ := rootCmd.PersistentFlags().GetString("workspace")
+	return explicit
+}

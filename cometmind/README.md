@@ -232,12 +232,27 @@ Only one run is allowed per session at a time (`409 session_running` on duplicat
 |---|---|
 | `cometmind init` | Create config + database; register current workspace |
 | `cometmind serve` | Start the HTTP/SSE server (`--port`, `--watch-parent` for Electron sidecar) |
-| `cometmind chat "message"` | One agent turn to stdout (`--session` to resume) |
-| `cometmind session list` | List sessions for the current workspace |
+| `cometmind chat "message"` | One agent turn to stdout (`--session`, `--model`, `--provider`) |
+| `cometmind session list` | List sessions (`--all`, `--json`, `--workspace-id`; honors `-w`) |
+| `cometmind session delete <id>` | Delete a session |
+| `cometmind session rename <id> --name <title>` | Rename a session |
+| `cometmind session set-model <id> --model <m> --provider <p>` | Switch a session's model |
+| `cometmind model list` | List enabled models from settings |
+| `cometmind model set <provider> <model>` | Set default model in settings |
 | `cometmind skills list\|show\|sync\|delete\|export` | Manage Agent Skills |
 | `cometmind gateway run --platform discord` | Start the Discord messaging gateway |
 
 Persistent flag: `--workspace` / `-w` (defaults to current directory).
+
+Session list examples:
+
+```bash
+cometmind session list                              # current workspace
+cometmind session list -w /path/to/repo             # explicit workspace path
+cometmind session list --workspace-id <uuid>        # by workspace id
+cometmind session list --all                        # all workspaces (sidebar-equivalent)
+cometmind session list --all --json                 # machine-readable output
+```
 
 ## Configuration
 

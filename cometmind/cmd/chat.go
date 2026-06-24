@@ -13,6 +13,8 @@ import (
 )
 
 var chatSessionID string
+var chatModelID string
+var chatProviderID string
 
 var chatCmd = &cobra.Command{
 	Use:   "chat [message...]",
@@ -23,6 +25,8 @@ var chatCmd = &cobra.Command{
 
 func init() {
 	chatCmd.Flags().StringVar(&chatSessionID, "session", "", "Resume an existing session id instead of creating a new one")
+	chatCmd.Flags().StringVar(&chatModelID, "model", "", "Override model for this turn only")
+	chatCmd.Flags().StringVar(&chatProviderID, "provider", "", "Override provider for this turn only")
 	rootCmd.AddCommand(chatCmd)
 }
 
@@ -39,7 +43,7 @@ func runChat(_ *cobra.Command, args []string) error {
 	}
 	defer rt.Close()
 
-	ws, err := rt.WorkspaceForCommand(ctx, "")
+	ws, err := rt.WorkspaceForCommand(ctx, WorkspaceFlag())
 	if err != nil {
 		return err
 	}
@@ -64,7 +68,18 @@ func runChat(_ *cobra.Command, args []string) error {
 		return err
 	}
 
-	runner, err := rt.RunnerFor(sess, ws.Path)
+	runSess := sess
+	modelID := strings.TrimSpace(chatModelID)
+	providerID := strings.TrimSpace(chatProviderID)
+	if modelID != "" || providerID != "" {
+		if modelID == "" || providerID == "" {
+			return fmt.Errorf("--model and --provider must both be provided together")
+		}
+		runSess.ModelID = modelID
+		runSess.ProviderID = providerID
+	}
+
+	runner, err := rt.RunnerFor(runSess, ws.Path)
 	if err != nil {
 		return err
 	}
@@ -72,7 +87,7 @@ func runChat(_ *cobra.Command, args []string) error {
 	evCh := make(chan event.Event, 64)
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- runner.Run(ctx, session.AgentTurnFromSession(sess), evCh)
+		errCh <- runner.Run(ctx, session.AgentTurnFromSession(runSess), evCh)
 		close(evCh)
 	}()
 

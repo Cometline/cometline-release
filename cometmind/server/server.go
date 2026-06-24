@@ -12,14 +12,14 @@ import (
 	"strings"
 	"time"
 
-	cometsdk "github.com/cometline/comet-sdk"
 	"github.com/cometline/cometmind/internal/acp"
+	"github.com/cometline/cometmind/internal/apigen"
 	"github.com/cometline/cometmind/internal/config"
 	"github.com/cometline/cometmind/internal/event"
 	"github.com/cometline/cometmind/internal/jobs"
 	"github.com/cometline/cometmind/internal/logging"
-	"github.com/cometline/cometmind/internal/memory"
 	mcppkg "github.com/cometline/cometmind/internal/mcp"
+	"github.com/cometline/cometmind/internal/memory"
 	"github.com/cometline/cometmind/internal/session"
 	skillpkg "github.com/cometline/cometmind/internal/skills"
 	"github.com/cometline/cometmind/internal/subagent"
@@ -110,6 +110,9 @@ func New(deps Deps) (*gin.Engine, error) {
 
 	// Health
 	api.GET("/health", app.handleHealth)
+
+	// Models
+	api.GET("/models", app.handleListModels)
 
 	// Workspaces
 	api.GET("/workspaces", app.handleListWorkspaces)
@@ -381,6 +384,23 @@ type syncSkillsResponse struct {
 
 func (a *App) handleHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, healthResponse{Status: "ok"})
+}
+
+func (a *App) handleListModels(c *gin.Context) {
+	models, err := config.ListConfiguredModels()
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	items := make([]apigen.ModelEntry, 0, len(models))
+	for _, m := range models {
+		items = append(items, apigen.ModelEntry{
+			ProviderId: m.ProviderID,
+			ModelId:    m.ModelID,
+			Name:       m.Name,
+		})
+	}
+	c.JSON(http.StatusOK, apigen.ModelListResponse{Models: items})
 }
 
 func (a *App) handleListSkills(c *gin.Context) {
@@ -1344,59 +1364,67 @@ func validateWorkspaceDirectory(c *gin.Context, workspacePath string) bool {
 }
 
 func sessionResourceFromModel(sess session.Session, workspacePath string) (sessionResource, error) {
-	usage, err := decodeTokenUsage(sess.TokenUsage)
+	wire, err := session.APISession(sess, workspacePath)
 	if err != nil {
 		return sessionResource{}, err
 	}
-	return sessionResource{
-		ID:               sess.ID,
-		WorkspaceID:      sess.WorkspaceID,
-		WorkspacePath:    workspacePath,
-		Title:            sess.Title,
-		ModelID:          sess.ModelID,
-		ProviderID:       sess.ProviderID,
-		Status:           sess.Status,
-		TokenUsage:       usage,
-		ParentSessionID:  sess.ParentSessionID,
-		Purpose:          sess.Purpose,
-		DelegationStatus: sess.DelegationStatus,
-		OutputSummary:    sess.OutputSummary,
-		ACPSessionID:     sess.ACPSessionID,
-		PendingQuestion:  sess.PendingQuestion,
-		SubagentKind:     sess.SubagentKind,
-		Gateway:          gatewayResourceFromModel(sess.Gateway),
-		Pinned:           sess.Pinned,
-		CreatedAt:        sess.CreatedAt,
-		UpdatedAt:        sess.UpdatedAt,
-	}, nil
+	return sessionResourceFromAPISession(wire), nil
 }
 
-func gatewayResourceFromModel(gw *session.SessionGateway) *gatewayResource {
-	if gw == nil || gw.Platform == "" {
-		return nil
+func sessionResourceFromAPISession(w apigen.Session) sessionResource {
+	res := sessionResource{
+		ID:            w.Id,
+		WorkspaceID:   w.WorkspaceId,
+		WorkspacePath: w.WorkspacePath,
+		Title:         w.Title,
+		ModelID:       w.ModelId,
+		ProviderID:    w.ProviderId,
+		Status:        string(w.Status),
+		TokenUsage: tokenUsageResource{
+			InputTokens:  w.TokenUsage.InputTokens,
+			OutputTokens: w.TokenUsage.OutputTokens,
+			CacheRead:    w.TokenUsage.CacheRead,
+			CacheWrite:   w.TokenUsage.CacheWrite,
+		},
+		Pinned:    w.Pinned,
+		CreatedAt: w.CreatedAt,
+		UpdatedAt: w.UpdatedAt,
 	}
-	return &gatewayResource{
-		Platform:  gw.Platform,
-		ChannelID: gw.ChannelID,
-		ThreadID:  gw.ThreadID,
+	if w.ParentSessionId != nil {
+		res.ParentSessionID = *w.ParentSessionId
 	}
-}
-
-func decodeTokenUsage(raw string) (tokenUsageResource, error) {
-	if strings.TrimSpace(raw) == "" {
-		return tokenUsageResource{}, nil
+	if w.Purpose != nil {
+		res.Purpose = *w.Purpose
 	}
-
-	var usage cometsdk.TokenUsage
-	if err := json.Unmarshal([]byte(raw), &usage); err != nil {
-		return tokenUsageResource{}, fmt.Errorf("decode token usage: %w", err)
+	if w.DelegationStatus != nil {
+		res.DelegationStatus = string(*w.DelegationStatus)
 	}
-	return tokenUsageResource{
-		InputTokens:  usage.InputTokens,
-		OutputTokens: usage.OutputTokens,
-		CacheRead:    usage.CacheRead,
-		CacheWrite:   usage.CacheWrite,
-	}, nil
+	if w.OutputSummary != nil {
+		res.OutputSummary = *w.OutputSummary
+	}
+	if w.AcpSessionId != nil {
+		res.ACPSessionID = *w.AcpSessionId
+	}
+	if w.PendingQuestion != nil {
+		res.PendingQuestion = *w.PendingQuestion
+	}
+	if w.SubagentKind != nil {
+		res.SubagentKind = string(*w.SubagentKind)
+	}
+	if w.Gateway != nil {
+		gw := &gatewayResource{}
+		if w.Gateway.Platform != nil {
+			gw.Platform = string(*w.Gateway.Platform)
+		}
+		if w.Gateway.ChannelId != nil {
+			gw.ChannelID = *w.Gateway.ChannelId
+		}
+		if w.Gateway.ThreadId != nil {
+			gw.ThreadID = *w.Gateway.ThreadId
+		}
+		res.Gateway = gw
+	}
+	return res
 }
 
 func transcriptItemFromModel(item session.TranscriptEntry) transcriptItem {

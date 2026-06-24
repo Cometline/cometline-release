@@ -207,6 +207,19 @@ export type SessionListResponse = {
     sessions: Array<Session>;
 };
 
+export type ModelEntry = {
+    provider_id: string;
+    model_id: string;
+    /**
+     * Human-readable label derived from the model id.
+     */
+    name: string;
+};
+
+export type ModelListResponse = {
+    models: Array<ModelEntry>;
+};
+
 export type TranscriptResponse = {
     session_id: string;
     items: Array<TranscriptItem>;
@@ -654,6 +667,31 @@ export type GetHealthResponses = {
 };
 
 export type GetHealthResponse = GetHealthResponses[keyof GetHealthResponses];
+
+export type ListModelsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/models';
+};
+
+export type ListModelsErrors = {
+    /**
+     * Unexpected server error
+     */
+    500: ErrorResponse;
+};
+
+export type ListModelsError = ListModelsErrors[keyof ListModelsErrors];
+
+export type ListModelsResponses = {
+    /**
+     * Configured models
+     */
+    200: ModelListResponse;
+};
+
+export type ListModelsResponse = ListModelsResponses[keyof ListModelsResponses];
 
 export type DeleteWorkspaceData = {
     body?: never;

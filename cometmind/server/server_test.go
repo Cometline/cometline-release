@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	cometsdk "github.com/cometline/comet-sdk"
+	"github.com/cometline/cometmind/internal/apigen"
 	"github.com/cometline/cometmind/internal/config"
 	"github.com/cometline/cometmind/internal/contract"
 	"github.com/cometline/cometmind/internal/event"
@@ -1750,6 +1751,42 @@ func TestGetSessionIncludesGatewayMetadata(t *testing.T) {
 	}
 	if got.Gateway.ThreadID != "thread-3" {
 		t.Fatalf("gateway.thread_id = %q want thread-3", got.Gateway.ThreadID)
+	}
+}
+
+func TestListModels(t *testing.T) {
+	dir := t.TempDir()
+	settingsDir := filepath.Join(dir, ".cometmind")
+	if err := os.MkdirAll(settingsDir, 0o700); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	data, err := os.ReadFile("../internal/config/testdata/cometline-settings.json")
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(settingsDir, "cometline-settings.json"), data, 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	t.Setenv("HOME", dir)
+
+	engine, _, cleanup := newTestEngine(t, func(session.Session, string) (Runner, error) {
+		return fakeRunner(func(context.Context, session.AgentTurn, chan<- event.Event) error {
+			return nil
+		}), nil
+	})
+	defer cleanup()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/models", nil)
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var got apigen.ModelListResponse
+	decodeJSON(t, rec.Body.Bytes(), &got)
+	if len(got.Models) != 2 {
+		t.Fatalf("models len = %d, want 2", len(got.Models))
 	}
 }
 
