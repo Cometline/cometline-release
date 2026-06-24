@@ -163,7 +163,7 @@
 
 	.queue-remove:hover {
 		background: rgba(180, 35, 24, 0.08);
-		color: #b42318;
+		color: var(--status-error);
 	}
 
 	.queue-preview-index {

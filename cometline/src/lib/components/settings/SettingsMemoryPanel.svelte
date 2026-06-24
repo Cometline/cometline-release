@@ -525,7 +525,7 @@
 		border: 1px solid rgba(180, 35, 24, 0.25);
 		border-radius: 12px;
 		background: rgba(180, 35, 24, 0.06);
-		color: #b42318;
+		color: var(--status-error);
 	}
 
 	.link-button {
@@ -644,7 +644,7 @@
 	}
 
 	.icon.danger:hover {
-		color: #b42318;
+		color: var(--status-error);
 	}
 
 	@media (max-width: 780px) {

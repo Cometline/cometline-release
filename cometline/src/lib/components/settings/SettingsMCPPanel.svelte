@@ -807,7 +807,7 @@
 	}
 
 	.row-remove:hover {
-		color: #b42318;
+		color: var(--status-error);
 		background: rgba(180, 35, 24, 0.08);
 		border-color: rgba(180, 35, 24, 0.18);
 	}
@@ -886,7 +886,7 @@
 		margin: 0;
 		padding: 0 11px 8px 37px;
 		font-size: 11px;
-		color: #b42318;
+		color: var(--status-error);
 	}
 
 	.mcp-server-editor {
@@ -914,7 +914,7 @@
 
 	.status-badge.error {
 		background: rgba(180, 35, 24, 0.12);
-		color: #b42318;
+		color: var(--status-error);
 	}
 
 	.tool-toggles {
@@ -993,7 +993,7 @@
 
 	.settings-field-hint.error,
 	.settings-field-hint.error {
-		color: #b42318;
+		color: var(--status-error);
 	}
 
 	.mcp-footnote {

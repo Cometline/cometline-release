@@ -883,7 +883,7 @@
 	}
 
 	.skill-row .secondary.danger {
-		color: #b42318;
+		color: var(--status-error);
 	}
 
 	.skill-row:last-child {

@@ -378,7 +378,7 @@
 	.drawer-error {
 		margin: 0;
 		font-size: 12px;
-		color: #b42318;
+		color: var(--status-error);
 	}
 
 	.field-label {

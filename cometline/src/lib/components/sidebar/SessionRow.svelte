@@ -247,7 +247,7 @@
 
 	.delete-session:hover:not(:disabled) {
 		background: rgba(180, 35, 24, 0.08);
-		color: #b42318;
+		color: var(--status-error);
 	}
 
 	.pin-session:disabled,

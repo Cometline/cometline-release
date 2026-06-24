@@ -190,7 +190,7 @@
 	}
 
 	.tool-error-text {
-		color: #b42318;
+		color: var(--status-error);
 	}
 
 	.proposal-dismissed {

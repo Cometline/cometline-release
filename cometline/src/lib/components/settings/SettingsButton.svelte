@@ -79,7 +79,7 @@
 	.danger:hover:not(:disabled) {
 		background: rgba(180, 35, 24, 0.08);
 		border-color: rgba(180, 35, 24, 0.22);
-		color: #b42318;
+		color: var(--status-error);
 	}
 
 	.danger:active:not(:disabled) {

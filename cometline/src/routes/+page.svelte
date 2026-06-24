@@ -160,7 +160,7 @@
 		max-width: 520px;
 		font-size: 12px;
 		line-height: 1.5;
-		color: #b42318;
+		color: var(--status-error);
 		text-align: center;
 	}
 

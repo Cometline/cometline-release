@@ -375,7 +375,7 @@
 	.jobs-error {
 		margin: 0 0 12px;
 		font-size: 12px;
-		color: #b42318;
+		color: var(--status-error);
 	}
 
 	.jobs-muted {

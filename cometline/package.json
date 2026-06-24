@@ -28,6 +28,7 @@
 		"test:coverage": "vitest run --coverage",
 		"test:e2e": "playwright test",
 		"lint": "eslint .",
+		"lint:colors": "node scripts/lint-colors.mjs",
 		"lint:fix": "eslint . --fix",
 		"format": "prettier --write .",
 		"format:check": "prettier --check ."

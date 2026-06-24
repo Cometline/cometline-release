@@ -958,13 +958,13 @@
 	.wizard-error {
 		margin: 12px 0 0;
 		font-size: 12px;
-		color: #b42318;
+		color: var(--status-error);
 	}
 
 	.codex-status {
 		margin: 0 0 14px;
 		font-size: 13px;
-		color: #b42318;
+		color: var(--status-error);
 	}
 
 	.codex-status.ok {

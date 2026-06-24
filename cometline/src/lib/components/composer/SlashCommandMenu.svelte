@@ -188,7 +188,7 @@
 
 	.skill-command-menu :global(.workspace-delete-btn:hover) {
 		background: rgba(180, 35, 24, 0.1);
-		color: #b42318;
+		color: var(--status-error);
 	}
 
 	.skill-command-menu :global(.workspace-delete-btn:disabled) {

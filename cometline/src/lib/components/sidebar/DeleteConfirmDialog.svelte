@@ -96,7 +96,7 @@
 	}
 
 	.confirm-delete {
-		background: #b42318;
+		background: var(--status-error);
 		color: white;
 	}
 

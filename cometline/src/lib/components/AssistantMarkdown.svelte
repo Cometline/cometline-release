@@ -417,7 +417,7 @@
 	}
 
 	.markdown :global(.math-error) {
-		color: #b42318;
+		color: var(--status-error);
 		font-family: 'SF Mono', ui-monospace, 'Menlo', monospace;
 		font-size: 0.88em;
 	}

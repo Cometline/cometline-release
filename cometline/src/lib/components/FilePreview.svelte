@@ -179,7 +179,7 @@
 	}
 
 	.file-preview-error {
-		color: #b42318;
+		color: var(--status-error);
 		text-align: center;
 	}
 
@@ -219,7 +219,7 @@
 		padding: 10px 14px;
 		border-bottom: 1px solid rgba(180, 35, 24, 0.15);
 		background: rgba(180, 35, 24, 0.05);
-		color: #b42318;
+		color: var(--status-error);
 		font-size: 12px;
 	}
 
