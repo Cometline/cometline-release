@@ -198,7 +198,7 @@ func (r Registry) PromptIndex() string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("\n\n## Available Skills\nUse `load_skill` when the user's task matches one of these skills. Load the full skill before following it; do not assume details from the summary alone.\n")
+	b.WriteString("\n\n## Available Skills\nUse `load_skill` when the user's task matches one of these skills. Load the full skill before following it; do not assume details from the summary alone.\nIf a request is vague or ambiguous but plausibly falls within a skill's domain, proactively mention the relevant skill and offer to use it before asking for more detail or guessing — for example: \"I have a skill called `setup-cometline` that handles this; want me to use it?\"\n")
 	for _, skill := range r.Skills {
 		if skill.Internal {
 			continue
