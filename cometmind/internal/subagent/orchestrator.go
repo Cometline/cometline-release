@@ -3,7 +3,6 @@ package subagent
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"sync"
 )
 
@@ -116,38 +115,38 @@ func (o *Orchestrator) Wait(ctx context.Context, parentID string, childIDs []str
 		return nil, nil
 	}
 
-	results := make([]Result, 0, len(handles))
-	remaining := make(map[string]chan Result, len(handles))
+	out := make(chan Result, len(handles))
+	var wg sync.WaitGroup
+	wg.Add(len(handles))
 	for id, h := range handles {
-		remaining[id] = h.done
+		go func(id string, h *handle) {
+			defer wg.Done()
+			select {
+			case res := <-h.done:
+				if res.ChildSessionID == "" {
+					res.ChildSessionID = id
+				}
+				out <- res
+			case <-ctx.Done():
+			}
+		}(id, h)
 	}
 
-	for len(remaining) > 0 {
-		ids := make([]string, 0, len(remaining))
-		cases := make([]reflect.SelectCase, 0, len(remaining)+1)
-		cases = append(cases, reflect.SelectCase{
-			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(ctx.Done()),
-		})
-		for id, ch := range remaining {
-			ids = append(ids, id)
-			cases = append(cases, reflect.SelectCase{
-				Dir:  reflect.SelectRecv,
-				Chan: reflect.ValueOf(ch),
-			})
-		}
+	go func() {
+		wg.Wait()
+		close(out)
+	}()
 
-		chosen, recv, _ := reflect.Select(cases)
-		if chosen == 0 {
-			return results, ctx.Err()
-		}
-		id := ids[chosen-1]
-		res := recv.Interface().(Result)
-		if res.ChildSessionID == "" {
-			res.ChildSessionID = id
-		}
+	results := make([]Result, 0, len(handles))
+	for res := range out {
 		results = append(results, res)
-		delete(remaining, id)
+		if len(results) == len(handles) {
+			break
+		}
+	}
+
+	if ctx.Err() != nil {
+		return results, ctx.Err()
 	}
 	return results, nil
 }
