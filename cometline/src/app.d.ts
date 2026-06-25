@@ -63,6 +63,7 @@ declare global {
 		openAtLogin: boolean;
 		hasSeenIntro: boolean;
 		hasCompletedSetup: boolean;
+		hasDismissedSetupWizard: boolean;
 		iconVariant: 'default' | 'man';
 	}
 

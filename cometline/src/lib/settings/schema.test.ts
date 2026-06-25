@@ -22,11 +22,21 @@ describe('settings schema', () => {
 		expect(settings.providers.find((p) => p.id === 'codex')?.apiKey).toBe('');
 		expect(settings.activeProviderId).toBe('codex');
 		expect(settings.app.iconVariant).toBe('default');
+		expect(settings.app.hasCompletedSetup).toBe(false);
+		expect(settings.app.hasDismissedSetupWizard).toBe(false);
 		expect(settings.cometmind.systemPromptPath).toBe('');
 		expect(settings.cometmind.maxTokens).toBe(2048);
 		expect(settings.cometmind.contextWindowLimit).toBe(128_000);
 		expect(settings.cometmind.storage.retentionDays).toBe(90);
 		expect(settings.cometmind.storage.maxSessionsPerWorkspace).toBe(0);
+	});
+
+	it('round-trips hasDismissedSetupWizard through normalizeSettings', () => {
+		const settings = normalizeSettings({
+			...defaultSettings(),
+			app: { ...defaultSettings().app, hasDismissedSetupWizard: true }
+		});
+		expect(settings.app.hasDismissedSetupWizard).toBe(true);
 	});
 
 	it('appends custom providers after built-ins', () => {

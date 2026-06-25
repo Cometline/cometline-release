@@ -68,6 +68,22 @@ export function readHasCompletedSetupSync(): boolean {
 	}
 }
 
+/**
+ * Synchronously reads hasDismissedSetupWizard from localStorage. Used to
+ * prevent the setup wizard from auto-opening after the user has explicitly
+ * skipped it, even across app restarts.
+ */
+export function readHasDismissedSetupWizardSync(): boolean {
+	try {
+		const raw = localStorage.getItem(LOCAL_SETTINGS_KEY);
+		if (!raw) return false;
+		const parsed = JSON.parse(raw) as { app?: { hasDismissedSetupWizard?: unknown } };
+		return parsed?.app?.hasDismissedSetupWizard === true;
+	} catch {
+		return false;
+	}
+}
+
 function writeLocalSettings(settings: ProviderSettings) {
 	localStorage.setItem(LOCAL_SETTINGS_KEY, JSON.stringify(settings));
 }
@@ -154,6 +170,15 @@ function createSettingsStore() {
 		const next: ProviderSettings = {
 			...settings,
 			app: { ...settings.app, hasCompletedSetup: true }
+		};
+		await save(next, { restartCometMind: false });
+	}
+
+	async function markSetupDismissed() {
+		if (settings.app.hasDismissedSetupWizard) return;
+		const next: ProviderSettings = {
+			...settings,
+			app: { ...settings.app, hasDismissedSetupWizard: true }
 		};
 		await save(next, { restartCometMind: false });
 	}
@@ -262,6 +287,7 @@ function createSettingsStore() {
 		save,
 		markIntroSeen,
 		markSetupComplete,
+		markSetupDismissed,
 		saveShortcuts,
 		setActiveProvider,
 		updateProvider,

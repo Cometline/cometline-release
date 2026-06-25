@@ -93,7 +93,7 @@
 	let selectedProviderId = $state(
 		untrack(
 			() =>
-				draft.providers.find((p) => p.id === 'anthropic')?.id ??
+				draft.providers.find((p) => p.id === 'openai')?.id ??
 				draft.providers[0]?.id ??
 				''
 		)
@@ -328,6 +328,8 @@
 	}
 
 	function skip() {
+		// Persist the dismissal so the wizard doesn't re-open on next launch.
+		void settingsStore.markSetupDismissed();
 		shellStore.closeSetup();
 	}
 

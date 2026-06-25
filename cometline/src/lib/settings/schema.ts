@@ -673,6 +673,7 @@ function defaultAppSettings(): AppSettings {
 		openAtLogin: false,
 		hasSeenIntro: false,
 		hasCompletedSetup: false,
+		hasDismissedSetupWizard: false,
 		iconVariant: 'default'
 	};
 }
@@ -856,6 +857,10 @@ export function normalizeSettings(
 				typeof next.app?.hasCompletedSetup === 'boolean'
 					? next.app.hasCompletedSetup
 					: defaultAppSettings().hasCompletedSetup,
+			hasDismissedSetupWizard:
+				typeof next.app?.hasDismissedSetupWizard === 'boolean'
+					? next.app.hasDismissedSetupWizard
+					: defaultAppSettings().hasDismissedSetupWizard,
 			iconVariant: normalizeIconVariant(next.app?.iconVariant)
 		},
 		cometmind
@@ -936,6 +941,7 @@ const providerSettingsSchema = z.object({
 		openAtLogin: z.boolean(),
 		hasSeenIntro: z.boolean(),
 		hasCompletedSetup: z.boolean(),
+		hasDismissedSetupWizard: z.boolean(),
 		iconVariant: z.enum(['default', 'man'])
 	}),
 	cometmind: z.object({

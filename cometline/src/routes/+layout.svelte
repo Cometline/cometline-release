@@ -3,7 +3,7 @@
 	import { onMount } from 'svelte';
 	import AppShell from '$lib/components/AppShell.svelte';
 	import { connectionState } from '$lib/stores/runtime.svelte';
-	import { settingsStore } from '$lib/stores/settings.svelte';
+	import { settingsStore, readHasDismissedSetupWizardSync } from '$lib/stores/settings.svelte';
 	import { runtimeProviders } from '$lib/stores/settings.svelte';
 	import { sessionStore } from '$lib/stores/session.svelte';
 	import { shellStore } from '$lib/stores/shell.svelte';
@@ -14,8 +14,13 @@
 	let { children } = $props();
 
 	let settingsLoaded = $state(false);
-	// Prevents the setup wizard from re-opening after the user skips it.
+	// Prevents the setup wizard from re-opening after the user skips it
+	// within the same session (in-memory guard). The durable guard is
+	// hasDismissedSetupWizard persisted in settings.
 	let setupAutoTriggered = false;
+	// Fast synchronous read so the very first effect tick already knows
+	// whether the user previously dismissed the wizard.
+	let dismissedSetupSync = readHasDismissedSetupWizardSync();
 
 	onMount(() => {
 		connectionState.startPolling();
@@ -48,15 +53,20 @@
 	});
 
 	// Auto-open the setup wizard once when the intro has finished and the user
-	// hasn't completed setup, or when no provider is configured (state fallback).
+	// hasn't completed setup. Skipping the wizard sets hasDismissedSetupWizard,
+	// which is read synchronously on startup and authoritative once settings load.
 	$effect(() => {
 		if (!settingsLoaded || shellStore.introOpen || shellStore.setupOpen) return;
 		if (setupAutoTriggered) return;
-		const hasProvider = runtimeProviders(settingsStore.settings).length > 0;
-		if (!settingsStore.settings.app.hasCompletedSetup || !hasProvider) {
-			setupAutoTriggered = true;
-			shellStore.openSetup();
-		}
+		// Honour the persisted dismissal (from settings) or the fast sync read.
+		if (
+			settingsStore.settings.app.hasDismissedSetupWizard ||
+			settingsStore.settings.app.hasCompletedSetup ||
+			dismissedSetupSync
+		)
+			return;
+		setupAutoTriggered = true;
+		shellStore.openSetup();
 	});
 
 	$effect(() => {

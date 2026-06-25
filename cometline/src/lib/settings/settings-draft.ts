@@ -34,6 +34,7 @@ export function cloneSettings(settings: ProviderSettings): ProviderSettings {
 			openAtLogin: settings.app?.openAtLogin ?? false,
 			hasSeenIntro: settings.app?.hasSeenIntro ?? false,
 			hasCompletedSetup: settings.app?.hasCompletedSetup ?? false,
+			hasDismissedSetupWizard: settings.app?.hasDismissedSetupWizard ?? false,
 			iconVariant: settings.app?.iconVariant ?? 'default'
 		},
 		cometmind: cloneCometMindSettings(normalizeCometMindSettings(settings.cometmind))
