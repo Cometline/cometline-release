@@ -88,9 +88,17 @@ func New(ctx context.Context) (*Runtime, error) {
 	r.Jobs = jobs.NewService(sqlDB, r.jobSettingsSnapshot, notifier)
 	if cfg.MemoryRuntimeEnabled() {
 		p, err := provider.New(cfg)
-		if err == nil {
+		if err != nil {
+			logging.L().Warn("memory.provider.init_failed",
+				"error", err,
+				"effect", "memory subsystem disabled; agent will run without retrieval/extraction")
+		} else {
 			mem, err := memory.NewService(sqlDB, cfg.MemorySettings(), p, sessions)
-			if err == nil {
+			if err != nil {
+				logging.L().Warn("memory.service.init_failed",
+					"error", err,
+					"effect", "memory subsystem disabled; agent will run without retrieval/extraction")
+			} else {
 				r.Memory = mem
 			}
 		}
