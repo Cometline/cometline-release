@@ -15,6 +15,7 @@ import (
 	"github.com/cometline/cometmind/internal/memory"
 	"github.com/cometline/cometmind/internal/provider"
 	"github.com/cometline/cometmind/internal/session"
+	"github.com/cometline/cometmind/internal/subagent"
 	"github.com/cometline/cometmind/internal/tools"
 )
 
@@ -54,6 +55,7 @@ type Runner struct {
 	SystemPrompt           string
 	SkillIndex             string
 	JobIndex               string
+	SubagentOrchestrator   *subagent.Orchestrator
 
 	// MemorySem is an optional semaphore that bounds the number of
 	// extractMemoryAfterTurn calls that may run concurrently across all
@@ -103,6 +105,8 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 	truncationContinue := false
 	jobProgressNudge := false
 	jobTracker := newJobProgressTracker(ctx, r.Jobs, turn.ID)
+	subagentWaitNudge := false
+	pendingSubagentResults := ""
 	// Injected memories belong to the first assistant message of the turn. They
 	// are captured when retrieved (step 0) and attached to the first
 	// AppendAssistantStep call so they persist and rebuild on reload.
@@ -136,7 +140,7 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 			emitStatus(event.PhaseContinuing)
 		}
 
-		baseSystem := r.systemPrompt()
+		baseSystem := r.buildSystemPrompt(sess.ContextSummary, truncationContinue, jobProgressNudge, jobTracker.JobID, subagentWaitNudge, pendingSubagentResults)
 		if steps == 0 && r.Compactor != nil && sess.ID != "" {
 			updated, err := r.Compactor.MaybeCompact(
 				ctx,
@@ -173,7 +177,7 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 
 		logging.L().Info("agent.step.start", "session", turn.ID, "step", steps+1, "model", turn.ModelID, "messages", len(msgs), "max_tokens", r.MaxTokens)
 
-		system := r.buildSystemPrompt(sess.ContextSummary, truncationContinue, jobProgressNudge, jobTracker.JobID)
+		system := baseSystem
 		truncationContinue = false
 		jobProgressNudge = false
 		if r.Memory != nil && r.Memory.Enabled() && steps == 0 {
@@ -300,6 +304,15 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 		pendingMemories = nil
 
 		if result.FinishReason == cometsdk.FinishStop {
+			if collected, waited, err := r.collectActiveSubagentResults(ctx, turn.ID); err != nil {
+				ch <- event.Errorf(err.Error(), "subagents")
+				return err
+			} else if waited {
+				pendingSubagentResults = collected
+				subagentWaitNudge = false
+				steps++
+				continue
+			}
 			return completeTurn()
 		}
 		if len(result.ToolCalls) == 0 {
@@ -314,6 +327,15 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 					"continuation", outputTruncationContinuations,
 					"max_tokens", r.MaxTokens,
 				)
+				steps++
+				continue
+			}
+			if collected, waited, err := r.collectActiveSubagentResults(ctx, turn.ID); err != nil {
+				ch <- event.Errorf(err.Error(), "subagents")
+				return err
+			} else if waited {
+				pendingSubagentResults = collected
+				subagentWaitNudge = false
 				steps++
 				continue
 			}
@@ -362,12 +384,41 @@ func (r *Runner) Run(ctx context.Context, turn session.AgentTurn, ch chan<- even
 				jobProgressNudge = true
 			}
 		}
+		if r.hasActiveSubagents(turn.ID) {
+			subagentWaitNudge = true
+		} else {
+			subagentWaitNudge = false
+		}
+		pendingSubagentResults = ""
 
 		steps++
 	}
 
 	ch <- event.Errorf("max steps exceeded", "max_steps")
 	return fmt.Errorf("max steps exceeded")
+}
+
+func (r *Runner) hasActiveSubagents(parentSessionID string) bool {
+	return r.SubagentOrchestrator != nil && r.SubagentOrchestrator.ActiveCount(parentSessionID) > 0
+}
+
+func (r *Runner) collectActiveSubagentResults(ctx context.Context, parentSessionID string) (string, bool, error) {
+	if !r.hasActiveSubagents(parentSessionID) {
+		return "", false, nil
+	}
+	if r.SubagentOrchestrator == nil {
+		return "", false, fmt.Errorf("subagent waiting is not configured")
+	}
+
+	results, err := r.SubagentOrchestrator.Wait(ctx, parentSessionID, nil)
+	if err != nil {
+		return "", false, err
+	}
+	var b strings.Builder
+	for _, res := range results {
+		writeCollectedSubagentResult(&b, res.ChildSessionID, string(res.Kind), res.Status, res.Summary)
+	}
+	return strings.TrimSpace(b.String()), true, nil
 }
 
 func memoryChangesToWire(changes []memory.Change) []event.MemoryChangeWire {
@@ -434,7 +485,7 @@ func (r *Runner) systemPrompt() string {
 	return base + r.SkillIndex + r.JobIndex
 }
 
-func (r *Runner) buildSystemPrompt(contextSummary string, truncationContinue, jobProgressNudge bool, jobID string) string {
+func (r *Runner) buildSystemPrompt(contextSummary string, truncationContinue, jobProgressNudge bool, jobID string, subagentWaitNudge bool, pendingSubagentResults string) string {
 	base := r.systemPrompt()
 	var parts []string
 	if block := FormatSummaryPromptBlock(contextSummary); block != "" {
@@ -450,6 +501,14 @@ func (r *Runner) buildSystemPrompt(contextSummary string, truncationContinue, jo
 		if block := FormatJobProgressNudgeBlock(jobID); block != "" {
 			parts = append(parts, block)
 		}
+	}
+	if subagentWaitNudge {
+		if block := FormatWaitForSubagentsBlock(); block != "" {
+			parts = append(parts, block)
+		}
+	}
+	if block := FormatCollectedSubagentResultsBlock(pendingSubagentResults); block != "" {
+		parts = append(parts, block)
 	}
 	if len(parts) == 0 {
 		return base
@@ -485,4 +544,11 @@ func backgroundProgressEmitter(ch chan<- event.Event) tools.ProgressFn {
 		}()
 		ch <- ev
 	}
+}
+
+func writeCollectedSubagentResult(b *strings.Builder, id, kind, status, summary string) {
+	if b.Len() > 0 {
+		b.WriteString("\n\n")
+	}
+	fmt.Fprintf(b, "child_session_id: %s\nkind: %s\nstatus: %s\n\n%s", id, kind, status, summary)
 }

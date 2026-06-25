@@ -309,6 +309,7 @@ func (r *Runtime) runnerFor(sess session.Session, workspacePath string, opts Run
 		MaxTokens:    r.Config.MaxTokens,
 		SystemPrompt: r.SystemPrompt,
 		SkillIndex:   skillRegistry.PromptIndex(),
+		SubagentOrchestrator: r.subagentOrchestratorForRunner(opts.Subagent),
 		MemorySem:    r.memorySem,
 	}
 	if !opts.Subagent {
@@ -316,6 +317,13 @@ func (r *Runtime) runnerFor(sess session.Session, workspacePath string, opts Run
 		runner.Compactor = &agent.ContextCompactor{Sessions: r.Sessions, Config: r.Config}
 	}
 	return runner, nil
+}
+
+func (r *Runtime) subagentOrchestratorForRunner(isSubagent bool) *subagent.Orchestrator {
+	if isSubagent {
+		return nil
+	}
+	return r.SubagentOrchestrator()
 }
 
 func (r *Runtime) toolRegistryWithJobMeta(workspacePath string, skillRegistry skills.Registry, sessionID, platform, sourceChannelID string) *tools.Registry {

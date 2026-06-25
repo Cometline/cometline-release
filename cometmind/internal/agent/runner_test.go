@@ -10,10 +10,12 @@ import (
 	"time"
 
 	cometsdk "github.com/cometline/comet-sdk"
+	"github.com/cometline/cometmind/internal/db"
 	"github.com/cometline/cometmind/internal/event"
 	"github.com/cometline/cometmind/internal/jobs"
 	"github.com/cometline/cometmind/internal/memory"
 	"github.com/cometline/cometmind/internal/session"
+	"github.com/cometline/cometmind/internal/subagent"
 	"github.com/cometline/cometmind/internal/tools"
 )
 
@@ -53,6 +55,42 @@ func (f *fakeStore) UpdateToolCallResult(ctx context.Context, toolCallID, result
 func (f *fakeStore) AppendToolResultMessage(ctx context.Context, sessionID, toolCallID, output string, isErr bool) (session.Message, error) {
 	f.toolResults++
 	return session.Message{}, nil
+}
+
+func (f *fakeStore) GetSession(ctx context.Context, sessionID string) (session.Session, error) {
+	return session.Session{ID: sessionID}, nil
+}
+
+func (f *fakeStore) NewChildSession(ctx context.Context, parent session.Session, purpose, subagentKind string) (session.Session, error) {
+	return session.Session{}, nil
+}
+
+func (f *fakeStore) UpdateSessionModel(ctx context.Context, sessionID, modelID, providerID string) (session.Session, error) {
+	return session.Session{}, nil
+}
+
+func (f *fakeStore) AppendUserMessage(ctx context.Context, sessionID, text string) (session.Message, error) {
+	return session.Message{}, nil
+}
+
+func (f *fakeStore) UpdateDelegationState(ctx context.Context, sessionID string, status session.DelegationStatus, summary, pendingQuestion string) error {
+	return nil
+}
+
+func (f *fakeStore) UpdateACPSessionID(ctx context.Context, sessionID, acpSessionID string) error {
+	return nil
+}
+
+func (f *fakeStore) CompactChildSession(ctx context.Context, childID string) error {
+	return nil
+}
+
+func (f *fakeStore) LastAssistantText(ctx context.Context, sessionID string) (string, error) {
+	return "", nil
+}
+
+func (f *fakeStore) ListToolCallsForSession(ctx context.Context, sessionID string) ([]db.ToolCall, error) {
+	return nil, nil
 }
 
 // fakeProvider streams a fixed sequence of SDK events for one Stream call.
@@ -133,15 +171,19 @@ func drain(ch <-chan event.Event) []event.Event {
 	return out
 }
 
-func runAndDrain(t *testing.T, r *Runner, turn session.AgentTurn) ([]event.Event, error) {
+func runAndDrainWithContext(t *testing.T, ctx context.Context, r *Runner, turn session.AgentTurn) ([]event.Event, error) {
 	t.Helper()
 	ch := make(chan event.Event, 64)
 	var runErr error
 	go func() {
-		runErr = r.Run(context.Background(), turn, ch)
+		runErr = r.Run(ctx, turn, ch)
 		close(ch)
 	}()
 	return drain(ch), runErr
+}
+
+func runAndDrain(t *testing.T, r *Runner, turn session.AgentTurn) ([]event.Event, error) {
+	return runAndDrainWithContext(t, context.Background(), r, turn)
 }
 
 func TestRunner_TextOnlyTurnPersistsAndStops(t *testing.T) {
@@ -563,5 +605,120 @@ func TestRunner_JobProgressNudgeInjectedAfterTools(t *testing.T) {
 		if strings.Contains(provider.requests[i].System, nudge) {
 			t.Fatalf("step %d system should not include nudge yet", i+1)
 		}
+	}
+}
+
+func TestRunner_SubagentWaitNudgeInjectedWhileChildrenActive(t *testing.T) {
+	dir := t.TempDir()
+	provider := &capturingSequentialFakeProvider{sequences: [][]cometsdk.Event{
+		toolStep("tc1", "spawn_general_agent", `{"task":"say hello"}`),
+		{
+			cometsdk.TextDeltaEvent{Text: "done"},
+			cometsdk.StepFinishEvent{FinishReason: cometsdk.FinishStop},
+			cometsdk.DoneEvent{},
+		},
+	}}
+
+	orch := subagent.NewOrchestrator(5)
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := orch.Register("s1", "child-1", subagent.KindGeneral, cancel); err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	r := &Runner{
+		Provider:             provider,
+		Sessions:             &fakeStore{},
+		Registry:             tools.NewRegistry(dir),
+		SubagentOrchestrator: orch,
+		MaxSteps:             2,
+	}
+
+	_, runErr := runAndDrainWithContext(t, ctx, r, session.AgentTurn{ID: "s1", ModelID: "m"})
+
+	if runErr == nil {
+		t.Fatal("expected run to stop when wait context times out while subagent is still active")
+	}
+	if provider.calls != 2 {
+		t.Fatalf("Stream called %d times, want 2", provider.calls)
+	}
+	if len(provider.requests) < 2 {
+		t.Fatalf("captured %d requests, want 2", len(provider.requests))
+	}
+
+	waitBlock := FormatWaitForSubagentsBlock()
+	if strings.Contains(provider.requests[0].System, waitBlock) {
+		t.Fatalf("step 1 system should not include wait block:\n%s", provider.requests[0].System)
+	}
+	if !strings.Contains(provider.requests[1].System, waitBlock) {
+		t.Fatalf("step 2 system missing wait block:\n%s", provider.requests[1].System)
+	}
+	if !strings.Contains(runErr.Error(), context.DeadlineExceeded.Error()) {
+		t.Fatalf("runErr = %v, want %v", runErr, context.DeadlineExceeded)
+	}
+	if got := orch.ActiveCount("s1"); got != 1 {
+		t.Fatalf("ActiveCount() = %d, want 1", got)
+	}
+}
+
+func TestRunner_AutoCollectsActiveSubagentResultsBeforeFinishing(t *testing.T) {
+	provider := &capturingSequentialFakeProvider{sequences: [][]cometsdk.Event{
+		toolStep("tc1", "spawn_general_agent", `{"task":"say hello"}`),
+		{
+			cometsdk.TextDeltaEvent{Text: "final synthesis"},
+			cometsdk.StepFinishEvent{FinishReason: cometsdk.FinishStop},
+			cometsdk.DoneEvent{},
+		},
+	}}
+
+	orch := subagent.NewOrchestrator(5)
+	ctx := context.Background()
+	childCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	if err := orch.Register("s1", "child-1", subagent.KindGeneral, cancel); err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		orch.Complete("child-1", subagent.Result{
+			ChildSessionID: "child-1",
+			Kind:           subagent.KindGeneral,
+			Status:         "completed",
+			Summary:        "said hello",
+		})
+		_ = childCtx
+	}()
+
+	r := &Runner{
+		Provider:             provider,
+		Sessions:             &fakeStore{},
+		Registry:             tools.NewRegistry(t.TempDir()),
+		SubagentOrchestrator: orch,
+		MaxSteps:             3,
+	}
+
+	events, runErr := runAndDrain(t, r, session.AgentTurn{ID: "s1", ModelID: "m"})
+
+	if runErr != nil {
+		t.Fatalf("Run returned error: %v", runErr)
+	}
+	if provider.calls != 3 {
+		t.Fatalf("Stream called %d times, want 3", provider.calls)
+	}
+	if len(provider.requests) < 3 {
+		t.Fatalf("captured %d requests, want 3", len(provider.requests))
+	}
+
+	collectedBlock := FormatCollectedSubagentResultsBlock("child_session_id: child-1\nkind: general\nstatus: completed\n\nsaid hello")
+	if !strings.Contains(provider.requests[2].System, collectedBlock) {
+		t.Fatalf("step 3 system missing collected subagent results:\n%s", provider.requests[2].System)
+	}
+	if got := orch.ActiveCount("s1"); got != 0 {
+		t.Fatalf("ActiveCount() = %d, want 0", got)
+	}
+	if len(events) == 0 || events[len(events)-1].Kind != event.KindDone {
+		t.Fatalf("expected final event to be done, got %+v", events)
 	}
 }
