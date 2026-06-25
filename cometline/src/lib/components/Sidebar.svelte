@@ -246,6 +246,7 @@
 						sessions={group.sessions}
 						collapsed={isGroupCollapsed(group.workspacePath)}
 						active={group.workspacePath === highlightWorkspacePath}
+						searchActive={!!searchQuery.trim()}
 						{currentSessionId}
 						{deletingID}
 						{pinningID}
