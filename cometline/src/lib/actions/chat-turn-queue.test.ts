@@ -140,7 +140,7 @@ describe('createChatTurnQueue', () => {
 
 		void queue.enqueue('same');
 		await vi.waitFor(() => expect(queue.processing).toBe(true));
-		expect(queue.enqueue('same')).resolves.toBe(false);
+		await expect(queue.enqueue('same')).resolves.toBe(false);
 		expect(queue.pendingCount).toBe(0);
 
 		releaseFirst!();
