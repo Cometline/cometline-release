@@ -11,7 +11,7 @@ const {
 	Menu,
 	nativeImage,
 	Notification: ElectronNotification,
-	screen
+	screen: electronScreen
 } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('url');
@@ -466,8 +466,8 @@ function windowCanShow(window) {
 
 function positionMiniWindowBottomRight() {
 	if (!windowCanShow(miniWindow)) return;
-	const cursorPoint = screen.getCursorScreenPoint();
-	const display = screen.getDisplayNearestPoint(cursorPoint);
+	const cursorPoint = electronScreen.getCursorScreenPoint();
+	const display = electronScreen.getDisplayNearestPoint(cursorPoint);
 	const { width, height } = miniWindow.getBounds();
 	const x = Math.round(display.workArea.x + display.workArea.width - width - MINI_WINDOW_SCREEN_MARGIN);
 	const y = Math.round(display.workArea.y + display.workArea.height - height - MINI_WINDOW_SCREEN_MARGIN);
