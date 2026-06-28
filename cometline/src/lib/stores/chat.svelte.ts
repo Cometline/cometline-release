@@ -95,7 +95,10 @@ function createChatStore() {
 			error = '';
 			isLoading = false;
 		}
-		if (browser) void goto('/');
+		if (browser) {
+			const target = window.location.pathname.startsWith('/mini') ? '/mini' : '/';
+			void goto(target);
+		}
 	}
 
 	function markStreaming(targetSessionID: string, handle: SessionStream) {

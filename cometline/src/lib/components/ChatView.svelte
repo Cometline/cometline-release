@@ -302,7 +302,9 @@
 	bind:this={chatHome}
 >
 	{#if compact}
-		<div class="mini-drag-region" aria-hidden="true"></div>
+		<div class="mini-titlebar" aria-label="Mini window drag area">
+			<span>Mini Chat</span>
+		</div>
 	{/if}
 
 	{#if !compact && !hasVisibleConversation && !firstTurnActive}
@@ -411,7 +413,7 @@
 		flex: none;
 		height: 100vh;
 		min-height: 100vh;
-		-webkit-app-region: drag;
+		--mini-titlebar-height: 46px;
 		background:
 			radial-gradient(
 				circle at top,
@@ -421,14 +423,34 @@
 			var(--app-bg);
 	}
 
-	.mini-drag-region {
+	.mini-titlebar {
 		position: absolute;
 		top: 0;
-		left: 82px;
+		left: 0;
 		right: 0;
-		height: 42px;
-		z-index: 30;
+		height: var(--mini-titlebar-height);
+		z-index: 40;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 0 96px;
+		border-bottom: 1px solid color-mix(in srgb, var(--border-soft) 72%, transparent);
+		background: color-mix(in srgb, var(--panel-bg) 82%, transparent);
+		color: var(--text-muted);
+		font-size: 11px;
+		font-weight: 650;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		user-select: none;
 		-webkit-app-region: drag;
+	}
+
+	.mini-grabber {
+		width: 28px;
+		height: 4px;
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--text-muted) 42%, transparent);
 	}
 
 	.chat-home.compact .thread-shell,
@@ -488,6 +510,7 @@
 	}
 
 	.chat-home.compact .thread-shell.docked {
+		top: var(--mini-titlebar-height);
 		bottom: calc(var(--thread-dock-inset) - 18px);
 	}
 
