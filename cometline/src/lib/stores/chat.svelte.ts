@@ -15,6 +15,7 @@ import { sessionStore } from '$lib/stores/session.svelte';
 import { chatDebug, summarizeChatItems, summarizeStreamEvent } from '../debug/chat';
 import { playResponseCompleteSound } from '$lib/sound/response-complete';
 import { publishWindowSync, subscribeWindowSync } from '$lib/window-sync';
+import { homeRouteFor } from '$lib/routes/session-route';
 
 import { itemsFromTranscript, localID, mergeSubagents } from '$lib/stores/chat-transcript';
 import {
@@ -96,8 +97,7 @@ function createChatStore() {
 			isLoading = false;
 		}
 		if (browser) {
-			const target = window.location.pathname.startsWith('/mini') ? '/mini' : '/';
-			void goto(target);
+			void goto(homeRouteFor());
 		}
 	}
 

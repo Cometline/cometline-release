@@ -1,4 +1,5 @@
 import { browser } from '$app/environment';
+import { currentPathname } from '$lib/routes/session-route';
 import { sessionStore } from '$lib/stores/session.svelte';
 
 export function sessionIdFromPathname(pathname: string): string | null {
@@ -10,5 +11,5 @@ export function sessionIdFromPathname(pathname: string): string | null {
 export function getActiveSessionId(): string | null {
 	if (sessionStore.current?.id) return sessionStore.current.id;
 	if (!browser) return null;
-	return sessionIdFromPathname(window.location.pathname);
+	return sessionIdFromPathname(currentPathname());
 }

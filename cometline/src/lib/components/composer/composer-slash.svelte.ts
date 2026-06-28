@@ -13,6 +13,7 @@ import {
 } from '$lib/client/cometmind';
 import { jobUserDisplayText } from '$lib/jobs/format-job-label';
 import { listJobsUserDisplayText } from '$lib/jobs/format-ready-jobs-list';
+import { sessionRouteFor } from '$lib/routes/session-route';
 import { sessionStore } from '$lib/stores/session.svelte';
 import { chatStore } from '$lib/stores/chat.svelte';
 import { modelStore, type ModelOption } from '$lib/stores/model.svelte';
@@ -327,12 +328,6 @@ export function createComposerSlashController(deps: {
 		} catch (err) {
 			deps.setDropMessage(err instanceof Error ? err.message : 'Failed to fork session');
 		}
-	}
-
-	function sessionRouteFor(sessionId: string) {
-		return window.location.pathname.startsWith('/mini')
-			? `/mini/session/${sessionId}`
-			: `/session/${sessionId}`;
 	}
 
 	async function removeWorkspaceFromList(path: string, event: Event) {
