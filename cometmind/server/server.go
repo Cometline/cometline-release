@@ -107,10 +107,10 @@ func New(deps Deps) (*gin.Engine, error) {
 	api.GET("/workspaces", app.handleListWorkspaces)
 	api.POST("/workspaces", app.handleCreateWorkspace)
 	api.DELETE("/workspaces", app.handleDeleteWorkspace)
-	api.POST("/workspace-prune-runs", app.handlePruneWorkspaces)
-	api.GET("/workspace-files", app.handleListWorkspaceFiles)
-	api.GET("/workspace-file-content", app.handleReadWorkspaceFileContent)
-	api.PUT("/workspace-file-content", app.handleWriteWorkspaceFileContent)
+	api.POST("/workspaces/prune-runs", app.handlePruneWorkspaces)
+	api.GET("/workspaces/files", app.handleListWorkspaceFiles)
+	api.GET("/workspaces/files/content", app.handleReadWorkspaceFileContent)
+	api.PUT("/workspaces/files/content", app.handleWriteWorkspaceFileContent)
 
 	// Sessions
 	api.POST("/sessions", app.handleCreateSession)
@@ -128,7 +128,7 @@ func New(deps Deps) (*gin.Engine, error) {
 
 	// Skills
 	api.GET("/skills", app.handleListSkills)
-	api.POST("/skill-sync-runs", app.handleSyncSkills)
+	api.POST("/skills/sync-runs", app.handleSyncSkills)
 	api.GET("/skills/:name/archive", app.handleExportSkill)
 	api.DELETE("/skills/:name", app.handleDeleteSkill)
 	api.GET("/skills/:name", app.handleGetSkill)
@@ -145,14 +145,14 @@ func New(deps Deps) (*gin.Engine, error) {
 	api.POST("/memories", app.handleCreateMemory)
 	api.PATCH("/memories/:id", app.handlePatchMemory)
 	api.DELETE("/memories/:id", app.handleDeleteMemory)
-	api.POST("/memory-searches", app.handleSearchMemories)
+	api.POST("/memories/searches", app.handleSearchMemories)
 
 	// Memory settings & maintenance
-	api.GET("/memory-settings", app.handleGetMemorySettings)
-	api.PUT("/memory-settings", app.handlePutMemorySettings)
-	api.POST("/memory-purge-runs", app.handlePurgeMemory)
-	api.POST("/memory-compaction-runs", app.handleCompactMemory)
-	api.GET("/memory-compaction-preview", app.handleCompactPreview)
+	api.GET("/memories/settings", app.handleGetMemorySettings)
+	api.PUT("/memories/settings", app.handlePutMemorySettings)
+	api.POST("/memories/purge-runs", app.handlePurgeMemory)
+	api.POST("/memories/compaction-runs", app.handleCompactMemory)
+	api.GET("/memories/compaction-preview", app.handleCompactPreview)
 
 	// Storage retention
 	api.POST("/storage/retention/runs", app.handleRunStorageRetention)
@@ -160,8 +160,8 @@ func New(deps Deps) (*gin.Engine, error) {
 	// Jobs
 	api.GET("/jobs", app.handleListJobs)
 	api.POST("/jobs", app.handleCreateJob)
-	api.GET("/job-settings", app.handleGetJobSettings)
-	api.PUT("/job-settings", app.handlePutJobSettings)
+	api.GET("/jobs/settings", app.handleGetJobSettings)
+	api.PUT("/jobs/settings", app.handlePutJobSettings)
 	api.GET("/jobs/:id", app.handleGetJob)
 	api.PATCH("/jobs/:id", app.handleUpdateJob)
 	api.DELETE("/jobs/:id", app.handleDeleteJob)

@@ -434,7 +434,7 @@ export async function* streamMessage(
 	req: PostMessageRequest,
 	signal?: AbortSignal
 ): AsyncGenerator<StreamEvent, void, unknown> {
-	yield* streamSse(`/api/v1/sessions/${id}/message`, req, signal);
+	yield* streamSse(`/api/v1/sessions/${id}/messages`, req, signal);
 }
 
 async function* streamSse(
@@ -599,7 +599,7 @@ export interface PurgeArchivedMemoryResponse {
 export async function purgeArchivedMemory(
 	olderThanDays: number
 ): Promise<PurgeArchivedMemoryResponse> {
-	const res = await fetch(`${BASE_URL}/api/v1/memory-purge-runs`, {
+	const res = await fetch(`${BASE_URL}/api/v1/memories/purge-runs`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ older_than_days: olderThanDays })

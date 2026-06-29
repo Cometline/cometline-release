@@ -53,7 +53,7 @@ func TestMemorySettingsGetPut(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	engine.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/memory-settings", nil))
+	engine.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/memories/settings", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET settings: %d %s", rec.Code, rec.Body.String())
 	}
@@ -75,7 +75,7 @@ func TestMemorySettingsGetPut(t *testing.T) {
 		"embedding":            cfg.Memory.Embedding,
 	})
 	rec = httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/memory-settings", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/memories/settings", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	engine.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -90,7 +90,7 @@ func TestMemorySettingsGetPut(t *testing.T) {
 	}
 
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/v1/memory-purge-runs", bytes.NewBufferString(`{"older_than_days":0}`))
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/memories/purge-runs", bytes.NewBufferString(`{"older_than_days":0}`))
 	req.Header.Set("Content-Type", "application/json")
 	engine.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
