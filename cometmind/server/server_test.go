@@ -101,7 +101,7 @@ func TestMissingSessionEndpointsReturnSessionNotFound(t *testing.T) {
 		{
 			name:   "message",
 			method: http.MethodPost,
-			path:   "/api/v1/sessions/missing/message",
+			path:   "/api/v1/sessions/missing/messages",
 			body:   `{"text":"hello"}`,
 		},
 	}
@@ -186,7 +186,7 @@ func TestListWorkspaceFiles(t *testing.T) {
 	mustWrite(t, filepath.Join(workspacePath, "node_modules", "x", "index.js"), "x")
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces/files?workspace_path="+workspacePath, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspace-files?workspace_path="+workspacePath, nil)
 	engine.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -227,7 +227,7 @@ func TestReadWorkspaceFileContent(t *testing.T) {
 	mustWrite(t, filepath.Join(workspacePath, "main.go"), "package main")
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces/files/content?workspace_path="+workspacePath+"&path=main.go", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspace-file-content?workspace_path="+workspacePath+"&path=main.go", nil)
 	engine.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -258,7 +258,7 @@ func TestWriteWorkspaceFileContent(t *testing.T) {
 
 	body := bytes.NewBufferString(fmt.Sprintf(`{"workspace_path":%q,"path":"main.go","content":"package main\n\nfunc main() {}"}`, workspacePath))
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/workspaces/files/content", body)
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/workspace-file-content", body)
 	req.Header.Set("Content-Type", "application/json")
 	engine.ServeHTTP(rec, req)
 
@@ -275,7 +275,7 @@ func TestWriteWorkspaceFileContent(t *testing.T) {
 	}
 
 	readRec := httptest.NewRecorder()
-	readReq := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces/files/content?workspace_path="+workspacePath+"&path=main.go", nil)
+	readReq := httptest.NewRequest(http.MethodGet, "/api/v1/workspace-file-content?workspace_path="+workspacePath+"&path=main.go", nil)
 	engine.ServeHTTP(readRec, readReq)
 	if readRec.Code != http.StatusOK {
 		t.Fatalf("read status = %d, want %d body=%s", readRec.Code, http.StatusOK, readRec.Body.String())
@@ -305,7 +305,7 @@ func TestWriteWorkspaceFileContentRejectsInvalidRequests(t *testing.T) {
 	t.Run("path escape", func(t *testing.T) {
 		body := bytes.NewBufferString(fmt.Sprintf(`{"workspace_path":%q,"path":"../outside.go","content":"package main"}`, workspacePath))
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPut, "/api/v1/workspaces/files/content", body)
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/workspace-file-content", body)
 		req.Header.Set("Content-Type", "application/json")
 		engine.ServeHTTP(rec, req)
 
@@ -318,7 +318,7 @@ func TestWriteWorkspaceFileContentRejectsInvalidRequests(t *testing.T) {
 		content := strings.Repeat("a", maxMessageFileBytes+1)
 		body := bytes.NewBufferString(fmt.Sprintf(`{"workspace_path":%q,"path":"main.go","content":%q}`, workspacePath, content))
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPut, "/api/v1/workspaces/files/content", body)
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/workspace-file-content", body)
 		req.Header.Set("Content-Type", "application/json")
 		engine.ServeHTTP(rec, req)
 
@@ -330,7 +330,7 @@ func TestWriteWorkspaceFileContentRejectsInvalidRequests(t *testing.T) {
 	t.Run("missing file", func(t *testing.T) {
 		body := bytes.NewBufferString(fmt.Sprintf(`{"workspace_path":%q,"path":"missing.go","content":"package main"}`, workspacePath))
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPut, "/api/v1/workspaces/files/content", body)
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/workspace-file-content", body)
 		req.Header.Set("Content-Type", "application/json")
 		engine.ServeHTTP(rec, req)
 
@@ -356,7 +356,7 @@ func TestListWorkspaceFilesFiltersByQuery(t *testing.T) {
 	mustWrite(t, filepath.Join(workspacePath, "README.md"), "# readme")
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces/files?workspace_path="+workspacePath+"&q=go", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspace-files?workspace_path="+workspacePath+"&q=go", nil)
 	engine.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -381,7 +381,7 @@ func TestListWorkspaceFilesMissingWorkspace(t *testing.T) {
 	defer cleanup()
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces/files", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspace-files", nil)
 	engine.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
@@ -529,7 +529,7 @@ func TestClearSessionResetsTranscript(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/clear", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/sessions/"+sess.ID+"/messages", nil)
 	engine.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("clear status = %d, want %d body=%s", rec.Code, http.StatusNoContent, rec.Body.String())
@@ -586,7 +586,7 @@ func TestClearSessionRemovesChildSessions(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+parent.ID+"/clear", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/sessions/"+parent.ID+"/messages", nil)
 	engine.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("clear status = %d, want %d body=%s", rec.Code, http.StatusNoContent, rec.Body.String())
@@ -650,7 +650,7 @@ func TestPatchSessionUpdatesModel(t *testing.T) {
 	}
 
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/message", bytes.NewBufferString(`{"text":"hello"}`))
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/messages", bytes.NewBufferString(`{"text":"hello"}`))
 	req.Header.Set("Content-Type", "application/json")
 	engine.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -888,7 +888,7 @@ func TestPostMessageStreamsSSEAndPersistsUserTurn(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/message", bytes.NewBufferString(`{"text":"hello from api"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/messages", bytes.NewBufferString(`{"text":"hello from api"}`))
 	req.Header.Set("Content-Type", "application/json")
 	engine.ServeHTTP(rec, req)
 
@@ -962,7 +962,7 @@ func TestPostMessageInlinesFilePaths(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	body := `{"text":"review @main.go and @missing.go","file_paths":["main.go","missing.go","main.go"]}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/message", bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/messages", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	engine.ServeHTTP(rec, req)
 
@@ -1081,7 +1081,7 @@ func TestLocalCORSAllowsMemorySettingsPut(t *testing.T) {
 	defer cleanup()
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodOptions, "/api/v1/memory/settings", nil)
+	req := httptest.NewRequest(http.MethodOptions, "/api/v1/memory-settings", nil)
 	req.Header.Set("Origin", "http://127.0.0.1:5173")
 	req.Header.Set("Access-Control-Request-Method", http.MethodPut)
 	engine.ServeHTTP(rec, req)
@@ -1131,7 +1131,7 @@ func TestAbortSessionCancelsRunningStream(t *testing.T) {
 	}
 	streamDone := make(chan responseResult, 1)
 	go func() {
-		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/v1/sessions/"+sess.ID+"/message", bytes.NewBufferString(`{"text":"hello"}`))
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/v1/sessions/"+sess.ID+"/messages", bytes.NewBufferString(`{"text":"hello"}`))
 		req.Header.Set("Content-Type", "application/json")
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -1145,7 +1145,7 @@ func TestAbortSessionCancelsRunningStream(t *testing.T) {
 
 	<-started
 
-	abortReq, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/v1/sessions/"+sess.ID+"/abort", nil)
+	abortReq, _ := http.NewRequest(http.MethodDelete, srv.URL+"/api/v1/sessions/"+sess.ID+"/runs/current", nil)
 	abortResp, err := http.DefaultClient.Do(abortReq)
 	if err != nil {
 		t.Fatalf("abort request error = %v", err)
@@ -1190,7 +1190,7 @@ func TestSkillsDeleteAndExport(t *testing.T) {
 	defer cleanup()
 
 	exportRec := httptest.NewRecorder()
-	exportReq := httptest.NewRequest(http.MethodGet, "/api/v1/skills/api-skill/export", nil)
+	exportReq := httptest.NewRequest(http.MethodGet, "/api/v1/skills/api-skill/archive", nil)
 	engine.ServeHTTP(exportRec, exportReq)
 	if exportRec.Code != http.StatusOK {
 		t.Fatalf("export status = %d, want %d body=%s", exportRec.Code, http.StatusOK, exportRec.Body.String())
@@ -1425,7 +1425,7 @@ func TestPruneWorkspacesEndpoint(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/workspaces/prune", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/workspace-prune-runs", nil)
 	engine.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
@@ -1563,7 +1563,7 @@ func TestForkSessionCopiesTranscript(t *testing.T) {
 	}
 
 	forkRec := httptest.NewRecorder()
-	forkReq := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+src.ID+"/fork", bytes.NewBufferString(`{"workspace_path":`+mustJSON(ws2)+`}`))
+	forkReq := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+src.ID+"/forks", bytes.NewBufferString(`{"workspace_path":`+mustJSON(ws2)+`}`))
 	forkReq.Header.Set("Content-Type", "application/json")
 	engine.ServeHTTP(forkRec, forkReq)
 	if forkRec.Code != http.StatusCreated {

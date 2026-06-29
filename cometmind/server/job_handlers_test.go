@@ -57,7 +57,7 @@ func TestJobHandlersCreateListClaim(t *testing.T) {
 	}
 
 	claimBody := `{"session_id":"sess-1"}`
-	req = httptest.NewRequest(http.MethodPost, "/api/v1/jobs/"+created.ID+"/claim", bytes.NewBufferString(claimBody))
+	req = httptest.NewRequest(http.MethodPut, "/api/v1/jobs/"+created.ID+"/lease", bytes.NewBufferString(claimBody))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	engine.ServeHTTP(w, req)

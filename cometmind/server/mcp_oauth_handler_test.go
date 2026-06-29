@@ -15,7 +15,7 @@ func newOAuthTestContext(t *testing.T, serverID string) (*gin.Context, *httptest
 	t.Helper()
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers/"+serverID+"/oauth/start", nil)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers/"+serverID+"/oauth-flows", nil)
 	c.Params = gin.Params{{Key: "id", Value: serverID}}
 	return c, w
 }

@@ -174,10 +174,10 @@ Localhost-only HTTP + SSE, versioned under `/api/v1` (default `http://127.0.0.1:
 | `GET /api/v1/health` | Liveness (`{status:ok}`) |
 | `GET /api/v1/workspaces` | List registered workspaces |
 | `POST /api/v1/workspaces` | Register a workspace by absolute path |
-| `POST /api/v1/workspaces/prune` | Remove registrations whose directories no longer exist |
-| `GET /api/v1/workspaces/files` | List previewable workspace files |
-| `GET /api/v1/workspaces/files/content` | Read a previewable text/image file |
-| `PUT /api/v1/workspaces/files/content` | Write a small UTF-8 text file from the preview editor |
+| `POST /api/v1/workspace-prune-runs` | Remove registrations whose directories no longer exist |
+| `GET /api/v1/workspace-files` | List previewable workspace files |
+| `GET /api/v1/workspace-file-content` | Read a previewable text/image file |
+| `PUT /api/v1/workspace-file-content` | Write a small UTF-8 text file from the preview editor |
 
 ### Sessions
 
@@ -188,12 +188,13 @@ Localhost-only HTTP + SSE, versioned under `/api/v1` (default `http://127.0.0.1:
 | `GET /api/v1/sessions/{id}` | Fetch a session |
 | `PATCH /api/v1/sessions/{id}` | Update model/provider for later turns |
 | `PATCH /api/v1/sessions/{id}/workspace` | Move an existing session to another workspace |
-| `POST /api/v1/sessions/{id}/fork` | Copy a session into another workspace |
+| `POST /api/v1/sessions/{id}/forks` | Copy a session into another workspace |
 | `DELETE /api/v1/sessions/{id}` | Delete session and cascade messages |
 | `GET /api/v1/sessions/{id}/messages` | Transcript (user/reasoning/assistant/tool) |
+| `POST /api/v1/sessions/{id}/messages` | Send text + up to 6 images (4 MiB each) → SSE |
+| `DELETE /api/v1/sessions/{id}/messages` | Clear transcript |
 | `GET /api/v1/sessions/{id}/children` | Delegated child sessions |
-| `POST /api/v1/sessions/{id}/message` | Send text + up to 6 images (4 MiB each) → SSE |
-| `POST /api/v1/sessions/{id}/abort` | Abort in-flight run (202, or 409 if none) |
+| `DELETE /api/v1/sessions/{id}/runs/current` | Abort in-flight run (202, or 409 if none) |
 
 ### Skills
 
@@ -201,9 +202,9 @@ Localhost-only HTTP + SSE, versioned under `/api/v1` (default `http://127.0.0.1:
 |---|---|
 | `GET /api/v1/skills` | List discovered skills |
 | `GET /api/v1/skills/{name}` | Read one skill's `SKILL.md` |
-| `POST /api/v1/skills/sync` | Symlink discovered skills into `~/.cometmind/skills` |
+| `POST /api/v1/skill-sync-runs` | Symlink discovered skills into `~/.cometmind/skills` |
 | `DELETE /api/v1/skills/{name}` | Delete a managed skill |
-| `GET /api/v1/skills/{name}/export` | Download skill as zip |
+| `GET /api/v1/skills/{name}/archive` | Download skill as zip |
 
 ### Memory
 
@@ -213,12 +214,12 @@ Localhost-only HTTP + SSE, versioned under `/api/v1` (default `http://127.0.0.1:
 | `POST /api/v1/memories` | Create a memory manually |
 | `PATCH /api/v1/memories/{id}` | Update a memory |
 | `DELETE /api/v1/memories/{id}` | Delete a memory |
-| `POST /api/v1/memories/search` | Semantic search |
-| `GET /api/v1/memory/settings` | Read memory configuration |
-| `PUT /api/v1/memory/settings` | Update memory configuration |
-| `POST /api/v1/memory/purge` | Hard-delete archived memories older than a threshold |
-| `POST /api/v1/memory/compact` | Run compaction |
-| `GET /api/v1/memory/compact/preview` | Preview compaction candidates |
+| `POST /api/v1/memory-searches` | Semantic search |
+| `GET /api/v1/memory-settings` | Read memory configuration |
+| `PUT /api/v1/memory-settings` | Update memory configuration |
+| `POST /api/v1/memory-purge-runs` | Hard-delete archived memories older than a threshold |
+| `POST /api/v1/memory-compaction-runs` | Run compaction |
+| `GET /api/v1/memory-compaction-preview` | Preview compaction candidates |
 
 ### SSE event names
 

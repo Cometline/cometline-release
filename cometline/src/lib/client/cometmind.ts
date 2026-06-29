@@ -350,7 +350,7 @@ export async function exportSkill(name: string, workspacePath = ''): Promise<Blo
 		? `?${new URLSearchParams({ workspace_path: workspacePath })}`
 		: '';
 	const res = await fetch(
-		`${BASE_URL}/api/v1/skills/${encodeURIComponent(name)}/export${params}`
+		`${BASE_URL}/api/v1/skills/${encodeURIComponent(name)}/archive${params}`
 	);
 	if (!res.ok) {
 		const body = await res.text();
@@ -599,7 +599,7 @@ export interface PurgeArchivedMemoryResponse {
 export async function purgeArchivedMemory(
 	olderThanDays: number
 ): Promise<PurgeArchivedMemoryResponse> {
-	const res = await fetch(`${BASE_URL}/api/v1/memory/purge`, {
+	const res = await fetch(`${BASE_URL}/api/v1/memory-purge-runs`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ older_than_days: olderThanDays })

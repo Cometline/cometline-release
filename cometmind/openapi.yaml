@@ -128,7 +128,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/workspaces/prune:
+  /api/v1/workspace-prune-runs:
     post:
       tags: [Workspaces]
       summary: Prune missing workspace registrations
@@ -147,7 +147,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/workspaces/files:
+  /api/v1/workspace-files:
     get:
       tags: [Files]
       summary: List files in a workspace
@@ -197,7 +197,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/workspaces/files/content:
+  /api/v1/workspace-file-content:
     get:
       tags: [Files]
       summary: Read a workspace file for preview
@@ -436,30 +436,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/sessions/{id}/clear:
-    post:
-      tags: [Sessions]
-      summary: Clear session transcript
-      description: |
-        Deletes all messages and tool calls for the session, resets compaction summary
-        state, token usage, and title, while preserving the session id and workspace.
-      operationId: clearSession
-      parameters:
-        - $ref: '#/components/parameters/SessionId'
-      responses:
-        '204':
-          description: Transcript cleared
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          description: Session is running
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          $ref: '#/components/responses/InternalError'
-
   /api/v1/sessions/{id}/workspace:
     patch:
       tags: [Sessions]
@@ -490,7 +466,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/sessions/{id}/fork:
+  /api/v1/sessions/{id}/forks:
     post:
       tags: [Sessions]
       summary: Fork a session into a different workspace
@@ -521,26 +497,29 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/sessions/{id}/children:
-    get:
+  /api/v1/sessions/{id}/messages:
+    delete:
       tags: [Sessions]
-      summary: List delegated child sessions
-      operationId: listChildSessions
+      summary: Clear session transcript
+      description: |
+        Deletes all messages and tool calls for the session, resets compaction summary
+        state, token usage, and title, while preserving the session id and workspace.
+      operationId: clearSession
       parameters:
         - $ref: '#/components/parameters/SessionId'
       responses:
-        '200':
-          description: Child sessions for a parent session
+        '204':
+          description: Transcript cleared
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Session is running
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SessionListResponse'
-        '404':
-          $ref: '#/components/responses/NotFound'
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/InternalError'
-
-  /api/v1/sessions/{id}/messages:
     get:
       tags: [Sessions]
       summary: Get transcript-style session messages
@@ -577,8 +556,6 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
-
-  /api/v1/sessions/{id}/message:
     post:
       tags: [Sessions]
       summary: Send one message and stream events over SSE
@@ -631,8 +608,27 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/sessions/{id}/abort:
-    post:
+  /api/v1/sessions/{id}/children:
+    get:
+      tags: [Sessions]
+      summary: List delegated child sessions
+      operationId: listChildSessions
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: Child sessions for a parent session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/sessions/{id}/runs/current:
+    delete:
       tags: [Sessions]
       summary: Abort an in-flight session run
       description: Cancels the currently running loop for the specified session.
@@ -685,7 +681,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/skills/sync:
+  /api/v1/skill-sync-runs:
     post:
       tags: [Skills]
       summary: Symlink discovered skills into ~/.cometmind/skills
@@ -762,7 +758,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/skills/{name}/export:
+  /api/v1/skills/{name}/archive:
     get:
       tags: [Skills]
       summary: Export one Agent Skill as a zip archive
@@ -823,7 +819,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/mcp/servers/{id}/test:
+  /api/v1/mcp/servers/{id}/connection-tests:
     post:
       tags: [MCP]
       summary: Test connect to one MCP server without persisting
@@ -852,7 +848,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/mcp/servers/{id}/reconnect:
+  /api/v1/mcp/servers/{id}/reconnection-runs:
     post:
       tags: [MCP]
       summary: Disconnect and reconnect one MCP server
@@ -877,7 +873,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/mcp/servers/{id}/oauth/start:
+  /api/v1/mcp/servers/{id}/oauth-flows:
     post:
       tags: [MCP]
       summary: Run interactive OAuth (discovery, DCR, browser authorization) for one MCP server
@@ -951,7 +947,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/memories/search:
+  /api/v1/memory-searches:
     post:
       tags: [Memory]
       summary: Semantic memory search
@@ -1032,7 +1028,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/memory/settings:
+  /api/v1/memory-settings:
     get:
       tags: [Memory]
       summary: Get memory settings
@@ -1068,7 +1064,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/memory/purge:
+  /api/v1/memory-purge-runs:
     post:
       tags: [Memory]
       summary: Purge archived memories
@@ -1097,7 +1093,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/memory/compact:
+  /api/v1/memory-compaction-runs:
     post:
       tags: [Memory]
       summary: Run memory compaction
@@ -1118,7 +1114,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/memory/compact/preview:
+  /api/v1/memory-compaction-preview:
     get:
       tags: [Memory]
       summary: Preview compaction candidates
@@ -1133,7 +1129,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/storage/retention/run:
+  /api/v1/storage/retention/runs:
     post:
       tags: [Storage]
       summary: Run storage retention cleanup
@@ -1208,7 +1204,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/jobs/settings:
+  /api/v1/job-settings:
     get:
       tags: [Jobs]
       summary: Get job notification settings
@@ -1338,8 +1334,8 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/jobs/{id}/claim:
-    post:
+  /api/v1/jobs/{id}/lease:
+    put:
       tags: [Jobs]
       summary: Claim a job for a session
       operationId: claimJob
@@ -1369,8 +1365,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/jobs/{id}/release:
-    post:
+    delete:
       tags: [Jobs]
       summary: Release a claimed job
       operationId: releaseJob
@@ -1400,8 +1395,34 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/jobs/{id}/complete:
-    post:
+    patch:
+      tags: [Jobs]
+      summary: Extend job lease
+      operationId: heartbeatJob
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobSessionRequest'
+      responses:
+        '204':
+          description: Lease extended
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/jobs/{id}/completion:
+    put:
       tags: [Jobs]
       summary: Complete a job
       operationId: completeJob
@@ -1424,33 +1445,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/JobResource'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalError'
-
-  /api/v1/jobs/{id}/heartbeat:
-    post:
-      tags: [Jobs]
-      summary: Extend job lease
-      operationId: heartbeatJob
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/JobSessionRequest'
-      responses:
-        '204':
-          description: Lease extended
         '404':
           $ref: '#/components/responses/NotFound'
         '409':

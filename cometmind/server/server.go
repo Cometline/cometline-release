@@ -107,10 +107,10 @@ func New(deps Deps) (*gin.Engine, error) {
 	api.GET("/workspaces", app.handleListWorkspaces)
 	api.POST("/workspaces", app.handleCreateWorkspace)
 	api.DELETE("/workspaces", app.handleDeleteWorkspace)
-	api.POST("/workspaces/prune", app.handlePruneWorkspaces)
-	api.GET("/workspaces/files", app.handleListWorkspaceFiles)
-	api.GET("/workspaces/files/content", app.handleReadWorkspaceFileContent)
-	api.PUT("/workspaces/files/content", app.handleWriteWorkspaceFileContent)
+	api.POST("/workspace-prune-runs", app.handlePruneWorkspaces)
+	api.GET("/workspace-files", app.handleListWorkspaceFiles)
+	api.GET("/workspace-file-content", app.handleReadWorkspaceFileContent)
+	api.PUT("/workspace-file-content", app.handleWriteWorkspaceFileContent)
 
 	// Sessions
 	api.POST("/sessions", app.handleCreateSession)
@@ -118,58 +118,58 @@ func New(deps Deps) (*gin.Engine, error) {
 	api.GET("/sessions/:id", app.handleGetSession)
 	api.PATCH("/sessions/:id", app.handlePatchSession)
 	api.PATCH("/sessions/:id/workspace", app.handleChangeSessionWorkspace)
-	api.POST("/sessions/:id/fork", app.handleForkSession)
-	api.POST("/sessions/:id/clear", app.handleClearSession)
+	api.POST("/sessions/:id/forks", app.handleForkSession)
 	api.DELETE("/sessions/:id", app.handleDeleteSession)
 	api.GET("/sessions/:id/messages", app.handleGetMessages)
+	api.POST("/sessions/:id/messages", app.handlePostMessage)
+	api.DELETE("/sessions/:id/messages", app.handleClearSession)
 	api.GET("/sessions/:id/children", app.handleListChildSessions)
-	api.POST("/sessions/:id/message", app.handlePostMessage)
-	api.POST("/sessions/:id/abort", app.handleAbortSession)
+	api.DELETE("/sessions/:id/runs/current", app.handleAbortSession)
 
 	// Skills
 	api.GET("/skills", app.handleListSkills)
-	api.POST("/skills/sync", app.handleSyncSkills)
-	api.GET("/skills/:name/export", app.handleExportSkill)
+	api.POST("/skill-sync-runs", app.handleSyncSkills)
+	api.GET("/skills/:name/archive", app.handleExportSkill)
 	api.DELETE("/skills/:name", app.handleDeleteSkill)
 	api.GET("/skills/:name", app.handleGetSkill)
 
 	// MCP
 	api.GET("/mcp/servers", app.handleListMCPServers)
 	api.GET("/mcp/tools", app.handleListMCPTools)
-	api.POST("/mcp/servers/:id/test", app.handleTestMCPServer)
-	api.POST("/mcp/servers/:id/reconnect", app.handleReconnectMCPServer)
-	api.POST("/mcp/servers/:id/oauth/start", app.handleStartMCPOAuth)
+	api.POST("/mcp/servers/:id/connection-tests", app.handleTestMCPServer)
+	api.POST("/mcp/servers/:id/reconnection-runs", app.handleReconnectMCPServer)
+	api.POST("/mcp/servers/:id/oauth-flows", app.handleStartMCPOAuth)
 
 	// Memories
 	api.GET("/memories", app.handleListMemories)
 	api.POST("/memories", app.handleCreateMemory)
 	api.PATCH("/memories/:id", app.handlePatchMemory)
 	api.DELETE("/memories/:id", app.handleDeleteMemory)
-	api.POST("/memories/search", app.handleSearchMemories)
+	api.POST("/memory-searches", app.handleSearchMemories)
 
 	// Memory settings & maintenance
-	api.GET("/memory/settings", app.handleGetMemorySettings)
-	api.PUT("/memory/settings", app.handlePutMemorySettings)
-	api.POST("/memory/purge", app.handlePurgeMemory)
-	api.POST("/memory/compact", app.handleCompactMemory)
-	api.GET("/memory/compact/preview", app.handleCompactPreview)
+	api.GET("/memory-settings", app.handleGetMemorySettings)
+	api.PUT("/memory-settings", app.handlePutMemorySettings)
+	api.POST("/memory-purge-runs", app.handlePurgeMemory)
+	api.POST("/memory-compaction-runs", app.handleCompactMemory)
+	api.GET("/memory-compaction-preview", app.handleCompactPreview)
 
 	// Storage retention
-	api.POST("/storage/retention/run", app.handleRunStorageRetention)
+	api.POST("/storage/retention/runs", app.handleRunStorageRetention)
 
 	// Jobs
 	api.GET("/jobs", app.handleListJobs)
 	api.POST("/jobs", app.handleCreateJob)
-	api.GET("/jobs/settings", app.handleGetJobSettings)
-	api.PUT("/jobs/settings", app.handlePutJobSettings)
+	api.GET("/job-settings", app.handleGetJobSettings)
+	api.PUT("/job-settings", app.handlePutJobSettings)
 	api.GET("/jobs/:id", app.handleGetJob)
 	api.PATCH("/jobs/:id", app.handleUpdateJob)
 	api.DELETE("/jobs/:id", app.handleDeleteJob)
 	api.GET("/jobs/:id/events", app.handleListJobEvents)
-	api.POST("/jobs/:id/claim", app.handleClaimJob)
-	api.POST("/jobs/:id/release", app.handleReleaseJob)
-	api.POST("/jobs/:id/complete", app.handleCompleteJob)
-	api.POST("/jobs/:id/heartbeat", app.handleHeartbeatJob)
+	api.PUT("/jobs/:id/lease", app.handleClaimJob)
+	api.DELETE("/jobs/:id/lease", app.handleReleaseJob)
+	api.PUT("/jobs/:id/completion", app.handleCompleteJob)
+	api.PATCH("/jobs/:id/lease", app.handleHeartbeatJob)
 
 	return r, nil
 }

@@ -799,7 +799,7 @@ export type PruneWorkspacesData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/v1/workspaces/prune';
+    url: '/api/v1/workspace-prune-runs';
 };
 
 export type PruneWorkspacesErrors = {
@@ -841,7 +841,7 @@ export type ListWorkspaceFilesData = {
          */
         limit?: number;
     };
-    url: '/api/v1/workspaces/files';
+    url: '/api/v1/workspace-files';
 };
 
 export type ListWorkspaceFilesErrors = {
@@ -881,7 +881,7 @@ export type ReadWorkspaceFileContentData = {
          */
         path: string;
     };
-    url: '/api/v1/workspaces/files/content';
+    url: '/api/v1/workspace-file-content';
 };
 
 export type ReadWorkspaceFileContentErrors = {
@@ -910,7 +910,7 @@ export type WriteWorkspaceFileContentData = {
     body: WriteWorkspaceFileRequest;
     path?: never;
     query?: never;
-    url: '/api/v1/workspaces/files/content';
+    url: '/api/v1/workspace-file-content';
 };
 
 export type WriteWorkspaceFileContentErrors = {
@@ -1120,44 +1120,6 @@ export type PatchSessionResponses = {
 
 export type PatchSessionResponse = PatchSessionResponses[keyof PatchSessionResponses];
 
-export type ClearSessionData = {
-    body?: never;
-    path: {
-        /**
-         * Persisted CometMind session identifier.
-         */
-        id: string;
-    };
-    query?: never;
-    url: '/api/v1/sessions/{id}/clear';
-};
-
-export type ClearSessionErrors = {
-    /**
-     * Resource not found
-     */
-    404: ErrorResponse;
-    /**
-     * Session is running
-     */
-    409: ErrorResponse;
-    /**
-     * Unexpected server error
-     */
-    500: ErrorResponse;
-};
-
-export type ClearSessionError = ClearSessionErrors[keyof ClearSessionErrors];
-
-export type ClearSessionResponses = {
-    /**
-     * Transcript cleared
-     */
-    204: void;
-};
-
-export type ClearSessionResponse = ClearSessionResponses[keyof ClearSessionResponses];
-
 export type ChangeSessionWorkspaceData = {
     body: ChangeSessionWorkspaceRequest;
     path: {
@@ -1205,7 +1167,7 @@ export type ForkSessionData = {
         id: string;
     };
     query?: never;
-    url: '/api/v1/sessions/{id}/fork';
+    url: '/api/v1/sessions/{id}/forks';
 };
 
 export type ForkSessionErrors = {
@@ -1234,7 +1196,7 @@ export type ForkSessionResponses = {
 
 export type ForkSessionResponse = ForkSessionResponses[keyof ForkSessionResponses];
 
-export type ListChildSessionsData = {
+export type ClearSessionData = {
     body?: never;
     path: {
         /**
@@ -1243,30 +1205,34 @@ export type ListChildSessionsData = {
         id: string;
     };
     query?: never;
-    url: '/api/v1/sessions/{id}/children';
+    url: '/api/v1/sessions/{id}/messages';
 };
 
-export type ListChildSessionsErrors = {
+export type ClearSessionErrors = {
     /**
      * Resource not found
      */
     404: ErrorResponse;
+    /**
+     * Session is running
+     */
+    409: ErrorResponse;
     /**
      * Unexpected server error
      */
     500: ErrorResponse;
 };
 
-export type ListChildSessionsError = ListChildSessionsErrors[keyof ListChildSessionsErrors];
+export type ClearSessionError = ClearSessionErrors[keyof ClearSessionErrors];
 
-export type ListChildSessionsResponses = {
+export type ClearSessionResponses = {
     /**
-     * Child sessions for a parent session
+     * Transcript cleared
      */
-    200: SessionListResponse;
+    204: void;
 };
 
-export type ListChildSessionsResponse = ListChildSessionsResponses[keyof ListChildSessionsResponses];
+export type ClearSessionResponse = ClearSessionResponses[keyof ClearSessionResponses];
 
 export type GetSessionMessagesData = {
     body?: never;
@@ -1311,7 +1277,7 @@ export type PostSessionMessageData = {
         id: string;
     };
     query?: never;
-    url: '/api/v1/sessions/{id}/message';
+    url: '/api/v1/sessions/{id}/messages';
 };
 
 export type PostSessionMessageErrors = {
@@ -1344,6 +1310,40 @@ export type PostSessionMessageResponses = {
 
 export type PostSessionMessageResponse = PostSessionMessageResponses[keyof PostSessionMessageResponses];
 
+export type ListChildSessionsData = {
+    body?: never;
+    path: {
+        /**
+         * Persisted CometMind session identifier.
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/sessions/{id}/children';
+};
+
+export type ListChildSessionsErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorResponse;
+    /**
+     * Unexpected server error
+     */
+    500: ErrorResponse;
+};
+
+export type ListChildSessionsError = ListChildSessionsErrors[keyof ListChildSessionsErrors];
+
+export type ListChildSessionsResponses = {
+    /**
+     * Child sessions for a parent session
+     */
+    200: SessionListResponse;
+};
+
+export type ListChildSessionsResponse = ListChildSessionsResponses[keyof ListChildSessionsResponses];
+
 export type AbortSessionData = {
     body?: never;
     path: {
@@ -1353,7 +1353,7 @@ export type AbortSessionData = {
         id: string;
     };
     query?: never;
-    url: '/api/v1/sessions/{id}/abort';
+    url: '/api/v1/sessions/{id}/runs/current';
 };
 
 export type AbortSessionErrors = {
@@ -1418,7 +1418,7 @@ export type SyncSkillsData = {
     query?: {
         workspace_path?: string;
     };
-    url: '/api/v1/skills/sync';
+    url: '/api/v1/skill-sync-runs';
 };
 
 export type SyncSkillsErrors = {
@@ -1517,7 +1517,7 @@ export type ExportSkillData = {
     query?: {
         workspace_path?: string;
     };
-    url: '/api/v1/skills/{name}/export';
+    url: '/api/v1/skills/{name}/archive';
 };
 
 export type ExportSkillErrors = {
@@ -1602,7 +1602,7 @@ export type TestMcpServerData = {
         id: string;
     };
     query?: never;
-    url: '/api/v1/mcp/servers/{id}/test';
+    url: '/api/v1/mcp/servers/{id}/connection-tests';
 };
 
 export type TestMcpServerErrors = {
@@ -1637,7 +1637,7 @@ export type ReconnectMcpServerData = {
         id: string;
     };
     query?: never;
-    url: '/api/v1/mcp/servers/{id}/reconnect';
+    url: '/api/v1/mcp/servers/{id}/reconnection-runs';
 };
 
 export type ReconnectMcpServerErrors = {
@@ -1672,7 +1672,7 @@ export type StartMcpOAuthData = {
         id: string;
     };
     query?: never;
-    url: '/api/v1/mcp/servers/{id}/oauth/start';
+    url: '/api/v1/mcp/servers/{id}/oauth-flows';
 };
 
 export type StartMcpOAuthErrors = {
@@ -1763,7 +1763,7 @@ export type SearchMemoriesData = {
     body: SearchMemoryRequest;
     path?: never;
     query?: never;
-    url: '/api/v1/memories/search';
+    url: '/api/v1/memory-searches';
 };
 
 export type SearchMemoriesErrors = {
@@ -1862,7 +1862,7 @@ export type GetMemorySettingsData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/v1/memory/settings';
+    url: '/api/v1/memory-settings';
 };
 
 export type GetMemorySettingsErrors = {
@@ -1887,7 +1887,7 @@ export type PutMemorySettingsData = {
     body: MemorySettings;
     path?: never;
     query?: never;
-    url: '/api/v1/memory/settings';
+    url: '/api/v1/memory-settings';
 };
 
 export type PutMemorySettingsErrors = {
@@ -1916,7 +1916,7 @@ export type PurgeArchivedMemoryData = {
     body: PurgeArchivedMemoryRequest;
     path?: never;
     query?: never;
-    url: '/api/v1/memory/purge';
+    url: '/api/v1/memory-purge-runs';
 };
 
 export type PurgeArchivedMemoryErrors = {
@@ -1949,7 +1949,7 @@ export type CompactMemoryData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/v1/memory/compact';
+    url: '/api/v1/memory-compaction-runs';
 };
 
 export type CompactMemoryErrors = {
@@ -1978,7 +1978,7 @@ export type CompactMemoryPreviewData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/v1/memory/compact/preview';
+    url: '/api/v1/memory-compaction-preview';
 };
 
 export type CompactMemoryPreviewErrors = {
@@ -2003,7 +2003,7 @@ export type RunStorageRetentionData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/v1/storage/retention/run';
+    url: '/api/v1/storage/retention/runs';
 };
 
 export type RunStorageRetentionErrors = {
@@ -2090,7 +2090,7 @@ export type GetJobSettingsData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/v1/jobs/settings';
+    url: '/api/v1/job-settings';
 };
 
 export type GetJobSettingsErrors = {
@@ -2115,7 +2115,7 @@ export type PutJobSettingsData = {
     body: JobSettings;
     path?: never;
     query?: never;
-    url: '/api/v1/jobs/settings';
+    url: '/api/v1/job-settings';
 };
 
 export type PutJobSettingsErrors = {
@@ -2272,48 +2272,13 @@ export type ListJobEventsResponses = {
 
 export type ListJobEventsResponse2 = ListJobEventsResponses[keyof ListJobEventsResponses];
 
-export type ClaimJobData = {
-    body: JobSessionRequest;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/v1/jobs/{id}/claim';
-};
-
-export type ClaimJobErrors = {
-    /**
-     * Resource not found
-     */
-    404: ErrorResponse;
-    /**
-     * State conflict
-     */
-    409: ErrorResponse;
-    /**
-     * Unexpected server error
-     */
-    500: ErrorResponse;
-};
-
-export type ClaimJobError = ClaimJobErrors[keyof ClaimJobErrors];
-
-export type ClaimJobResponses = {
-    /**
-     * Claimed
-     */
-    200: JobResource;
-};
-
-export type ClaimJobResponse = ClaimJobResponses[keyof ClaimJobResponses];
-
 export type ReleaseJobData = {
     body: JobReleaseRequest;
     path: {
         id: string;
     };
     query?: never;
-    url: '/api/v1/jobs/{id}/release';
+    url: '/api/v1/jobs/{id}/lease';
 };
 
 export type ReleaseJobErrors = {
@@ -2342,48 +2307,13 @@ export type ReleaseJobResponses = {
 
 export type ReleaseJobResponse = ReleaseJobResponses[keyof ReleaseJobResponses];
 
-export type CompleteJobData = {
-    body: JobCompleteRequest;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/v1/jobs/{id}/complete';
-};
-
-export type CompleteJobErrors = {
-    /**
-     * Resource not found
-     */
-    404: ErrorResponse;
-    /**
-     * State conflict
-     */
-    409: ErrorResponse;
-    /**
-     * Unexpected server error
-     */
-    500: ErrorResponse;
-};
-
-export type CompleteJobError = CompleteJobErrors[keyof CompleteJobErrors];
-
-export type CompleteJobResponses = {
-    /**
-     * Completed
-     */
-    200: JobResource;
-};
-
-export type CompleteJobResponse = CompleteJobResponses[keyof CompleteJobResponses];
-
 export type HeartbeatJobData = {
     body: JobSessionRequest;
     path: {
         id: string;
     };
     query?: never;
-    url: '/api/v1/jobs/{id}/heartbeat';
+    url: '/api/v1/jobs/{id}/lease';
 };
 
 export type HeartbeatJobErrors = {
@@ -2411,6 +2341,76 @@ export type HeartbeatJobResponses = {
 };
 
 export type HeartbeatJobResponse = HeartbeatJobResponses[keyof HeartbeatJobResponses];
+
+export type ClaimJobData = {
+    body: JobSessionRequest;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/jobs/{id}/lease';
+};
+
+export type ClaimJobErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorResponse;
+    /**
+     * State conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unexpected server error
+     */
+    500: ErrorResponse;
+};
+
+export type ClaimJobError = ClaimJobErrors[keyof ClaimJobErrors];
+
+export type ClaimJobResponses = {
+    /**
+     * Claimed
+     */
+    200: JobResource;
+};
+
+export type ClaimJobResponse = ClaimJobResponses[keyof ClaimJobResponses];
+
+export type CompleteJobData = {
+    body: JobCompleteRequest;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/jobs/{id}/completion';
+};
+
+export type CompleteJobErrors = {
+    /**
+     * Resource not found
+     */
+    404: ErrorResponse;
+    /**
+     * State conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unexpected server error
+     */
+    500: ErrorResponse;
+};
+
+export type CompleteJobError = CompleteJobErrors[keyof CompleteJobErrors];
+
+export type CompleteJobResponses = {
+    /**
+     * Completed
+     */
+    200: JobResource;
+};
+
+export type CompleteJobResponse = CompleteJobResponses[keyof CompleteJobResponses];
 
 export type ClientOptions = {
     baseUrl: 'http://127.0.0.1:7700' | (string & {});
