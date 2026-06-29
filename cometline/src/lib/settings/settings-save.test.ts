@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-	cometmindNeedsRestart,
-	providersNeedRestart,
-	saveStatusMessage
-} from './settings-save';
+import { cometmindNeedsRestart, providersNeedRestart, saveStatusMessage } from './settings-save';
 import { defaultSettings } from '$lib/settings/schema';
 import type { ProviderSettings } from '$lib/types';
 

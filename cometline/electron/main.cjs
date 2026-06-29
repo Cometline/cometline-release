@@ -463,8 +463,12 @@ function positionMiniWindowBottomRight() {
 	const cursorPoint = electronScreen.getCursorScreenPoint();
 	const display = electronScreen.getDisplayNearestPoint(cursorPoint);
 	const { width, height } = miniWindow.getBounds();
-	const x = Math.round(display.workArea.x + display.workArea.width - width - MINI_WINDOW_SCREEN_MARGIN);
-	const y = Math.round(display.workArea.y + display.workArea.height - height - MINI_WINDOW_SCREEN_MARGIN);
+	const x = Math.round(
+		display.workArea.x + display.workArea.width - width - MINI_WINDOW_SCREEN_MARGIN
+	);
+	const y = Math.round(
+		display.workArea.y + display.workArea.height - height - MINI_WINDOW_SCREEN_MARGIN
+	);
 	miniWindow.setPosition(x, y, false);
 }
 
@@ -1681,9 +1685,9 @@ async function createMiniWindow() {
 		titleBarStyle: process.platform === 'darwin' ? 'hidden' : 'default',
 		...(process.platform === 'darwin'
 			? {
-				backgroundColor: '#111111',
-				trafficLightPosition: { x: 14, y: 14 }
-			}
+					backgroundColor: '#111111',
+					trafficLightPosition: { x: 14, y: 14 }
+				}
 			: {}),
 		...(iconPath ? { icon: iconPath } : {}),
 		show: false,

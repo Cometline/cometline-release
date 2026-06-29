@@ -96,8 +96,9 @@
 					oninput={onMiniWindowTimeoutInput}
 				/>
 				<small>
-					After the mini window stays hidden long enough, the next hotkey open starts a new
-					rolling session. Current setting: {miniWindowInactivityTimeoutMinutes} minute{miniWindowInactivityTimeoutMinutes === 1
+					After the mini window stays hidden long enough, the next hotkey open starts a
+					new rolling session. Current setting: {miniWindowInactivityTimeoutMinutes} minute{miniWindowInactivityTimeoutMinutes ===
+					1
 						? ''
 						: 's'}.
 				</small>

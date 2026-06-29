@@ -26,7 +26,11 @@ function isMiniWindowSessionExpired(state: MiniWindowState) {
 export async function ensureMiniWindowSession(preferredSessionId = '') {
 	const state =
 		(await window.electronAPI?.getMiniWindowState?.()) ??
-		({ sessionId: '', lastActiveAt: 0, inactivityTimeoutMinutes: 30 } satisfies MiniWindowState);
+		({
+			sessionId: '',
+			lastActiveAt: 0,
+			inactivityTimeoutMinutes: 30
+		} satisfies MiniWindowState);
 	const sessionId = preferredSessionId || state.sessionId;
 	const shouldReuseSession = preferredSessionId || !isMiniWindowSessionExpired(state);
 	const workspacePath = (await window.electronAPI?.getWorkspacePath?.()) ?? '/';

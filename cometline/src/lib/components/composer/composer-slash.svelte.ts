@@ -37,9 +37,7 @@ import type { ImageAttachment, SkillResource } from '$lib/types';
 import type { JobResource } from '$lib/generated/cometmind-api';
 import type { ComposerInputRef } from '$lib/components/composer/composer-input-ref';
 
-export type ComposerSubmitResolution =
-	| { kind: 'handled' }
-	| { kind: 'message'; text: string };
+export type ComposerSubmitResolution = { kind: 'handled' } | { kind: 'message'; text: string };
 
 export function createComposerSlashController(deps: {
 	getValue: () => string;

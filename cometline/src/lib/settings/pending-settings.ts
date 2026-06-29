@@ -27,7 +27,8 @@ export function pendingSettingsSnapshot(settings: ProviderSettings): string {
 		},
 		app: {
 			iconVariant: settings.app?.iconVariant ?? 'default',
-			miniWindowInactivityTimeoutMinutes: settings.app?.miniWindowInactivityTimeoutMinutes ?? 30
+			miniWindowInactivityTimeoutMinutes:
+				settings.app?.miniWindowInactivityTimeoutMinutes ?? 30
 		},
 		cometmind: {
 			...cometmind,

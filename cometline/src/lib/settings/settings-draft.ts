@@ -48,9 +48,7 @@ export function cloneSettings(settings: ProviderSettings): ProviderSettings {
 
 export function providerPayloadFromDraft(draft: ProviderSettings): ProviderSettings {
 	const activeProvider =
-		draft.providers.find(
-			(provider) => provider.enabled && provider.enabledModels.length > 0
-		) ??
+		draft.providers.find((provider) => provider.enabled && provider.enabledModels.length > 0) ??
 		draft.providers.find((provider) => provider.enabled) ??
 		draft.providers[0];
 	return {

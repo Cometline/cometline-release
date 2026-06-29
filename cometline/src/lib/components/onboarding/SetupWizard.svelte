@@ -92,10 +92,7 @@
 
 	let selectedProviderId = $state(
 		untrack(
-			() =>
-				draft.providers.find((p) => p.id === 'openai')?.id ??
-				draft.providers[0]?.id ??
-				''
+			() => draft.providers.find((p) => p.id === 'openai')?.id ?? draft.providers[0]?.id ?? ''
 		)
 	);
 

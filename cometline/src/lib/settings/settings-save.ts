@@ -1,10 +1,7 @@
 import type { ProviderSettings } from '$lib/types';
 import type { SettingsSection } from '$lib/components/settings/settings-controller.svelte';
 
-export function providersNeedRestart(
-	persisted: ProviderSettings,
-	next: ProviderSettings
-): boolean {
+export function providersNeedRestart(persisted: ProviderSettings, next: ProviderSettings): boolean {
 	return JSON.stringify(persisted.providers) !== JSON.stringify(next.providers);
 }
 

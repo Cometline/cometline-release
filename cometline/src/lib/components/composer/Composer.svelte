@@ -208,7 +208,11 @@
 	{#if attachments.dragActive}
 		<div class="drop-overlay" aria-hidden="true">
 			<FileText size={18} stroke-width={1.8} />
-			<span>{attachments.dropProcessing ? 'Reading files…' : 'Drop text files to add context'}</span>
+			<span
+				>{attachments.dropProcessing
+					? 'Reading files…'
+					: 'Drop text files to add context'}</span
+			>
 		</div>
 	{/if}
 

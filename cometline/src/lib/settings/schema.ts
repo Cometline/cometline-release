@@ -892,7 +892,9 @@ export function normalizeSettings(
 					: defaultAppSettings().hasDismissedSetupWizard,
 			iconVariant: normalizeIconVariant(next.app?.iconVariant),
 			miniWindowSessionId: String(next.app?.miniWindowSessionId ?? '').trim(),
-			miniWindowLastActiveAt: normalizeMiniWindowLastActiveAt(next.app?.miniWindowLastActiveAt),
+			miniWindowLastActiveAt: normalizeMiniWindowLastActiveAt(
+				next.app?.miniWindowLastActiveAt
+			),
 			miniWindowInactivityTimeoutMinutes: normalizeMiniWindowInactivityTimeoutMinutes(
 				next.app?.miniWindowInactivityTimeoutMinutes
 			),
@@ -980,7 +982,11 @@ const providerSettingsSchema = z.object({
 		iconVariant: z.enum(['default', 'man']),
 		miniWindowSessionId: z.string(),
 		miniWindowLastActiveAt: z.number().int().min(0),
-		miniWindowInactivityTimeoutMinutes: z.number().int().min(1).max(24 * 60),
+		miniWindowInactivityTimeoutMinutes: z
+			.number()
+			.int()
+			.min(1)
+			.max(24 * 60),
 		webPanelWidth: z.number().int().min(0)
 	}),
 	cometmind: z.object({

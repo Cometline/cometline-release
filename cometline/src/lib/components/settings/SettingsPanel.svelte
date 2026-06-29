@@ -288,7 +288,8 @@
 											class:selected={draft.app.iconVariant === option.id}
 											role="radio"
 											aria-checked={draft.app.iconVariant === option.id}
-											onclick={() => panelController.setIconVariant(option.id)}
+											onclick={() =>
+												panelController.setIconVariant(option.id)}
 										>
 											<img
 												src={projectAvatarSrc(option.id, 96)}
@@ -314,7 +315,9 @@
 					<div class="settings-panel-stack">
 						<SettingsGeneralPanel
 							bind:openAtLogin={draft.app.openAtLogin}
-							bind:miniWindowInactivityTimeoutMinutes={draft.app.miniWindowInactivityTimeoutMinutes}
+							bind:miniWindowInactivityTimeoutMinutes={
+								draft.app.miniWindowInactivityTimeoutMinutes
+							}
 							bind:storage={draft.cometmind.storage}
 							onOpenAtLoginChange={panelController.setOpenAtLogin}
 						/>
@@ -372,7 +375,10 @@
 										</span>
 									</div>
 									<div class="settings-row-actions">
-										<button class="secondary" onclick={panelController.changeWorkspace}>
+										<button
+											class="secondary"
+											onclick={panelController.changeWorkspace}
+										>
 											<FolderOpen size={14} />
 											Change
 										</button>
@@ -415,8 +421,10 @@
 										<span class="settings-row-label">Updates</span>
 										<span
 											class="update-status"
-											class:update-error={panelController.updateState.status === 'error'}
-											class:update-ready={panelController.updateState.status === 'ready'}
+											class:update-error={panelController.updateState
+												.status === 'error'}
+											class:update-ready={panelController.updateState
+												.status === 'ready'}
 										>
 											{#if panelController.checkingUpdates || panelController.updateState.status === 'checking' || panelController.updateState.status === 'downloading'}
 												<span class="spin small"
@@ -433,7 +441,8 @@
 												onclick={panelController.installUpdate}
 												disabled={panelController.installingUpdate}
 											>
-												{#if panelController.installingUpdate}<span class="spin"
+												{#if panelController.installingUpdate}<span
+														class="spin"
 														><LoaderCircle size={14} /></span
 													>{:else}<Download size={14} />{/if}
 												Install update
@@ -462,7 +471,10 @@
 										>
 									</div>
 									<div class="settings-row-actions">
-										<button class="secondary" onclick={panelController.replayIntro}>
+										<button
+											class="secondary"
+											onclick={panelController.replayIntro}
+										>
 											<Sparkles size={14} />
 											Replay intro
 										</button>
@@ -476,7 +488,10 @@
 										>
 									</div>
 									<div class="settings-row-actions">
-										<button class="secondary" onclick={panelController.runSetupWizard}>
+										<button
+											class="secondary"
+											onclick={panelController.runSetupWizard}
+										>
 											<Sparkles size={14} />
 											Run setup wizard
 										</button>
@@ -484,7 +499,9 @@
 								</div>
 								<div class="settings-row">
 									<span class="settings-row-label">Version</span>
-									<span class="settings-row-value mr-2">{panelController.appVersion || '—'}</span>
+									<span class="settings-row-value mr-2"
+										>{panelController.appVersion || '—'}</span
+									>
 								</div>
 							</div>
 						</section>
@@ -504,15 +521,22 @@
 				{#if settingsStore.isSaving}
 					Saving changes…
 				{:else}
-					{#if settingsController.hasPendingChanges}<strong>Unsaved changes ·</strong>{/if}
+					{#if settingsController.hasPendingChanges}<strong>Unsaved changes ·</strong
+						>{/if}
 					Save applies all tabs. Close without saving discards pending edits.
 				{/if}
 				{#if modelsSectionWarning}<span class="settings-footer-warning"
 						>{modelsSectionWarning}</span
 					>{/if}
 			</p>
-			<SettingsButton variant="secondary" onclick={panelController.discardSettings}>Discard</SettingsButton>
-			<SettingsButton variant="primary" onclick={panelController.save} disabled={settingsController.saveDisabled}>
+			<SettingsButton variant="secondary" onclick={panelController.discardSettings}
+				>Discard</SettingsButton
+			>
+			<SettingsButton
+				variant="primary"
+				onclick={panelController.save}
+				disabled={settingsController.saveDisabled}
+			>
 				{#if settingsStore.isSaving}<span class="spin"><LoaderCircle size={14} /></span
 					>{/if}
 				Save changes

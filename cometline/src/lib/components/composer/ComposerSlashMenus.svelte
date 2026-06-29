@@ -126,7 +126,9 @@
 							<span class="skill-command-name">{option.label}</span>
 							<span class="skill-command-description">{option.modelId}</span>
 							{#if option.id === modelStore.selected?.id}
-								<span class="model-command-check"><Check size={14} stroke-width={2} /></span>
+								<span class="model-command-check"
+									><Check size={14} stroke-width={2} /></span
+								>
 							{/if}
 						</button>
 					{/each}

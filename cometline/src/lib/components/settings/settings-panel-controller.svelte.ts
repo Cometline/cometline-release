@@ -19,10 +19,7 @@ import type {
 	ShortcutAction,
 	ShortcutBinding
 } from '$lib/types';
-import type {
-	createSettingsController,
-	SettingsSection
-} from './settings-controller.svelte';
+import type { createSettingsController, SettingsSection } from './settings-controller.svelte';
 
 type CodexAuthStatus = {
 	authenticated: boolean;
@@ -203,7 +200,8 @@ export function createSettingsPanelController(deps: {
 		if (exportingSettings) return;
 		const api = window.electronAPI;
 		if (!api?.exportProviderSettings) {
-			deps.settingsController.status = 'Settings export is only available in the desktop app.';
+			deps.settingsController.status =
+				'Settings export is only available in the desktop app.';
 			return;
 		}
 		exportingSettings = true;
@@ -225,7 +223,8 @@ export function createSettingsPanelController(deps: {
 		if (importingSettings) return;
 		const api = window.electronAPI;
 		if (!api?.importProviderSettings) {
-			deps.settingsController.status = 'Settings import is only available in the desktop app.';
+			deps.settingsController.status =
+				'Settings import is only available in the desktop app.';
 			return;
 		}
 		importingSettings = true;

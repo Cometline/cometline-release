@@ -16,9 +16,10 @@ const source =
 
 const listeners = new Set<(message: SyncMessage) => void>();
 
-const channel = browser && 'BroadcastChannel' in globalThis
-	? new BroadcastChannel('cometline-window-sync')
-	: null;
+const channel =
+	browser && 'BroadcastChannel' in globalThis
+		? new BroadcastChannel('cometline-window-sync')
+		: null;
 
 if (channel) {
 	channel.addEventListener('message', (event) => {

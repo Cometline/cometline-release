@@ -21,7 +21,7 @@ export function createChatViewController(deps: {
 
 	const heroLayout = $derived(
 		!deps.getForceDocked?.() &&
-		shellStore.composerPhase === 'centered' &&
+			shellStore.composerPhase === 'centered' &&
 			((!deps.getHasVisibleConversation() && !deps.getFirstTurnActive()) ||
 				(deps.getFirstTurnActive() && !deps.getFirstTurnFlightDone()))
 	);

@@ -50,7 +50,8 @@ describe('settings schema', () => {
 				.webPanelWidth
 		).toBe(642);
 		expect(
-			normalizeSettings({ ...base, app: { ...base.app, webPanelWidth: -10 } }).app.webPanelWidth
+			normalizeSettings({ ...base, app: { ...base.app, webPanelWidth: -10 } }).app
+				.webPanelWidth
 		).toBe(0);
 		expect(
 			normalizeSettings({

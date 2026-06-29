@@ -90,8 +90,16 @@
 		</button>
 
 		{#if !collapsed}
-			<div class="workspace-sessions" class:overflow transition:slide={WORKSPACE_SESSIONS_SLIDE}>
-				<div class="workspace-sessions-scroll scrollbar-none" bind:this={scrollEl} onscroll={onScroll}>
+			<div
+				class="workspace-sessions"
+				class:overflow
+				transition:slide={WORKSPACE_SESSIONS_SLIDE}
+			>
+				<div
+					class="workspace-sessions-scroll scrollbar-none"
+					bind:this={scrollEl}
+					onscroll={onScroll}
+				>
 					{#each sessions as session (session.id)}
 						<SessionRow
 							{session}
