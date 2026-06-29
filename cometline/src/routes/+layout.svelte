@@ -10,6 +10,7 @@
 	import { heroComposerCssVars } from '$lib/hero-composer-appearance';
 	import { ensureWorkspace, listAllSessions } from '$lib/client/cometmind';
 	import { startJobNotificationPoller } from '$lib/jobs/job-notifications';
+	import { startStorageRetentionSync } from '$lib/retention/storage-retention-sync';
 
 	let { children } = $props();
 
@@ -27,6 +28,7 @@
 
 	onMount(() => {
 		connectionState.startPolling();
+		let stopStorageRetentionSync: (() => void) | null = null;
 		const stopJobNotifications = startJobNotificationPoller({
 			getSettings: () => settingsStore.settings.cometmind.jobs.notifications,
 			onNotify: (title, body) => {
@@ -35,6 +37,9 @@
 		});
 		void settingsStore.load().then(() => {
 			settingsLoaded = true;
+			stopStorageRetentionSync = startStorageRetentionSync(
+				() => settingsStore.settings.cometmind.storage
+			);
 			// The sync localStorage read in shell.svelte.ts already sets introOpen
 			// correctly for the first frame. This IPC result is the authoritative
 			// source and handles edge cases:
@@ -52,6 +57,7 @@
 		return () => {
 			connectionState.stopPolling();
 			stopJobNotifications();
+			stopStorageRetentionSync?.();
 		};
 	});
 

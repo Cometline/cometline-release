@@ -1,7 +1,8 @@
 import type { MemorySettings } from '$lib/client/cometmind';
+import { runStorageRetentionAndSyncSessions } from '$lib/retention/storage-retention-sync';
 import { normalizeSettings, validateSettings } from '$lib/settings/schema';
 import type { ProviderSettings } from '$lib/types';
-import { CometMindApiError, purgeArchivedMemory, putMemorySettings } from '$lib/client/cometmind';
+import { putMemorySettings } from '$lib/client/cometmind';
 import { connectionState } from '$lib/stores/runtime.svelte';
 
 export interface PersistSettingsOptions {
@@ -31,15 +32,8 @@ export async function persistSettings(
 		memory = await putMemorySettings(options.memory);
 	}
 
-	const purgeDays = normalized.cometmind.storage.archivedMemoryPurgeDays;
-	if (purgeDays > 0) {
-		try {
-			await purgeArchivedMemory(purgeDays);
-		} catch (err) {
-			if (!(err instanceof CometMindApiError && err.status === 503)) {
-				throw err;
-			}
-		}
+	if (connectionState.status === 'ready') {
+		await runStorageRetentionAndSyncSessions();
 	}
 
 	if (restartCometMind) {

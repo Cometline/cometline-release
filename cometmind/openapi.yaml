@@ -19,6 +19,7 @@ tags:
   - name: Skills
   - name: MCP
   - name: Memory
+  - name: Storage
 paths:
   /api/v1/health:
     get:
@@ -1129,6 +1130,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CompactMemoryPreviewResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/storage/retention/run:
+    post:
+      tags: [Storage]
+      summary: Run storage retention cleanup
+      description: |
+        Runs configured storage retention rules immediately. This covers session
+        retention, subagent session retention, archived memory purge, deleted job
+        purge, and optional vacuuming.
+      operationId: runStorageRetention
+      responses:
+        '200':
+          description: Retention result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunStorageRetentionResponse'
+        '503':
+          description: Storage retention unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleErrorResponse'
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -2458,6 +2484,38 @@ components:
           type: integer
         memory_events_purged:
           type: integer
+
+    RunStorageRetentionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - sessions_deleted
+        - subagents_deleted
+        - memories_purged
+        - memory_events_purged
+        - jobs_purged
+        - vacuumed
+      properties:
+        status:
+          type: string
+        sessions_deleted:
+          type: integer
+          minimum: 0
+        subagents_deleted:
+          type: integer
+          minimum: 0
+        memories_purged:
+          type: integer
+          minimum: 0
+        memory_events_purged:
+          type: integer
+          minimum: 0
+        jobs_purged:
+          type: integer
+          minimum: 0
+        vacuumed:
+          type: boolean
 
     CompactMemoryPreviewResponse:
       type: object

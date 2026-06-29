@@ -141,6 +141,7 @@ declare global {
 	}
 
 	interface CometMindStorageSettings {
+		cleanupIntervalMinutes: number;
 		retentionDays: number;
 		maxSessionsPerWorkspace: number;
 		archivedMemoryPurgeDays: number;

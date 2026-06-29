@@ -550,6 +550,16 @@ export type PurgeArchivedMemoryResponse = {
     memory_events_purged: number;
 };
 
+export type RunStorageRetentionResponse = {
+    status: string;
+    sessions_deleted: number;
+    subagents_deleted: number;
+    memories_purged: number;
+    memory_events_purged: number;
+    jobs_purged: number;
+    vacuumed: boolean;
+};
+
 export type CompactMemoryPreviewResponse = {
     to_forget: Array<MemoryResource>;
     to_merge: Array<Array<MemoryResource>>;
@@ -1988,6 +1998,35 @@ export type CompactMemoryPreviewResponses = {
 };
 
 export type CompactMemoryPreviewResponse2 = CompactMemoryPreviewResponses[keyof CompactMemoryPreviewResponses];
+
+export type RunStorageRetentionData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/storage/retention/run';
+};
+
+export type RunStorageRetentionErrors = {
+    /**
+     * Unexpected server error
+     */
+    500: ErrorResponse;
+    /**
+     * Storage retention unavailable
+     */
+    503: SimpleErrorResponse;
+};
+
+export type RunStorageRetentionError = RunStorageRetentionErrors[keyof RunStorageRetentionErrors];
+
+export type RunStorageRetentionResponses = {
+    /**
+     * Retention result
+     */
+    200: RunStorageRetentionResponse;
+};
+
+export type RunStorageRetentionResponse2 = RunStorageRetentionResponses[keyof RunStorageRetentionResponses];
 
 export type ListJobsData = {
     body?: never;

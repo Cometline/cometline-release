@@ -40,6 +40,9 @@ function createSessionStore() {
 
 	function setSessions(list: Session[]) {
 		sessions = list;
+		if (current && !list.some((session) => session.id === current?.id)) {
+			current = null;
+		}
 	}
 
 	function appendSession(session: Session) {

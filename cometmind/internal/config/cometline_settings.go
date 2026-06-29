@@ -56,6 +56,7 @@ type cometlineDiscordJSON struct {
 }
 
 type cometlineStorageJSON struct {
+	CleanupIntervalMinutes  int  `json:"cleanupIntervalMinutes"`
 	RetentionDays           int  `json:"retentionDays"`
 	MaxSessionsPerWorkspace int  `json:"maxSessionsPerWorkspace"`
 	ArchivedMemoryPurgeDays int  `json:"archivedMemoryPurgeDays"`
@@ -71,17 +72,17 @@ type cometlineMCPOAuthJSON struct {
 }
 
 type cometlineMCPServerJSON struct {
-	ID           string                `json:"id"`
-	Name         string                `json:"name"`
-	Enabled      bool                  `json:"enabled"`
-	Transport    string                `json:"transport"`
-	Command      string                `json:"command"`
-	Args         []string              `json:"args"`
-	Env          map[string]string     `json:"env"`
-	URL          string                `json:"url"`
-	Headers      map[string]string     `json:"headers"`
+	ID           string                 `json:"id"`
+	Name         string                 `json:"name"`
+	Enabled      bool                   `json:"enabled"`
+	Transport    string                 `json:"transport"`
+	Command      string                 `json:"command"`
+	Args         []string               `json:"args"`
+	Env          map[string]string      `json:"env"`
+	URL          string                 `json:"url"`
+	Headers      map[string]string      `json:"headers"`
 	OAuth        *cometlineMCPOAuthJSON `json:"oauth"`
-	AllowedTools []string              `json:"allowedTools"`
+	AllowedTools []string               `json:"allowedTools"`
 }
 
 type cometlineMCPJSON struct {
@@ -108,10 +109,10 @@ type cometlineCometmindJSON struct {
 	MaxTokens          int                 `json:"maxTokens"`
 	ContextWindowLimit int                 `json:"contextWindowLimit"`
 	TitleProviderID    string              `json:"titleProviderId"`
-	TitleModelID     string              `json:"titleModelId"`
-	ACP              cometlineACPJSON    `json:"acp"`
-	Skills           cometlineSkillsJSON `json:"skills"`
-	Memory           struct {
+	TitleModelID       string              `json:"titleModelId"`
+	ACP                cometlineACPJSON    `json:"acp"`
+	Skills             cometlineSkillsJSON `json:"skills"`
+	Memory             struct {
 		ExtractionProviderID string                       `json:"extractionProviderId"`
 		ExtractionModel      string                       `json:"extractionModel"`
 		Embedding            cometlineMemoryEmbeddingJSON `json:"embedding"`
@@ -120,7 +121,7 @@ type cometlineCometmindJSON struct {
 	Gateway struct {
 		Discord cometlineDiscordJSON `json:"discord"`
 	} `json:"gateway"`
-	MCP cometlineMCPJSON `json:"mcp"`
+	MCP  cometlineMCPJSON  `json:"mcp"`
 	Jobs cometlineJobsJSON `json:"jobs"`
 }
 
@@ -198,16 +199,16 @@ func adaptCometlineSettings(raw cometlineSettingsJSON) (*Config, error) {
 	cm := raw.Cometmind
 	memDef := defaultMemoryConfig()
 	cfg := &Config{
-		Provider:         strings.TrimSpace(active.ID),
-		Model:            primaryModel(active),
-		BaseURL:          strings.TrimSpace(active.BaseURL),
-		TitleProvider:    strings.TrimSpace(cm.TitleProviderID),
-		TitleModel:       strings.TrimSpace(cm.TitleModelID),
+		Provider:           strings.TrimSpace(active.ID),
+		Model:              primaryModel(active),
+		BaseURL:            strings.TrimSpace(active.BaseURL),
+		TitleProvider:      strings.TrimSpace(cm.TitleProviderID),
+		TitleModel:         strings.TrimSpace(cm.TitleModelID),
 		MaxTokens:          cm.MaxTokens,
 		ContextWindowLimit: normalizeContextWindowLimit(cm.ContextWindowLimit),
 		MaxSteps:           50,
-		SystemPromptPath: strings.TrimSpace(cm.SystemPromptPath),
-		Providers:        providers,
+		SystemPromptPath:   strings.TrimSpace(cm.SystemPromptPath),
+		Providers:          providers,
 		ACP: ACPConfig{
 			Command: strings.TrimSpace(cm.ACP.Command),
 			Args:    append([]string(nil), cm.ACP.Args...),
@@ -238,6 +239,7 @@ func adaptCometlineSettings(raw cometlineSettingsJSON) (*Config, error) {
 			},
 		},
 		Storage: StorageConfig{
+			CleanupIntervalMinutes:  cm.Storage.CleanupIntervalMinutes,
 			RetentionDays:           cm.Storage.RetentionDays,
 			MaxSessionsPerWorkspace: cm.Storage.MaxSessionsPerWorkspace,
 			ArchivedMemoryPurgeDays: cm.Storage.ArchivedMemoryPurgeDays,

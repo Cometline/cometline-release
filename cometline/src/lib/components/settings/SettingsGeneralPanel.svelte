@@ -26,6 +26,13 @@
 		storage = { ...storage, ...patch };
 	}
 
+	function onCleanupIntervalInput(event: Event) {
+		const value = Number((event.currentTarget as HTMLInputElement).value);
+		patchStorage({
+			cleanupIntervalMinutes: Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0
+		});
+	}
+
 	function onRetentionDaysInput(event: Event) {
 		const value = Number((event.currentTarget as HTMLInputElement).value);
 		patchStorage({
@@ -74,8 +81,8 @@
 
 		<div class="settings-section">
 			<div class="settings-section-heading">
-				<h3>Storage & retention</h3>
-				<p>Control how long CometMind keeps archived sessions and memory before purging.</p>
+				<h3>Mini window</h3>
+				<p>Control when the compact window starts a fresh rolling session.</p>
 			</div>
 			<SettingsPersistenceHint tier="pending" detail="Included in Save changes" />
 			<label class="field">
@@ -104,9 +111,30 @@
 			</div>
 			<SettingsPersistenceHint tier="pending" detail="Included in Save changes" />
 			<p class="settings-field-hint">
-				Automatic cleanup runs when CometMind starts and after settings are saved. Set a
-				field to 0 to disable that rule.
+				Automatic cleanup runs on a CometMind schedule. Set a retention field to 0 to
+				disable that rule.
 			</p>
+
+			<label class="field">
+				<span>Cleanup interval (minutes)</span>
+				<input
+					type="number"
+					min="0"
+					step="1"
+					value={storage.cleanupIntervalMinutes}
+					oninput={onCleanupIntervalInput}
+				/>
+				<small>
+					{#if storage.cleanupIntervalMinutes === 0}
+						Use the default 60 minute cleanup interval.
+					{:else}
+						Check cleanup rules every {storage.cleanupIntervalMinutes} minute{storage.cleanupIntervalMinutes ===
+						1
+							? ''
+							: 's'}.
+					{/if}
+				</small>
+			</label>
 
 			<label class="field">
 				<span>Session retention (days)</span>

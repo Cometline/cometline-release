@@ -65,38 +65,38 @@ type GatewayConfig struct {
 
 // Config holds user-visible runtime settings loaded from ~/.cometmind/cometline-settings.json and environment.
 type Config struct {
-	Provider         string          `mapstructure:"provider"`
-	Model            string          `mapstructure:"model"`
-	BaseURL          string          `mapstructure:"base_url"`
-	TitleProvider    string          `mapstructure:"title_provider"`
-	TitleModel       string          `mapstructure:"title_model"`
-	MaxTokens           int `mapstructure:"max_tokens"`
-	ContextWindowLimit  int `mapstructure:"context_window_limit"`
-	MaxSteps            int `mapstructure:"max_steps"`
-	SystemPromptPath string          `mapstructure:"system_prompt_path"`
-	Providers        []ProviderEntry `mapstructure:"providers"`
-	ACP              ACPConfig       `mapstructure:"acp"`
-	Skills           SkillsConfig    `mapstructure:"skills"`
-	Memory           MemoryConfig    `mapstructure:"memory"`
-	Storage          StorageConfig   `mapstructure:"storage"`
-	Subagent         SubagentSettings `mapstructure:"subagent"`
-	Gateway          GatewayConfig   `mapstructure:"gateway"`
-	MCP              MCPConfig       `mapstructure:"mcp"`
-	Jobs             JobsConfig      `mapstructure:"jobs"`
+	Provider           string           `mapstructure:"provider"`
+	Model              string           `mapstructure:"model"`
+	BaseURL            string           `mapstructure:"base_url"`
+	TitleProvider      string           `mapstructure:"title_provider"`
+	TitleModel         string           `mapstructure:"title_model"`
+	MaxTokens          int              `mapstructure:"max_tokens"`
+	ContextWindowLimit int              `mapstructure:"context_window_limit"`
+	MaxSteps           int              `mapstructure:"max_steps"`
+	SystemPromptPath   string           `mapstructure:"system_prompt_path"`
+	Providers          []ProviderEntry  `mapstructure:"providers"`
+	ACP                ACPConfig        `mapstructure:"acp"`
+	Skills             SkillsConfig     `mapstructure:"skills"`
+	Memory             MemoryConfig     `mapstructure:"memory"`
+	Storage            StorageConfig    `mapstructure:"storage"`
+	Subagent           SubagentSettings `mapstructure:"subagent"`
+	Gateway            GatewayConfig    `mapstructure:"gateway"`
+	MCP                MCPConfig        `mapstructure:"mcp"`
+	Jobs               JobsConfig       `mapstructure:"jobs"`
 }
 
 // Defaults returns baseline values when the config file is missing keys.
 func Defaults() *Config {
 	return &Config{
-		Provider:  ProviderAnthropic,
-		Model:     "claude-sonnet-4-5",
+		Provider:           ProviderAnthropic,
+		Model:              "claude-sonnet-4-5",
 		MaxTokens:          2048,
 		ContextWindowLimit: 128_000,
 		MaxSteps:           50,
-		Skills:    SkillsConfig{Enabled: true, IncludeOpenCode: true, IncludeClaude: true},
-		Memory:    defaultMemoryConfig(),
-		Storage:   defaultStorageConfig(),
-		Jobs:      defaultJobsConfig(),
+		Skills:             SkillsConfig{Enabled: true, IncludeOpenCode: true, IncludeClaude: true},
+		Memory:             defaultMemoryConfig(),
+		Storage:            defaultStorageConfig(),
+		Jobs:               defaultJobsConfig(),
 	}
 }
 
@@ -229,6 +229,9 @@ func applyEnvOverrides(c *Config, def *Config) {
 	}
 	if v.IsSet("storage_retention_days") {
 		c.Storage.RetentionDays = v.GetInt("storage_retention_days")
+	}
+	if v.IsSet("storage_cleanup_interval_minutes") {
+		c.Storage.CleanupIntervalMinutes = v.GetInt("storage_cleanup_interval_minutes")
 	}
 	if v.IsSet("storage_max_sessions_per_workspace") {
 		c.Storage.MaxSessionsPerWorkspace = v.GetInt("storage_max_sessions_per_workspace")

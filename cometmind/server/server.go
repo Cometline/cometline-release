@@ -17,6 +17,7 @@ import (
 	"github.com/cometline/cometmind/internal/logging"
 	mcppkg "github.com/cometline/cometmind/internal/mcp"
 	"github.com/cometline/cometmind/internal/memory"
+	"github.com/cometline/cometmind/internal/retention"
 	"github.com/cometline/cometmind/internal/session"
 	skillpkg "github.com/cometline/cometmind/internal/skills"
 	"github.com/cometline/cometmind/internal/subagent"
@@ -29,11 +30,16 @@ type Runner interface {
 
 type RunnerFactory func(sess session.Session, workspacePath string) (Runner, error)
 
+type RetentionResult = retention.Result
+
+type RetentionRunner func(context.Context) (RetentionResult, error)
+
 type Deps struct {
 	Config         *config.Config
 	Sessions       *session.Service
 	Memory         *memory.Service
 	Jobs           *jobs.Service
+	RunRetention   RetentionRunner
 	SetJobSettings func(jobs.Settings)
 	NewRunner      RunnerFactory
 	Runs           *RunManager
@@ -47,6 +53,7 @@ type App struct {
 	sessions       *session.Service
 	memory         *memory.Service
 	jobs           *jobs.Service
+	runRetention   RetentionRunner
 	setJobSettings func(jobs.Settings)
 	newRunner      RunnerFactory
 	runs           *RunManager
@@ -74,6 +81,7 @@ func New(deps Deps) (*gin.Engine, error) {
 		sessions:       deps.Sessions,
 		memory:         deps.Memory,
 		jobs:           deps.Jobs,
+		runRetention:   deps.RunRetention,
 		setJobSettings: deps.SetJobSettings,
 		newRunner:      deps.NewRunner,
 		runs:           deps.Runs,
@@ -145,6 +153,9 @@ func New(deps Deps) (*gin.Engine, error) {
 	api.POST("/memory/purge", app.handlePurgeMemory)
 	api.POST("/memory/compact", app.handleCompactMemory)
 	api.GET("/memory/compact/preview", app.handleCompactPreview)
+
+	// Storage retention
+	api.POST("/storage/retention/run", app.handleRunStorageRetention)
 
 	// Jobs
 	api.GET("/jobs", app.handleListJobs)

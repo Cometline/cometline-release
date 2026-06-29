@@ -20,8 +20,8 @@ import (
 	"github.com/cometline/cometmind/internal/config"
 	"github.com/cometline/cometmind/internal/jobs"
 	"github.com/cometline/cometmind/internal/logging"
-	"github.com/cometline/cometmind/internal/memory"
 	mcppkg "github.com/cometline/cometmind/internal/mcp"
+	"github.com/cometline/cometmind/internal/memory"
 	"github.com/cometline/cometmind/internal/paths"
 	"github.com/cometline/cometmind/internal/provider"
 	"github.com/cometline/cometmind/internal/retention"
@@ -40,19 +40,20 @@ const memoryExtractionConcurrency = 3
 
 // Runtime is the composition root shared by the CLI and server.
 type Runtime struct {
-	Config       *config.Config
-	DB           *sql.DB
-	Sessions     *session.Service
-	Memory       *memory.Service
-	Jobs         *jobs.Service
-	jobSettings  jobs.Settings
+	Config        *config.Config
+	DB            *sql.DB
+	Sessions      *session.Service
+	Memory        *memory.Service
+	Jobs          *jobs.Service
+	jobSettings   jobs.Settings
 	jobSettingsMu sync.RWMutex
-	SystemPrompt string
-	acpMgr       *acp.SessionManager
-	mcpMgr       *mcppkg.Manager
-	subagentOrch *subagent.Orchestrator
-	memorySem    chan struct{} // bounds concurrent memory-extraction goroutines
-	isRunning    func(sessionID string) bool
+	SystemPrompt  string
+	acpMgr        *acp.SessionManager
+	mcpMgr        *mcppkg.Manager
+	subagentOrch  *subagent.Orchestrator
+	memorySem     chan struct{} // bounds concurrent memory-extraction goroutines
+	isRunning     func(sessionID string) bool
+	retentionMu   sync.Mutex
 }
 
 // New builds a Runtime from the environment and filesystem.
@@ -103,7 +104,9 @@ func New(ctx context.Context) (*Runtime, error) {
 			}
 		}
 	}
-	runRetention(ctx, sqlDB, sessions, r.Memory, r.Jobs, cfg.EffectiveStorageConfig(), nil)
+	if _, err := r.RunRetention(ctx); err != nil {
+		logging.L().Warn("retention.startup_failed", "error", err)
+	}
 	if _, err := r.Jobs.Reconcile(ctx, nil); err != nil {
 		logging.L().Warn("jobs.reconcile.startup_failed", "error", err)
 	}
@@ -116,9 +119,9 @@ func New(ctx context.Context) (*Runtime, error) {
 	return r, nil
 }
 
-func runRetention(ctx context.Context, db *sql.DB, sessions *session.Service, mem *memory.Service, jobSvc *jobs.Service, cfg config.StorageConfig, isRunning func(string) bool) {
+func runRetention(ctx context.Context, db *sql.DB, sessions *session.Service, mem *memory.Service, jobSvc *jobs.Service, cfg config.StorageConfig, isRunning func(string) bool) (retention.Result, error) {
 	if !cfg.RetentionEnabled() && !cfg.MemoryPurgeEnabled() && !cfg.JobPurgeEnabled() {
-		return
+		return retention.Result{}, nil
 	}
 	rr := &retention.Runner{
 		DB:          db,
@@ -129,9 +132,21 @@ func runRetention(ctx context.Context, db *sql.DB, sessions *session.Service, me
 		IsRunning:   isRunning,
 		VacuumAsync: true,
 	}
-	if _, err := rr.Run(ctx); err != nil {
-		logging.L().Warn("retention.failed", "error", err)
+	return rr.Run(ctx)
+}
+
+// RunRetention executes the configured storage retention rules once.
+func (r *Runtime) RunRetention(ctx context.Context) (retention.Result, error) {
+	if r == nil {
+		return retention.Result{}, fmt.Errorf("runtime is nil")
 	}
+	r.retentionMu.Lock()
+	defer r.retentionMu.Unlock()
+	result, err := runRetention(ctx, r.DB, r.Sessions, r.Memory, r.Jobs, r.Config.EffectiveStorageConfig(), r.isRunning)
+	if err != nil {
+		return result, err
+	}
+	return result, nil
 }
 
 func loadSystemPrompt(path string) (string, error) {
@@ -179,6 +194,47 @@ func (r *Runtime) StartJobsMaintenance(ctx context.Context) {
 					if _, err := r.Jobs.PurgeDeleted(ctx, cfg.DeletedJobPurgeDays); err != nil {
 						logging.L().Warn("jobs.purge.failed", "error", err)
 					}
+				}
+			}
+		}
+	}()
+}
+
+// StartRetentionMaintenance runs full storage retention on the configured interval.
+func (r *Runtime) StartRetentionMaintenance(ctx context.Context) {
+	if r == nil {
+		return
+	}
+	cfg := r.Config.EffectiveStorageConfig()
+	if !cfg.RetentionEnabled() && !cfg.MemoryPurgeEnabled() && !cfg.JobPurgeEnabled() {
+		return
+	}
+	interval := time.Duration(cfg.CleanupIntervalMinutes) * time.Minute
+	if interval <= 0 {
+		interval = time.Hour
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				result, err := r.RunRetention(ctx)
+				if err != nil {
+					logging.L().Warn("retention.failed", "error", err)
+					continue
+				}
+				if result.SessionsDeleted > 0 || result.SubagentsDeleted > 0 || result.MemoriesPurged > 0 || result.MemoryEventsPurged > 0 || result.JobsPurged > 0 {
+					logging.L().Info("retention.completed",
+						"sessions_deleted", result.SessionsDeleted,
+						"subagents_deleted", result.SubagentsDeleted,
+						"memories_purged", result.MemoriesPurged,
+						"memory_events_purged", result.MemoryEventsPurged,
+						"jobs_purged", result.JobsPurged,
+						"vacuumed", result.Vacuumed,
+					)
 				}
 			}
 		}
@@ -299,18 +355,18 @@ func (r *Runtime) runnerFor(sess session.Session, workspacePath string, opts Run
 	}
 
 	runner := &agent.Runner{
-		Config:       r.Config,
-		Provider:     p,
-		Sessions:     r.Sessions,
-		Memory:       r.Memory,
-		Registry:     registry,
-		Jobs:         r.Jobs,
-		MaxSteps:     maxSteps,
-		MaxTokens:    r.Config.MaxTokens,
-		SystemPrompt: r.SystemPrompt,
-		SkillIndex:   skillRegistry.PromptIndex(),
+		Config:               r.Config,
+		Provider:             p,
+		Sessions:             r.Sessions,
+		Memory:               r.Memory,
+		Registry:             registry,
+		Jobs:                 r.Jobs,
+		MaxSteps:             maxSteps,
+		MaxTokens:            r.Config.MaxTokens,
+		SystemPrompt:         r.SystemPrompt,
+		SkillIndex:           skillRegistry.PromptIndex(),
 		SubagentOrchestrator: r.subagentOrchestratorForRunner(opts.Subagent),
-		MemorySem:    r.memorySem,
+		MemorySem:            r.memorySem,
 	}
 	if !opts.Subagent {
 		runner.JobIndex = tools.JobPromptIndex(workspacePath, platform)

@@ -28,6 +28,7 @@ import {
 	writeWorkspaceFileContent as writeWorkspaceFileContentApi,
 	patchSession as patchSessionApi,
 	putMemorySettings as putMemorySettingsApi,
+	runStorageRetention as runStorageRetentionApi,
 	reconnectMcpServer as reconnectMcpServerApi,
 	startMcpOAuth as startMcpOAuthApi,
 	searchMemories as searchMemoriesApi,
@@ -58,6 +59,7 @@ import type {
 	MemoryResource,
 	MemorySettings as MemorySettingsWire,
 	PostMessageRequest,
+	RunStorageRetentionResponse,
 	Session,
 	SessionListResponse,
 	StreamEvent,
@@ -86,7 +88,8 @@ export type {
 	McpServerStatus,
 	McpTestResult,
 	McpToolInfo,
-	MemoryResource
+	MemoryResource,
+	RunStorageRetentionResponse
 } from '$lib/generated/cometmind-api';
 
 export type {
@@ -218,6 +221,10 @@ export async function deleteWorkspace(workspacePath: string): Promise<void> {
 
 export function pruneWorkspaces(): Promise<{ pruned: number }> {
 	return pruneWorkspacesApi({ throwOnError: true }).then(({ data }) => data);
+}
+
+export function runStorageRetention(): Promise<RunStorageRetentionResponse> {
+	return runStorageRetentionApi({ throwOnError: true }).then(({ data }) => data);
 }
 
 export interface WorkspaceFiles {

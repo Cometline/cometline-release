@@ -671,6 +671,17 @@ type ReasoningStartEvent struct {
 	Type string `json:"type"`
 }
 
+// RunStorageRetentionResponse defines model for RunStorageRetentionResponse.
+type RunStorageRetentionResponse struct {
+	JobsPurged         int    `json:"jobs_purged"`
+	MemoriesPurged     int    `json:"memories_purged"`
+	MemoryEventsPurged int    `json:"memory_events_purged"`
+	SessionsDeleted    int    `json:"sessions_deleted"`
+	Status             string `json:"status"`
+	SubagentsDeleted   int    `json:"subagents_deleted"`
+	Vacuumed           bool   `json:"vacuumed"`
+}
+
 // SearchMemoryRequest defines model for SearchMemoryRequest.
 type SearchMemoryRequest struct {
 	Limit *int   `json:"limit,omitempty"`

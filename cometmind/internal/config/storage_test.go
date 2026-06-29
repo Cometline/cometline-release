@@ -8,6 +8,9 @@ func TestEffectiveStorageConfig_DefaultsWhenUnset(t *testing.T) {
 	if got.RetentionDays != 90 {
 		t.Fatalf("retention_days=%d want 90", got.RetentionDays)
 	}
+	if got.CleanupIntervalMinutes != 60 {
+		t.Fatalf("cleanup_interval_minutes=%d want 60", got.CleanupIntervalMinutes)
+	}
 	if got.ArchivedMemoryPurgeDays != 90 {
 		t.Fatalf("archived_memory_purge_days=%d want 90", got.ArchivedMemoryPurgeDays)
 	}
@@ -24,5 +27,8 @@ func TestEffectiveStorageConfig_ExplicitDisable(t *testing.T) {
 	}
 	if got.ArchivedMemoryPurgeDays != 30 {
 		t.Fatalf("purge_days=%d want 30", got.ArchivedMemoryPurgeDays)
+	}
+	if got.CleanupIntervalMinutes != 60 {
+		t.Fatalf("cleanup_interval_minutes=%d want 60", got.CleanupIntervalMinutes)
 	}
 }

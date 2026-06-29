@@ -67,6 +67,9 @@ func runServe(_ *cobra.Command, _ []string) error {
 		Sessions: rt.Sessions,
 		Memory:   rt.Memory,
 		Jobs:     rt.Jobs,
+		RunRetention: func(ctx context.Context) (server.RetentionResult, error) {
+			return rt.RunRetention(ctx)
+		},
 		SetJobSettings: func(s jobs.Settings) {
 			rt.SetJobSettings(s)
 		},
@@ -84,6 +87,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 
 	rt.SetSessionRunningChecker(runs.Running)
 	rt.StartJobsMaintenance(ctx)
+	rt.StartRetentionMaintenance(ctx)
 
 	httpServer := &http.Server{
 		Addr:              fmt.Sprintf("127.0.0.1:%d", servePort),

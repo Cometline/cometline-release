@@ -86,6 +86,7 @@ export interface CometMindMemorySettings {
 }
 
 export interface CometMindStorageSettings {
+	cleanupIntervalMinutes: number;
 	retentionDays: number;
 	maxSessionsPerWorkspace: number;
 	archivedMemoryPurgeDays: number;
@@ -395,6 +396,7 @@ export function defaultCometMindJobsSettings(): CometMindJobsSettings {
 
 export function defaultCometMindStorageSettings(): CometMindStorageSettings {
 	return {
+		cleanupIntervalMinutes: 60,
 		retentionDays: 90,
 		maxSessionsPerWorkspace: 0,
 		archivedMemoryPurgeDays: 90,
@@ -513,6 +515,10 @@ export function normalizeCometMindSettings(
 			}
 		},
 		storage: {
+			cleanupIntervalMinutes: normalizeNonNegativeInt(
+				storage.cleanupIntervalMinutes,
+				defaults.storage.cleanupIntervalMinutes
+			),
 			retentionDays: normalizeNonNegativeInt(
 				storage.retentionDays,
 				defaults.storage.retentionDays
@@ -998,6 +1004,7 @@ const providerSettingsSchema = z.object({
 			})
 		}),
 		storage: z.object({
+			cleanupIntervalMinutes: z.number().int().min(0),
 			retentionDays: z.number().int().min(0),
 			maxSessionsPerWorkspace: z.number().int().min(0),
 			archivedMemoryPurgeDays: z.number().int().min(0),

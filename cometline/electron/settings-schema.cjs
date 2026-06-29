@@ -4487,6 +4487,7 @@ function defaultCometMindJobsSettings() {
 }
 function defaultCometMindStorageSettings() {
   return {
+    cleanupIntervalMinutes: 60,
     retentionDays: 90,
     maxSessionsPerWorkspace: 0,
     archivedMemoryPurgeDays: 90,
@@ -4596,6 +4597,10 @@ function normalizeCometMindSettings(input, fallbackWorkspacePath = "") {
       }
     },
     storage: {
+      cleanupIntervalMinutes: normalizeNonNegativeInt(
+        storage.cleanupIntervalMinutes,
+        defaults.storage.cleanupIntervalMinutes
+      ),
       retentionDays: normalizeNonNegativeInt(
         storage.retentionDays,
         defaults.storage.retentionDays
@@ -4979,6 +4984,7 @@ var providerSettingsSchema = external_exports.object({
       })
     }),
     storage: external_exports.object({
+      cleanupIntervalMinutes: external_exports.number().int().min(0),
       retentionDays: external_exports.number().int().min(0),
       maxSessionsPerWorkspace: external_exports.number().int().min(0),
       archivedMemoryPurgeDays: external_exports.number().int().min(0),

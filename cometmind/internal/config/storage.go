@@ -2,6 +2,8 @@ package config
 
 // StorageConfig controls automatic session retention and memory purge.
 type StorageConfig struct {
+	// CleanupIntervalMinutes runs automatic cleanup this often. 0 uses the default interval.
+	CleanupIntervalMinutes int `json:"cleanup_interval_minutes" mapstructure:"cleanup_interval_minutes"`
 	// RetentionDays deletes sessions with no activity for this many days. 0 disables.
 	RetentionDays int `json:"retention_days" mapstructure:"retention_days"`
 	// MaxSessionsPerWorkspace keeps only the N most recently updated sessions per workspace. 0 disables.
@@ -18,6 +20,7 @@ type StorageConfig struct {
 
 func defaultStorageConfig() StorageConfig {
 	return StorageConfig{
+		CleanupIntervalMinutes:  60,
 		RetentionDays:           90,
 		MaxSessionsPerWorkspace: 0,
 		ArchivedMemoryPurgeDays: 90,
@@ -47,12 +50,17 @@ func (c *Config) EffectiveStorageConfig() StorageConfig {
 	if !c.storageConfigured() {
 		return defaultStorageConfig()
 	}
-	return c.Storage
+	s := c.Storage
+	if s.CleanupIntervalMinutes == 0 {
+		s.CleanupIntervalMinutes = defaultStorageConfig().CleanupIntervalMinutes
+	}
+	return s
 }
 
 func (c *Config) storageConfigured() bool {
 	s := c.Storage
 	return s.RetentionDays != 0 ||
+		s.CleanupIntervalMinutes != 0 ||
 		s.MaxSessionsPerWorkspace != 0 ||
 		s.ArchivedMemoryPurgeDays != 0 ||
 		s.SubagentRetentionDays != 0 ||
