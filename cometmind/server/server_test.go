@@ -186,7 +186,7 @@ func TestListWorkspaceFiles(t *testing.T) {
 	mustWrite(t, filepath.Join(workspacePath, "node_modules", "x", "index.js"), "x")
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspace-files?workspace_path="+workspacePath, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces/files?workspace_path="+workspacePath, nil)
 	engine.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -227,7 +227,7 @@ func TestReadWorkspaceFileContent(t *testing.T) {
 	mustWrite(t, filepath.Join(workspacePath, "main.go"), "package main")
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspace-file-content?workspace_path="+workspacePath+"&path=main.go", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces/files/content?workspace_path="+workspacePath+"&path=main.go", nil)
 	engine.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -258,7 +258,7 @@ func TestWriteWorkspaceFileContent(t *testing.T) {
 
 	body := bytes.NewBufferString(fmt.Sprintf(`{"workspace_path":%q,"path":"main.go","content":"package main\n\nfunc main() {}"}`, workspacePath))
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/workspace-file-content", body)
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/workspaces/files/content", body)
 	req.Header.Set("Content-Type", "application/json")
 	engine.ServeHTTP(rec, req)
 
@@ -275,7 +275,7 @@ func TestWriteWorkspaceFileContent(t *testing.T) {
 	}
 
 	readRec := httptest.NewRecorder()
-	readReq := httptest.NewRequest(http.MethodGet, "/api/v1/workspace-file-content?workspace_path="+workspacePath+"&path=main.go", nil)
+	readReq := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces/files/content?workspace_path="+workspacePath+"&path=main.go", nil)
 	engine.ServeHTTP(readRec, readReq)
 	if readRec.Code != http.StatusOK {
 		t.Fatalf("read status = %d, want %d body=%s", readRec.Code, http.StatusOK, readRec.Body.String())
@@ -305,7 +305,7 @@ func TestWriteWorkspaceFileContentRejectsInvalidRequests(t *testing.T) {
 	t.Run("path escape", func(t *testing.T) {
 		body := bytes.NewBufferString(fmt.Sprintf(`{"workspace_path":%q,"path":"../outside.go","content":"package main"}`, workspacePath))
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPut, "/api/v1/workspace-file-content", body)
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/workspaces/files/content", body)
 		req.Header.Set("Content-Type", "application/json")
 		engine.ServeHTTP(rec, req)
 
@@ -318,7 +318,7 @@ func TestWriteWorkspaceFileContentRejectsInvalidRequests(t *testing.T) {
 		content := strings.Repeat("a", maxMessageFileBytes+1)
 		body := bytes.NewBufferString(fmt.Sprintf(`{"workspace_path":%q,"path":"main.go","content":%q}`, workspacePath, content))
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPut, "/api/v1/workspace-file-content", body)
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/workspaces/files/content", body)
 		req.Header.Set("Content-Type", "application/json")
 		engine.ServeHTTP(rec, req)
 
@@ -330,7 +330,7 @@ func TestWriteWorkspaceFileContentRejectsInvalidRequests(t *testing.T) {
 	t.Run("missing file", func(t *testing.T) {
 		body := bytes.NewBufferString(fmt.Sprintf(`{"workspace_path":%q,"path":"missing.go","content":"package main"}`, workspacePath))
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPut, "/api/v1/workspace-file-content", body)
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/workspaces/files/content", body)
 		req.Header.Set("Content-Type", "application/json")
 		engine.ServeHTTP(rec, req)
 
@@ -356,7 +356,7 @@ func TestListWorkspaceFilesFiltersByQuery(t *testing.T) {
 	mustWrite(t, filepath.Join(workspacePath, "README.md"), "# readme")
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspace-files?workspace_path="+workspacePath+"&q=go", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces/files?workspace_path="+workspacePath+"&q=go", nil)
 	engine.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -381,7 +381,7 @@ func TestListWorkspaceFilesMissingWorkspace(t *testing.T) {
 	defer cleanup()
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspace-files", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces/files", nil)
 	engine.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
@@ -1081,7 +1081,7 @@ func TestLocalCORSAllowsMemorySettingsPut(t *testing.T) {
 	defer cleanup()
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodOptions, "/api/v1/memory-settings", nil)
+	req := httptest.NewRequest(http.MethodOptions, "/api/v1/memories/settings", nil)
 	req.Header.Set("Origin", "http://127.0.0.1:5173")
 	req.Header.Set("Access-Control-Request-Method", http.MethodPut)
 	engine.ServeHTTP(rec, req)
@@ -1425,7 +1425,7 @@ func TestPruneWorkspacesEndpoint(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/workspace-prune-runs", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/workspaces/prune-runs", nil)
 	engine.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
