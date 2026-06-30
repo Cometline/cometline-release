@@ -259,24 +259,8 @@
 		});
 	});
 
-	function handleMainMouseDown(event: MouseEvent) {
+	function handleMainMouseDown() {
 		shellStore.setFocusedPane('chat');
-		if (event.button !== 0) return;
-		const target = event.target;
-		if (!(target instanceof HTMLElement)) {
-			shellStore.requestComposerFocus();
-			return;
-		}
-		if (
-			target.closest(
-				'button, a, input, textarea, select, [role="button"], [contenteditable="true"]'
-			)
-		) {
-			return;
-		}
-		const selection = window.getSelection();
-		if (selection && !selection.isCollapsed) return;
-		shellStore.requestComposerFocus();
 	}
 
 	// --- Web/file panel resize ---------------------------------------------
