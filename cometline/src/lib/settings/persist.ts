@@ -1,11 +1,13 @@
 import type { MemorySettings } from '$lib/client/cometmind';
 import { runStorageRetentionAndSyncSessions } from '$lib/retention/storage-retention-sync';
 import { normalizeSettings, validateSettings } from '$lib/settings/schema';
+import type { RuntimeApplyAction } from '$lib/settings/settings-save';
 import type { ProviderSettings } from '$lib/types';
 import { putMemorySettings } from '$lib/client/cometmind';
 import { connectionState } from '$lib/stores/runtime.svelte';
 
 export interface PersistSettingsOptions {
+	runtimeAction?: RuntimeApplyAction;
 	restartCometMind?: boolean;
 	memory?: MemorySettings;
 }
@@ -14,13 +16,13 @@ export async function persistSettings(
 	draft: ProviderSettings,
 	options: PersistSettingsOptions = {}
 ): Promise<{ settings: ProviderSettings; memory?: MemorySettings }> {
-	const restartCometMind = options.restartCometMind ?? true;
+	const runtimeAction = options.runtimeAction ?? (options.restartCometMind === false ? 'none' : 'restart');
 	const normalized = validateSettings(normalizeSettings(draft));
 
 	let saved: ProviderSettings;
 	if (window.electronAPI?.saveProviderSettings) {
 		saved = await window.electronAPI.saveProviderSettings(normalized, {
-			restartCometMind
+			runtimeAction
 		});
 	} else {
 		localStorage.setItem('cometline-settings', JSON.stringify(normalized));
@@ -36,7 +38,7 @@ export async function persistSettings(
 		await runStorageRetentionAndSyncSessions();
 	}
 
-	if (restartCometMind) {
+	if (runtimeAction === 'restart') {
 		connectionState.reconnect();
 	}
 

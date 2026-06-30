@@ -272,7 +272,7 @@ declare global {
 			) => Promise<FetchProviderModelsResult | string[]>;
 			saveProviderSettings?: (
 				settings: ProviderSettings,
-				options?: { restartCometMind?: boolean }
+				options?: { runtimeAction?: 'none' | 'reload' | 'restart'; restartCometMind?: boolean }
 			) => Promise<ProviderSettings>;
 			exportProviderSettings?: () => Promise<SettingsFileResult>;
 			importProviderSettings?: () => Promise<SettingsFileResult>;

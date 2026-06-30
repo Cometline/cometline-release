@@ -1,30 +1,42 @@
 import { describe, expect, it } from 'vitest';
-import { cometmindNeedsRestart, providersNeedRestart, saveStatusMessage } from './settings-save';
+
 import { defaultSettings } from '$lib/settings/schema';
-import type { ProviderSettings } from '$lib/types';
 
-const base = (): ProviderSettings => defaultSettings();
+import { runtimeActionForSettingsSave, saveStatusMessage } from './settings-save';
 
-describe('settings-save helpers', () => {
-	it('detects provider restart need', () => {
-		const a = base();
-		const b = { ...a, providers: [{ id: 'p1' }] as ProviderSettings['providers'] };
-		expect(providersNeedRestart(a, b)).toBe(true);
+describe('runtimeActionForSettingsSave', () => {
+	it('returns reload for provider changes unrelated to memory providers', () => {
+		const persisted = defaultSettings();
+		const next = defaultSettings();
+		next.providers[0] = { ...next.providers[0], enabled: true, apiKey: 'new-key' };
+
+		expect(runtimeActionForSettingsSave(persisted, next)).toBe('reload');
 	});
 
-	it('formats save status with restart note', () => {
-		expect(saveStatusMessage('memory', true)).toContain('CometMind restarted');
+	it('returns restart for memory settings changes', () => {
+		const persisted = defaultSettings();
+		const next = defaultSettings();
+		next.cometmind.memory.extractionModel = 'text-embedding-3-large';
+
+		expect(runtimeActionForSettingsSave(persisted, next)).toBe('restart');
 	});
 
-	it('detects cometmind config changes', () => {
-		const a = base();
-		const b = {
-			...a,
-			cometmind: {
-				...a.cometmind,
-				storage: { ...a.cometmind.storage, retentionDays: 99 }
-			}
-		};
-		expect(cometmindNeedsRestart(a, b)).toBe(true);
+	it('returns restart when a memory provider entry changes', () => {
+		const persisted = defaultSettings();
+		const next = defaultSettings();
+		next.cometmind.memory.embedding.providerId = 'openai';
+		next.providers = next.providers.map((provider) =>
+			provider.id === 'openai' ? { ...provider, baseURL: 'http://localhost:11434/v1' } : provider
+		);
+
+		expect(runtimeActionForSettingsSave(persisted, next)).toBe('restart');
+	});
+});
+
+describe('saveStatusMessage', () => {
+	it('reports reload distinctly from restart', () => {
+		expect(saveStatusMessage('agent', 'reload')).toBe('Changes saved. CometMind reloaded.');
+		expect(saveStatusMessage('agent', 'restart')).toBe('Changes saved. CometMind restarted.');
+		expect(saveStatusMessage('agent', 'none')).toBe('Changes saved.');
 	});
 });

@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"syscall"
 
 	"github.com/cometline/cometmind/internal/config"
 	"github.com/cometline/cometmind/internal/paths"
+	"github.com/cometline/cometmind/internal/processctl"
 	"github.com/spf13/cobra"
 )
 
@@ -90,8 +92,24 @@ var settingsImportCmd = &cobra.Command{
 	},
 }
 
+var settingsReloadCmd = &cobra.Command{
+	Use:   "reload",
+	Short: "Request running CometMind processes to reload settings",
+	RunE: func(_ *cobra.Command, _ []string) error {
+		count, err := processctl.Signal(syscall.SIGHUP, processctl.ModeServe, processctl.ModeGatewayDiscord)
+		if err != nil {
+			return err
+		}
+		if count == 0 {
+			return fmt.Errorf("no running CometMind processes found")
+		}
+		fmt.Printf("requested settings reload for %d process(es)\n", count)
+		return nil
+	},
+}
+
 func init() {
-	settingsCmd.AddCommand(settingsPathCmd, settingsShowCmd, settingsExportCmd, settingsImportCmd)
+	settingsCmd.AddCommand(settingsPathCmd, settingsShowCmd, settingsExportCmd, settingsImportCmd, settingsReloadCmd)
 	rootCmd.AddCommand(settingsCmd)
 }
 

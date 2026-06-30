@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/cometline/cometmind/internal/jobs"
 	"github.com/cometline/cometmind/internal/logging"
+	"github.com/cometline/cometmind/internal/processctl"
 	"github.com/cometline/cometmind/internal/runtime"
 	"github.com/cometline/cometmind/internal/session"
 	"github.com/cometline/cometmind/server"
@@ -36,6 +38,9 @@ func init() {
 func runServe(_ *cobra.Command, _ []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	hupCh := make(chan os.Signal, 1)
+	signal.Notify(hupCh, syscall.SIGHUP)
+	defer signal.Stop(hupCh)
 
 	if serveWatchParent {
 		watchCtx, cancel := context.WithCancel(ctx)
@@ -49,6 +54,13 @@ func runServe(_ *cobra.Command, _ []string) error {
 		return err
 	}
 	defer rt.Close()
+	if err := processctl.WriteMetadata(processctl.ModeServe); err != nil {
+		return err
+	}
+	defer processctl.RemoveMetadata(processctl.ModeServe)
+	go handleReloadSignal(ctx, hupCh, func(reloadCtx context.Context) error {
+		return rt.Reload(reloadCtx)
+	})
 
 	// Prune workspaces whose filesystem path no longer exists. This stats every
 	// workspace path (slow on network mounts), so run it in the background to

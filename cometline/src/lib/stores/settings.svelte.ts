@@ -14,6 +14,7 @@ import {
 	type CometMindSettings,
 	type RuntimeSettingsSlice
 } from '$lib/settings/schema';
+import type { RuntimeApplyAction } from '$lib/settings/settings-save';
 import type { MemorySettings } from '$lib/client/cometmind';
 import type { FetchProviderModelsResult, ProviderConfig, ProviderSettings } from '$lib/types';
 import { defaultKeyboardShortcuts } from '$lib/keyboard-shortcuts';
@@ -140,7 +141,11 @@ function createSettingsStore() {
 
 	async function save(
 		draft: ProviderSettings,
-		options: { restartCometMind?: boolean; memory?: MemorySettings } = {}
+		options: {
+			runtimeAction?: RuntimeApplyAction;
+			restartCometMind?: boolean;
+			memory?: MemorySettings;
+		} = {}
 	) {
 		isSaving = true;
 		error = '';

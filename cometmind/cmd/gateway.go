@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -11,6 +12,7 @@ import (
 	discordgw "github.com/cometline/cometmind/internal/gateway/discord"
 	"github.com/cometline/cometmind/internal/jobs"
 	"github.com/cometline/cometmind/internal/logging"
+	"github.com/cometline/cometmind/internal/processctl"
 	"github.com/cometline/cometmind/internal/runtime"
 	"github.com/cometline/cometmind/internal/session"
 	"github.com/spf13/cobra"
@@ -40,12 +42,24 @@ func init() {
 func runGateway(_ *cobra.Command, _ []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	hupCh := make(chan os.Signal, 1)
+	signal.Notify(hupCh, syscall.SIGHUP)
+	defer signal.Stop(hupCh)
 
 	rt, err := runtime.New(ctx)
 	if err != nil {
 		return err
 	}
 	defer rt.Close()
+	if gatewayPlatform == "discord" {
+		if err := processctl.WriteMetadata(processctl.ModeGatewayDiscord); err != nil {
+			return err
+		}
+		defer processctl.RemoveMetadata(processctl.ModeGatewayDiscord)
+	}
+	go handleReloadSignal(ctx, hupCh, func(reloadCtx context.Context) error {
+		return rt.Reload(reloadCtx)
+	})
 
 	turns := gateway.NewTurnRunTracker()
 	rt.SetSessionRunningChecker(turns.Running)
