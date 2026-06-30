@@ -58,6 +58,11 @@ const MINI_WINDOW_SCREEN_MARGIN = 18;
 const HEALTH_URL = `http://127.0.0.1:${COMETMIND_PORT}/api/v1/health`;
 const MAX_RETRIES = 50;
 const POLL_MS = 100;
+// Auto-respawn backoff for the supervised sidecar. Capped so a persistently
+// crashing binary backs off instead of hot-looping spawns.
+const RESPAWN_BASE_MS = 500;
+const RESPAWN_MAX_MS = 10000;
+const RESPAWN_MAX_ATTEMPTS = 10;
 const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 const LOG_MAX_BYTES = 10 * 1024 * 1024;
 const LOG_BACKUP_COUNT = 1;
@@ -139,6 +144,11 @@ let miniWindow = null;
 let tray = null;
 let cometMindProcess = null;
 let cometMindGatewayProcess = null;
+// Supervisor state: auto-respawn the sidecar when it dies unexpectedly
+// (crash, panic during reload, OOM) rather than leaving the UI stranded on
+// "Cannot reach CometMind". Reset once the respawned process is healthy.
+let cometMindRespawnTimer = null;
+let cometMindRespawnAttempts = 0;
 let stoppingForQuit = false;
 let stoppedForQuit = false;
 let relaunchForUpdate = false;
@@ -1237,8 +1247,12 @@ function startCometMind() {
 	child.on('exit', (code) => {
 		console.log(`CometMind exited with code ${code}`);
 		logStream.end();
+		// `cometMindProcess === child` means nobody intentionally stopped it
+		// (stopCometMind nulls the ref before the exit fires). Treat that as an
+		// unexpected death and supervise a respawn.
 		if (cometMindProcess === child) {
 			cometMindProcess = null;
+			scheduleCometMindRespawn(`exit code ${code}`);
 		}
 	});
 
@@ -1247,8 +1261,44 @@ function startCometMind() {
 		logStream.end();
 		if (cometMindProcess === child) {
 			cometMindProcess = null;
+			scheduleCometMindRespawn(`spawn error: ${err?.message ?? err}`);
 		}
 	});
+}
+
+// scheduleCometMindRespawn relaunches the sidecar after an unexpected death,
+// using exponential backoff so a binary that crashes on startup doesn't
+// hot-loop. Suppressed while the app is quitting. Backoff resets once the
+// renderer's health check confirms the new process is up (see waitForHealth
+// callers / startCometMind success path).
+function scheduleCometMindRespawn(reason) {
+	if (stoppingForQuit || stoppedForQuit || relaunchForUpdate) return;
+	if (cometMindRespawnTimer) return;
+	if (cometMindRespawnAttempts >= RESPAWN_MAX_ATTEMPTS) {
+		console.error(
+			`CometMind respawn giving up after ${cometMindRespawnAttempts} attempts (last: ${reason})`
+		);
+		return;
+	}
+	const delay = Math.min(
+		RESPAWN_BASE_MS * 2 ** cometMindRespawnAttempts,
+		RESPAWN_MAX_MS
+	);
+	cometMindRespawnAttempts += 1;
+	console.warn(
+		`CometMind died unexpectedly (${reason}); respawning in ${delay}ms ` +
+			`(attempt ${cometMindRespawnAttempts}/${RESPAWN_MAX_ATTEMPTS})`
+	);
+	cometMindRespawnTimer = setTimeout(async () => {
+		cometMindRespawnTimer = null;
+		if (stoppingForQuit || stoppedForQuit || relaunchForUpdate) return;
+		if (isCometMindRunning()) return;
+		startCometMind();
+		const healthy = await waitForHealth();
+		if (healthy) {
+			cometMindRespawnAttempts = 0;
+		}
+	}, delay);
 }
 
 function runCometMindCommand(args) {
@@ -1471,6 +1521,14 @@ async function syncDiscordGatewayFromSettings(settings) {
 }
 
 function stopCometMind() {
+	// Cancel any in-flight supervisor respawn so an intentional stop isn't
+	// undone by a queued relaunch. An intentional stop also clears the backoff
+	// budget: the next start is user-driven, not a crash loop.
+	if (cometMindRespawnTimer) {
+		clearTimeout(cometMindRespawnTimer);
+		cometMindRespawnTimer = null;
+	}
+	cometMindRespawnAttempts = 0;
 	const proc = cometMindProcess;
 	cometMindProcess = null;
 	if (!proc) return Promise.resolve();
