@@ -7,8 +7,7 @@ import {
 	providerPayloadFromDraft
 } from '$lib/settings/settings-draft';
 import {
-	cometmindNeedsRestart,
-	providersNeedRestart,
+	runtimeActionForSettingsSave,
 	saveStatusMessage
 } from '$lib/settings/settings-save';
 import type {
@@ -341,18 +340,16 @@ export function createSettingsPanelController(deps: {
 				const draft = applyMemoryEmbeddingToDraft(deps.getDraft(), memoryPayload.embedding);
 				deps.setDraft(draft);
 				const payload = providerPayloadFromDraft(draft);
-				const restartCometMind =
-					providersNeedRestart(settingsStore.settings, payload) ||
-					cometmindNeedsRestart(settingsStore.settings, payload);
+				const runtimeAction = runtimeActionForSettingsSave(settingsStore.settings, payload);
 				const { settings: saved, memory } = await settingsStore.save(payload, {
-					restartCometMind,
+					runtimeAction,
 					memory: memoryPayload
 				});
 				if (memory) {
 					deps.getMemoryPanel()?.applySavedMemory?.(memory);
 				}
 				deps.setDraft(cloneSettings(saved));
-				deps.settingsController.status = saveStatusMessage('memory', restartCometMind);
+				deps.settingsController.status = saveStatusMessage('memory', runtimeAction);
 			} catch (error) {
 				deps.settingsController.status =
 					error instanceof Error ? error.message : 'Failed to save memory settings';
@@ -368,11 +365,8 @@ export function createSettingsPanelController(deps: {
 		const payload: ProviderSettings = providerPayloadFromDraft(draft);
 		payload.activeProviderId = activeProvider?.id ?? '';
 		const iconVariantChanged = settingsStore.settings.app.iconVariant !== draft.app.iconVariant;
-		const restartCometMind =
-			providersNeedRestart(settingsStore.settings, payload) ||
-			cometmindNeedsRestart(settingsStore.settings, payload) ||
-			iconVariantChanged;
-		const { settings: saved } = await settingsStore.save(payload, { restartCometMind });
+		const runtimeAction = runtimeActionForSettingsSave(settingsStore.settings, payload);
+		const { settings: saved } = await settingsStore.save(payload, { runtimeAction });
 		deps.setDraft(cloneSettings(saved));
 		cometmindPanelKey += 1;
 		deps.settingsController.activeSection = preservedSection;
@@ -384,7 +378,7 @@ export function createSettingsPanelController(deps: {
 		deps.setModelSearch(preservedModelSearch);
 		deps.settingsController.status = saveStatusMessage(
 			preservedSection,
-			restartCometMind,
+			runtimeAction,
 			iconVariantChanged
 		);
 		if (iconVariantChanged) {

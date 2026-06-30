@@ -1251,6 +1251,39 @@ function startCometMind() {
 	});
 }
 
+function runCometMindCommand(args) {
+	const binary = resolveCometMindBinary();
+	if (!fs.existsSync(binary)) {
+		return Promise.reject(new Error(`CometMind binary not found: ${binary}`));
+	}
+	return new Promise((resolve, reject) => {
+		const child = spawn(binary, args, {
+			stdio: ['ignore', 'pipe', 'pipe'],
+			env: providerEnv()
+		});
+		let stdout = '';
+		let stderr = '';
+		child.stdout.on('data', (data) => {
+			stdout += String(data);
+		});
+		child.stderr.on('data', (data) => {
+			stderr += String(data);
+		});
+		child.on('error', reject);
+		child.on('exit', (code) => {
+			if (code === 0) {
+				resolve({ stdout, stderr });
+				return;
+			}
+			reject(
+				new Error(
+					stderr.trim() || stdout.trim() || `CometMind ${args.join(' ')} exited with code ${code}`
+				)
+			);
+		});
+	});
+}
+
 function getGatewayLogPath() {
 	return getLogPath().replace(/\.log$/, '-gateway.log');
 }
@@ -1493,6 +1526,26 @@ async function waitForHealth() {
 		await new Promise((resolve) => setTimeout(resolve, POLL_MS));
 	}
 	return false;
+}
+
+async function reloadCometMind() {
+	if (!isCometMindRunning()) {
+		startCometMind();
+		return waitForHealth();
+	}
+	try {
+		await runCometMindCommand(['settings', 'reload']);
+		const healthy = await waitForHealth();
+		if (!healthy) {
+			throw new Error('CometMind did not report healthy after reload');
+		}
+		return true;
+	} catch (error) {
+		console.warn('CometMind reload failed, falling back to restart:', error);
+		await stopCometMind();
+		startCometMind();
+		return waitForHealth();
+	}
 }
 
 // Tracks the latest known auto-update state so a freshly loaded renderer can
@@ -2561,12 +2614,15 @@ ipcMain.handle('cometline:save-provider-settings', async (_event, settings, opti
 	const saved = writeProviderSettings(settings);
 	const iconVariantChanged =
 		(previous.app?.iconVariant ?? 'default') !== (saved.app?.iconVariant ?? 'default');
-	const shouldRestartCometMind = options.restartCometMind !== false || iconVariantChanged;
+	const runtimeAction =
+		options.runtimeAction ?? (options.restartCometMind === false ? 'none' : 'restart');
 	refreshGlobalShortcuts();
-	if (shouldRestartCometMind) {
+	if (runtimeAction === 'restart') {
 		await stopCometMind();
 		startCometMind();
 		await waitForHealth();
+	} else if (runtimeAction === 'reload') {
+		await reloadCometMind();
 	}
 	await syncDiscordGatewayFromSettings(saved);
 	applyOpenAtLoginSetting(saved.app?.openAtLogin);
