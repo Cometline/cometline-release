@@ -89,15 +89,6 @@ func runServe(_ *cobra.Command, _ []string) error {
 		ACPMgr:       rt.ACPManager(),
 		MCPMgr:       rt.MCPManager(),
 		SubagentOrch: rt.SubagentOrchestrator(),
-		ReloadRuntime: func(ctx context.Context) error {
-			return rt.Reload(ctx)
-		},
-		RequestStop: func() {
-			go func() {
-				time.Sleep(100 * time.Millisecond)
-				stop()
-			}()
-		},
 		NewRunner: func(sess session.Session, workspacePath string) (server.Runner, error) {
 			return rt.RunnerFor(sess, workspacePath)
 		},

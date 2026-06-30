@@ -265,9 +265,9 @@ Set `COMETMIND_DATA_DIR` to relocate the settings file, database, MCP OAuth toke
 
 Runtime apply semantics:
 
-- `cometmind settings reload` and `POST /api/v1/admin/reload-runs` re-read the settings file and apply safe in-process changes for new work.
+- `cometmind settings reload` re-reads the settings file and applies safe in-process changes for new work.
 - Memory settings, memory provider swaps, storage cleanup interval changes, job reconcile interval changes, bind host or port changes, Discord token changes, and fresh environment variable values still require restart.
-- `cometmind process restart` and `POST /api/v1/admin/restart-runs` are graceful stop requests. Supervised environments such as Electron, Docker, systemd, Fly, Railway, ECS, or Kubernetes should bring the process back automatically.
+- `cometmind process restart` is a graceful stop request. Supervised environments such as Electron, Docker, systemd, Fly, Railway, ECS, or Kubernetes should bring the process back automatically.
 
 If `cometline-settings.json` is missing but legacy `config.toml` exists, CometMind loads the TOML once and logs a migration hint. New installs get a minimal JSON template from `cometmind init` / first `Load()`.
 
