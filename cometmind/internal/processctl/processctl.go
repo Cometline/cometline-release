@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"syscall"
@@ -19,11 +20,12 @@ const (
 )
 
 type Metadata struct {
-	Mode         string `json:"mode"`
-	PID          int    `json:"pid"`
-	StartedAt    string `json:"started_at"`
-	DataDir      string `json:"data_dir"`
-	SettingsPath string `json:"settings_path"`
+	Mode         string   `json:"mode"`
+	PID          int      `json:"pid"`
+	StartedAt    string   `json:"started_at"`
+	DataDir      string   `json:"data_dir"`
+	SettingsPath string   `json:"settings_path"`
+	CmdArgs      []string `json:"cmd_args,omitempty"`
 }
 
 type State struct {
@@ -82,6 +84,7 @@ func WriteMetadata(mode string) error {
 		StartedAt:    time.Now().UTC().Format(time.RFC3339),
 		DataDir:      dataDir,
 		SettingsPath: settingsPath,
+		CmdArgs:      os.Args,
 	}
 	data, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
@@ -129,6 +132,48 @@ func Signal(sig syscall.Signal, modes ...string) (int, error) {
 		count++
 	}
 	return count, nil
+}
+
+// Restart stops the target process and relaunches it using its recorded CmdArgs.
+// It waits up to timeout for the process to exit before relaunching.
+func Restart(mode string, timeout time.Duration) error {
+	state, err := ReadState(mode)
+	if err != nil {
+		return err
+	}
+	if state.Running {
+		proc, err := os.FindProcess(state.Metadata.PID)
+		if err != nil {
+			return fmt.Errorf("find process: %w", err)
+		}
+		if err := proc.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			return fmt.Errorf("signal process: %w", err)
+		}
+		deadline := time.Now().Add(timeout)
+		for time.Now().Before(deadline) {
+			s, _ := ReadState(mode)
+			if !s.Running {
+				break
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		// Force-kill if still alive after timeout.
+		if s, _ := ReadState(mode); s.Running {
+			_ = proc.Signal(syscall.SIGKILL)
+			time.Sleep(300 * time.Millisecond)
+		}
+	}
+
+	args := state.Metadata.CmdArgs
+	if len(args) == 0 {
+		return fmt.Errorf("no cmd_args recorded for mode %q; cannot relaunch", mode)
+	}
+	binary := args[0]
+	cmd := exec.Command(binary, args[1:]...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+	return cmd.Start()
 }
 
 func ReadState(mode string) (State, error) {

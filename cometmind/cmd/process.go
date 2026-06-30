@@ -66,21 +66,31 @@ var processStopCmd = &cobra.Command{
 
 var processRestartCmd = &cobra.Command{
 	Use:   "restart [serve|gateway-discord]",
-	Short: "Request graceful restart for running CometMind processes",
-	Long:  "This sends SIGTERM to the target process. If the process is supervised by Electron, Docker, systemd, or another process manager, it should come back automatically.",
+	Short: "Restart running CometMind processes",
+	Long:  "Stops the target process and relaunches it using its recorded command arguments.",
 	RunE: func(_ *cobra.Command, args []string) error {
 		modes, err := processctl.TargetModes(args)
 		if err != nil {
 			return err
 		}
-		count, err := processctl.Signal(syscall.SIGTERM, modes...)
-		if err != nil {
-			return err
+		restarted := 0
+		for _, mode := range modes {
+			state, err := processctl.ReadState(mode)
+			if err != nil {
+				return err
+			}
+			if !state.Running && !state.Present {
+				continue
+			}
+			if err := processctl.Restart(mode, 10*time.Second); err != nil {
+				return fmt.Errorf("restart %s: %w", mode, err)
+			}
+			fmt.Printf("restarted %s\n", mode)
+			restarted++
 		}
-		if count == 0 {
+		if restarted == 0 {
 			return fmt.Errorf("no running CometMind processes found")
 		}
-		fmt.Printf("requested restart for %d process(es); supervised processes should restart automatically\n", count)
 		return nil
 	},
 }
