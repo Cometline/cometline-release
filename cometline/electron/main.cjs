@@ -280,7 +280,7 @@ function resolveCometMindBinary() {
 function cometMindCliBinDirs() {
 	const home = os.homedir();
 	const dirs = [path.join(home, '.cometmind', 'bin'), path.join(home, '.local', 'bin')];
-	if (process.platform === 'darwin') dirs.push('/opt/homebrew/bin', '/usr/local/bin');
+	if (process.platform === 'darwin') dirs.push('/opt/homebrew/bin');
 	return dirs;
 }
 
