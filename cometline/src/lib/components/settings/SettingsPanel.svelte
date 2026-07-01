@@ -62,6 +62,7 @@
 	let personaEditorAvatarDataUrl = $state<string | undefined>(undefined);
 	let personaEditorError = $state('');
 	let personaEditorBusy = $state(false);
+let personaAvatarFileInput = $state<HTMLInputElement | undefined>(undefined);
 
 	interface CustomPersonaLike {
 		id: string;
@@ -562,20 +563,31 @@
 									</label>
 									<label class="settings-field">
 										<span>Avatar image</span>
-										<input
-											type="file"
-											accept="image/png,image/jpeg,image/webp"
-											onchange={onPersonaAvatarFileChange}
-										/>
-										{#if personaEditorAvatarDataUrl}
-											<img
-												class="persona-editor-avatar-preview"
-												src={personaEditorAvatarDataUrl}
-												alt=""
-												width="64"
-												height="64"
+										<div class="persona-editor-avatar-row">
+											{#if personaEditorAvatarDataUrl}
+												<img
+													class="persona-editor-avatar-preview"
+													src={personaEditorAvatarDataUrl}
+													alt=""
+													width="64"
+													height="64"
+												/>
+											{/if}
+											<button
+												type="button"
+												class="secondary"
+												onclick={() => personaAvatarFileInput?.click()}
+											>
+												Choose image
+											</button>
+											<input
+												bind:this={personaAvatarFileInput}
+												type="file"
+												class="persona-editor-file-input"
+												accept="image/png,image/jpeg,image/webp"
+												onchange={onPersonaAvatarFileChange}
 											/>
-										{/if}
+										</div>
 									</label>
 									<label class="settings-field">
 										<span>SOUL.md content</span>
@@ -1252,13 +1264,31 @@
 		padding: 8px 11px;
 	}
 
+	.persona-editor-avatar-row {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+
 	.persona-editor-avatar-preview {
 		width: 64px;
 		height: 64px;
 		border-radius: 999px;
 		object-fit: cover;
 		border: 1px solid rgba(15, 23, 42, 0.08);
-		margin-top: 6px;
+		flex-shrink: 0;
+	}
+
+	.persona-editor-file-input {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
 	}
 
 	.persona-editor-actions {
