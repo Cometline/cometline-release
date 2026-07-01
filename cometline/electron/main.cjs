@@ -2792,8 +2792,14 @@ ipcMain.handle('cometline:save-provider-settings', async (_event, settings, opti
 	const previous = readProviderSettings();
 	const saved = writeProviderSettings(settings);
 	const personaIdChanged = (previous.app?.personaId ?? 'minako') !== (saved.app?.personaId ?? 'minako');
-	const runtimeAction =
+	let runtimeAction =
 		options.runtimeAction ?? (options.restartCometMind === false ? 'none' : 'restart');
+	if (
+		runtimeAction === 'none' &&
+		(previous.cometmind?.systemPromptPath ?? '') !== (saved.cometmind?.systemPromptPath ?? '')
+	) {
+		runtimeAction = 'reload';
+	}
 	refreshGlobalShortcuts();
 	if (runtimeAction === 'restart') {
 		await stopCometMind();
