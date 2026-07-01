@@ -1098,8 +1098,11 @@ function providerEnv() {
 		COMETMIND_PROVIDER: active.id,
 		COMETMIND_MODEL: active.enabledModels[0] || active.selectedModel || active.models[0] || '',
 		COMETMIND_MAX_TOKENS: String(settings.cometmind?.maxTokens ?? 2048),
-		COMETMIND_LOG_LEVEL: settings.cometmind?.logLevel ?? 'error',
-		COMETMIND_SYSTEM_PROMPT_PATH: resolveSystemPromptPath(getPersonaId(), settings)
+		COMETMIND_LOG_LEVEL: settings.cometmind?.logLevel ?? 'error'
+		// Persona SOUL path lives in cometline-settings.json (cometmind.systemPromptPath).
+		// Do not inject COMETMIND_SYSTEM_PROMPT_PATH here — it is captured at process
+		// start and would override config.Load() on SIGHUP reload, so persona switches
+		// would not take effect until a full CometMind restart.
 	};
 	if (active.baseURL) env.COMETMIND_BASE_URL = active.baseURL;
 	if (active.apiKey) env.COMETMIND_API_KEY = active.apiKey;
